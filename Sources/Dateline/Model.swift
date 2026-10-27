@@ -1,8 +1,9 @@
 // What the window is showing and every action on it: views, the add box, selection, undo and the keyboard (B25).
 import SwiftUI
 import AppKit
+import Carbon.HIToolbox
 
-enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Month", year = "Year" }
+enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Month", quarter = "Quarter", year = "Year" }
 
 @MainActor
 final class AppState: ObservableObject {
@@ -16,11 +17,23 @@ final class AppState: ObservableObject {
     @Published var addFocused = false
     @Published var addCalendarID: String?
     @Published var showShortcuts = false
+    @Published var editingSet: CalSet?  // the set editor is open on this (a new one when it is not in the list yet)
+    @Published var look = 0  // bumped when a Look setting changes, to redraw everything
     @Published var confirmDelete: Item?
     @Published var toast: Toast?
     @Published var error: String?
     @Published var now = Date()
     @Published var focusAdd = 0  // bumped to put the cursor in the add box
+    // Quick add from any app (Phase 2): its own text, the past event Tab picked, the highlighted suggestion.
+    @Published var quickText = "" { didSet { if quickText != oldValue { quickPick = nil; quickSel = 0 } } }
+    @Published var quickPick: Item?
+    @Published var quickSel = 0
+    @Published var quickFocus = 0
+    @Published var quickName = UserDefaults.standard.string(forKey: "quickName") ?? "Control Option Space"
+    @Published var quickError: String?  // why the last quick add failed, shown in the quick box
+    @Published var quickTaken = false  // another app already uses the shortcut
+    @Published var keyRefused = false  // the shortcut just picked in Settings was taken, so the old one stays
+    @Published var recordingKey = false  // Settings is waiting for a new shortcut
     private var undoStack: [() -> Failure?] = []
     private var monitor: Any?
     private var timer: Timer?
@@ -42,6 +55,9 @@ final class AppState: ObservableObject {
             if days == 7 { let m = startOfWeek(anchor); return (0..<7).map { addDays(m, $0) } }
             return (0..<days).map { addDays(anchor, $0) }
         case .month: return monthGrid(anchor)
+        case .quarter:
+            let q = quarterStart(anchor), a = startOfWeek(q), b = monthGrid(cal.date(byAdding: .month, value: 2, to: q)!).last!
+            return (0...cal.dateComponents([.day], from: a, to: b).day!).map { addDays(a, $0) }
         case .year: let y = cal.dateInterval(of: .year, for: anchor)!; return (0..<cal.range(of: .day, in: .year, for: anchor)!.count).map { addDays(y.start, $0) }
         }
     }
@@ -54,6 +70,7 @@ final class AppState: ObservableObject {
             if cal.isDate(a, equalTo: b, toGranularity: .month) { return dateText(a, "MMMM d") + " to " + dateText(b, "d, yyyy") }
             return dateText(a, "MMM d") + " to " + dateText(b, "MMM d, yyyy")
         case .month: return dateText(anchor, "MMMM yyyy")
+        case .quarter: let q = quarterStart(anchor); return dateText(q, "MMMM") + " to " + dateText(cal.date(byAdding: .month, value: 2, to: q)!, "MMMM yyyy")
         case .year: return dateText(anchor, "yyyy")
         }
     }
@@ -64,6 +81,7 @@ final class AppState: ObservableObject {
         case .day: return dateText(anchor, "EEE, MMM d")
         case .week: return dateText(visibleDays.first!, "MMM d") + " to " + dateText(visibleDays.last!, "MMM d")
         case .month: return dateText(anchor, "MMM yyyy")
+        case .quarter: let q = quarterStart(anchor); return dateText(q, "MMM") + " to " + dateText(cal.date(byAdding: .month, value: 2, to: q)!, "MMM yyyy")
         case .year: return dateText(anchor, "yyyy")
         }
     }
@@ -87,8 +105,14 @@ final class AppState: ObservableObject {
         case .day: anchor = addDays(anchor, n)
         case .week: anchor = addDays(anchor, n * days)
         case .month: anchor = cal.date(byAdding: .month, value: n, to: cal.date(from: cal.dateComponents([.year, .month], from: anchor))!)!
+        case .quarter: anchor = cal.date(byAdding: .month, value: 3 * n, to: quarterStart(anchor))!
         case .year: anchor = cal.date(byAdding: .year, value: n, to: cal.dateInterval(of: .year, for: anchor)!.start)!
         }
+    }
+
+    // Command 1 = all calendars, Command 2 to 9 = the sets in list order.
+    func pickSet(_ n: Int) {
+        if n == 1 { store.use(nil) } else if store.sets.indices.contains(n - 2) { store.use(store.sets[n - 2]) } else { NSSound.beep() }
     }
 
     func goToday() { anchor = cal.startOfDay(for: Date()) }
@@ -98,26 +122,63 @@ final class AppState: ObservableObject {
     // MARK: changes, each one undoable with Command Z
 
     var preview: Parsed { parseSentence(addText, now: Date()) }
-    var addCalendar: CalInfo? { store.calendar(addCalendarID ?? store.defaultCalendarID ?? "") ?? store.calendars.first(where: \.writable) }
+    var addCalendar: CalInfo? { calendar(for: preview, pick: nil).0 }
 
-    // Return in the add box. `edit`: Tab, which adds it and opens its details.
-    func commitAdd(edit: Bool = false) {
-        guard !addText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        switch store.add(preview, calendarID: addCalendar?.id) {
-        case .failure(let f): error = f.message
+    var quickPreview: Parsed { let p = parseSentence(quickText, now: Date()); return quickPick.map { applying($0, to: p) } ?? p }
+    var quickSuggestions: [Item] { quickPick == nil ? suggestions(parseSentence(quickText, now: Date()).title, in: store.past()) : [] }
+
+    // The calendar a new event goes to, and why: a typed /code, then the picked past event, then the menu choice, then the Mac's default.
+    func calendar(for p: Parsed, pick: Item?) -> (CalInfo?, String) {
+        let writable = store.calendars.filter(\.writable)
+        if let code = p.calendarCode {
+            if let c = matchCalendar(code, in: writable, hidden: store.hidden) { return (c, "(from /\(code))") }
+            return (calendar(for: Parsed(start: p.start, end: p.end), pick: pick).0, "(no calendar matches /\(code))")
+        }
+        if let pick, let c = store.calendar(pick.calendarID), c.writable { return (c, "(from past event)") }
+        if addCalendarID == nil, let s = store.activeSet, let c = writable.first(where: { $0.id == s.defaultCalendar }) { return (c, "(\(s.name) set)") }
+        let c = store.calendar(addCalendarID ?? store.defaultCalendarID ?? "") ?? writable.first
+        return (c, c?.id == store.defaultCalendarID ? "(your default)" : "")
+    }
+
+    // Saves a new event and shows it selected. Nil when it could not be saved (the error is shown).
+    @discardableResult
+    func add(_ p: Parsed, calendar: CalInfo?) -> Item? {
+        switch store.add(p, calendarID: calendar?.id) {
+        case .failure(let f): error = f.message; return nil
         case .success(let it):
-            addText = ""; addFocused = false
-            undoStack.append { [weak self] in self?.store.delete(it) }
+            undoStack.append { [weak self] in self?.store.delete(it, series: true) }
             anchor = cal.startOfDay(for: it.start)
             reload()
             selectedID = store.items.first { $0.title == it.title && $0.start == it.start }?.id ?? it.id
-            panelOpen = edit
+            return it
         }
+    }
+
+    // Return in the add box. `edit`: Tab, which adds it and opens its details.
+    func commitAdd(edit: Bool = false) {
+        guard !addText.trimmingCharacters(in: .whitespaces).isEmpty, add(preview, calendar: addCalendar) != nil else { return }
+        addText = ""; addFocused = false
+        panelOpen = edit
+    }
+
+    // Return in the quick add box.
+    func commitQuick() {
+        guard !quickText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        guard add(quickPreview, calendar: calendar(for: quickPreview, pick: quickPick).0) != nil else { quickError = error; error = nil; return }
+        quickText = ""; quickError = nil
+        QuickPanel.shared?.orderOut(nil)
+    }
+
+    // Option drag: `it` is the moved copy; the original stays where it was.
+    func copy(_ it: Item) {
+        guard let c = store.duplicate(it) else { error = "Couldn't copy the event."; return }
+        undoStack.append { [weak self] in self?.store.delete(c) }
+        selectedID = store.items.first { $0.title == c.title && $0.start == c.start }?.id ?? c.id
     }
 
     func newEvent(at start: Date) {
         var p = Parsed(start: start, end: start.addingTimeInterval(3600)); p.title = "New event"
-        guard case .success(let it) = store.add(p, calendarID: addCalendar?.id) else { return }
+        guard case .success(let it) = store.add(p, calendarID: calendar(for: p, pick: nil).0?.id) else { return }
         undoStack.append { [weak self] in self?.store.delete(it) }
         selectedID = store.items.first { $0.title == it.title && $0.start == it.start }?.id ?? it.id
         panelOpen = true
@@ -171,6 +232,8 @@ final class AppState: ObservableObject {
     // MARK: keyboard
 
     func startKeys() {
+        guard monitor == nil else { return }  // the window can appear again after being closed
+        registerQuick()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in self?.now = Date() } }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self else { return e }
@@ -180,6 +243,10 @@ final class AppState: ObservableObject {
 
     // Returns true when the key was used. Letters are left alone while typing in a field.
     func key(_ e: NSEvent) -> Bool {
+        if recordingKey { return false }
+        if e.window is QuickPanel { return quickKey(e) }
+        if e.keyCode == 53 && showShortcuts { showShortcuts = false; return true }  // Esc on the shortcut list, which is its own window
+        if e.window?.title != "Dateline" { return false }  // Settings, or the main window is closed
         let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
         let responder = NSApp.keyWindow?.firstResponder
         let typing = responder is NSText || responder is NSDatePicker
@@ -194,6 +261,7 @@ final class AppState: ObservableObject {
             return false
         }
         if typing || confirmDelete != nil || showShortcuts || error != nil { return false }
+        if mods == .command, let n = Int(e.charactersIgnoringModifiers ?? ""), (1...9).contains(n) { pickSet(n); return true }
         switch (e.keyCode, mods) {
         case (123, []): step(-1); return true
         case (124, []): step(1); return true
@@ -212,10 +280,100 @@ final class AppState: ObservableObject {
         case "1": mode = .day
         case "2": mode = .week
         case "3": mode = .month
-        case "4": mode = .year
+        case "4": mode = .quarter
+        case "5": mode = .year
         case "?", "/": showShortcuts.toggle()
         default: return false
         }
         return true
     }
+
+    // Keys in the quick add box: Esc closes, Tab uses the highlighted past event, Up / Down move between past events.
+    func quickKey(_ e: NSEvent) -> Bool {
+        let list = quickSuggestions
+        switch e.keyCode {
+        case 53: QuickPanel.shared?.orderOut(nil)
+        case 48: if list.indices.contains(quickSel) { quickPick = list[quickSel] }
+        case 125, 126: if !list.isEmpty { quickSel = (quickSel + (e.keyCode == 125 ? 1 : list.count - 1)) % list.count }
+        default: return false
+        }
+        return true
+    }
+
+    // The quick add shortcut, Control Option Space unless changed in Settings. Works while any app is in front.
+    func registerQuick() {
+        let d = UserDefaults.standard
+        let code = d.object(forKey: "quickCode") as? Int ?? kVK_Space, mods = d.object(forKey: "quickMods") as? Int ?? (controlKey | optionKey)
+        HotKey.action = { [weak self] in if let self { QuickPanel.toggle(self) } }
+        quickTaken = !HotKey.register(code: UInt32(code), mods: UInt32(mods))
+    }
+
+    func setQuickKey(_ e: NSEvent) {
+        let f = e.modifierFlags
+        let parts: [(Bool, String, Int)] = [(f.contains(.control), "Control", controlKey), (f.contains(.option), "Option", optionKey),
+                                            (f.contains(.shift), "Shift", shiftKey), (f.contains(.command), "Command", cmdKey)]
+        let on = parts.filter(\.0)
+        let key = e.keyCode == kVK_Space ? "Space" : (e.charactersIgnoringModifiers ?? "").uppercased()
+        let d = UserDefaults.standard, keys = ["quickCode", "quickMods", "quickName"], old = keys.map { d.object(forKey: $0) }
+        let name = (on.map(\.1) + [key]).joined(separator: " ")
+        zip(keys, [Int(e.keyCode), on.reduce(0) { $0 | $1.2 }, name] as [Any]).forEach { d.set($1, forKey: $0) }
+        registerQuick()
+        if quickTaken {
+            zip(keys, old).forEach { d.set($1, forKey: $0) }
+            registerQuick()
+            keyRefused = true  // Settings says so; the old shortcut still works
+        } else { quickName = name; keyRefused = false }
+    }
+}
+
+// A system-wide shortcut through the Carbon hot key call: no Accessibility permission needed.
+@MainActor
+enum HotKey {
+    static var action: (() -> Void)?
+    private static var ref: EventHotKeyRef?
+    private static var installed = false
+
+    static func register(code: UInt32, mods: UInt32) -> Bool {
+        if !installed {
+            var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+            InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
+                DispatchQueue.main.async { MainActor.assumeIsolated { HotKey.action?() } }
+                return noErr
+            }, 1, &spec, nil, nil)
+            installed = true
+        }
+        if let ref { UnregisterEventHotKey(ref) }
+        ref = nil
+        return RegisterEventHotKey(code, mods, EventHotKeyID(signature: 0x444C4E45, id: 1), GetApplicationEventTarget(), 0, &ref) == noErr
+    }
+}
+
+// The floating quick add box. It takes typing without bringing Dateline to the front, and hides when you click elsewhere.
+final class QuickPanel: NSPanel {
+    static var shared: QuickPanel?
+
+    static func toggle(_ app: AppState) {
+        let p = shared ?? QuickPanel(app)
+        shared = p
+        if p.isVisible { p.orderOut(nil); return }
+        if let s = NSScreen.main { p.setFrameTopLeftPoint(NSPoint(x: s.frame.midX - p.frame.width / 2, y: s.visibleFrame.maxY - s.frame.height * 0.22)) }
+        app.quickText = ""; app.quickError = nil
+        app.quickFocus += 1
+        p.makeKeyAndOrderFront(nil)
+    }
+
+    init(_ app: AppState) {
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 700, height: 560), styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
+        isFloatingPanel = true
+        level = .floating
+        backgroundColor = .clear
+        isOpaque = false
+        hasShadow = false  // the box draws its own
+        hidesOnDeactivate = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        contentView = NSHostingView(rootView: QuickAddView(app: app, store: app.store).frame(width: 700, height: 560, alignment: .top))
+    }
+
+    override var canBecomeKey: Bool { true }
+    override func resignKey() { super.resignKey(); orderOut(nil) }
 }

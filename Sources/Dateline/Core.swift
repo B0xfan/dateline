@@ -11,6 +11,20 @@ struct Parsed: Equatable {
     var allDay = false
     var place = ""
     var showAs = ShowAs.busy
+    var lengthGiven = false  // an end time or "for 2 hours" was written
+    // Short codes (Phase 2): "/Personal" picks a calendar, "-a15m" an alert, "-r1w" a repeat.
+    var calendarCode: String? = nil
+    var alertMinutes: Int? = nil
+    var repeats: Repeat? = nil
+}
+
+struct Repeat: Equatable {
+    let unit: Character  // d, w, m or y
+    let n: Int
+    var text: String {
+        let name = ["d": "day", "w": "week", "m": "month", "y": "year"][unit]!
+        return n == 1 ? "Every \(name)" : "Every \(n) \(name)s"
+    }
 }
 
 var cal: Calendar = { var c = Calendar(identifier: .gregorian); c.locale = Locale(identifier: "en_US"); return c }()
@@ -71,9 +85,32 @@ private func clock(_ s: String) -> (min: Int, sure: Bool, colon: Bool)? {
 private func guessPM(_ m: Int) -> Int { (60...479).contains(m) ? m + 720 : m }
 private func value(_ c: (min: Int, sure: Bool, colon: Bool)) -> Int { c.sure ? c.min : guessPM(c.min) }
 
-// Reads a sentence like "Dinner with Ana Friday 7pm at Casa Luna". `now` is the moment the box is typed in.
-// Words not taken as a date, time or mark make the title; after "at <place>" they make the place.
+// "-a15m" -> (15, "m"); "-r1w" or "-rw" -> (1, "w"). Nil when the word is not that code.
+private func shortCode(_ w: String, _ prefix: String) -> (Int, Character)? {
+    guard w.hasPrefix(prefix), w.count > prefix.count, let u = w.last else { return nil }
+    let num = w.dropFirst(prefix.count).dropLast()
+    guard let n = num.isEmpty ? 1 : Int(num), n >= 0, n <= 9999 else { return nil }
+    return (n, u)
+}
+
+// Reads a sentence like "Dinner with Ana Friday 7pm at Casa Luna /Personal -a15m". `now` is the moment the box is typed in.
+// Short codes are taken out first, wherever they are; the rest is read as below.
 func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60) -> Parsed {
+    var code: String? = nil, alert: Int? = nil, rep: Repeat? = nil
+    let rest = text.split(separator: " ").filter { word in
+        let w = word.lowercased()
+        if w.count > 1 && w.hasPrefix("/") { code = String(word.dropFirst()); return false }
+        if let (n, u) = shortCode(w, "-a"), let mult = ["m": 1, "h": 60, "d": 1440][u] { alert = n * mult; return false }
+        if let (n, u) = shortCode(w, "-r"), n > 0, "dwmy".contains(u) { rep = Repeat(unit: u, n: n); return false }
+        return true
+    }
+    var p = parsePlain(rest.joined(separator: " "), now: now, defaultMinutes: defaultMinutes)
+    p.calendarCode = code; p.alertMinutes = alert; p.repeats = rep
+    return p
+}
+
+// Words not taken as a date, time or mark make the title; after "at <place>" they make the place.
+private func parsePlain(_ text: String, now: Date, defaultMinutes: Int) -> Parsed {
     let words = text.split(separator: " ").map(String.init)
     var used = Set<Int>()
     var day: Date? = nil
@@ -148,6 +185,7 @@ func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60) -> Parse
     // A time already past today, with no day written, means tomorrow.
     if day == nil && start < now { start = addDays(start, 1) }
     p.start = start
+    p.lengthGiven = endMin != nil || duration != nil
     let len = endMin.map { $0 > startMin! ? $0 - startMin! : $0 + 1440 - startMin! } ?? duration ?? defaultMinutes
     p.end = cal.date(byAdding: .minute, value: len, to: start)!
     return p
@@ -208,6 +246,73 @@ func snapped(_ d: Date, by minutes: Int, step: Int = 15) -> Date {
     let down = t / step * step
     let target = minutes > 0 || t == down ? down + minutes : down + minutes + step
     return cal.date(byAdding: .minute, value: target, to: day)!
+}
+
+// A past event's title can stand in for what is typed: same first word, exact starts first, at most two (quick add).
+func suggestions(_ title: String, in past: [Item]) -> [Item] {
+    let t = title.lowercased()
+    guard t.count >= 2, let first = t.split(separator: " ").first else { return [] }
+    let hits = past.filter { $0.title.lowercased().hasPrefix(first) }
+    return Array((hits.filter { $0.title.lowercased().hasPrefix(t) } + hits.filter { !$0.title.lowercased().hasPrefix(t) }).prefix(2))
+}
+
+// Tab on a past event: its title, and its place, length and show-as where the sentence did not say.
+func applying(_ pick: Item, to p: Parsed) -> Parsed {
+    var p = p
+    p.title = pick.title
+    if p.place.isEmpty { p.place = pick.place }
+    if p.showAs == .busy { p.showAs = pick.showAs }
+    if !p.allDay && !p.lengthGiven && !pick.allDay { p.end = p.start.addingTimeInterval(pick.end.timeIntervalSince(pick.start)) }
+    return p
+}
+
+func alertText(_ m: Int) -> String {
+    if m == 0 { return "At the start" }
+    let (n, unit) = m % 1440 == 0 ? (m / 1440, "day") : m % 60 == 0 ? (m / 60, "hour") : (m, "minute")
+    return "\(n) \(unit)\(n == 1 ? "" : "s") before"
+}
+
+// "/fam" or "/f" -> the calendar named that, or starting with it. Calendars shown in the sidebar win over hidden ones.
+func matchCalendar(_ code: String, in cals: [CalInfo], hidden: Set<String>) -> CalInfo? {
+    let k = code.lowercased()
+    let squash = { (c: CalInfo) in c.title.lowercased().replacingOccurrences(of: " ", with: "") }
+    let ordered = cals.filter { !hidden.contains($0.id) } + cals.filter { hidden.contains($0.id) }
+    return ordered.first { squash($0) == k } ?? ordered.first { squash($0).hasPrefix(k) }
+}
+
+func quarterStart(_ d: Date) -> Date {
+    var c = cal.dateComponents([.year, .month], from: d)
+    c.month = (c.month! - 1) / 3 * 3 + 1
+    return cal.date(from: c)!
+}
+
+// One line of the sidebar's "Coming up" card: `lead` + `big` (bold) + `tail`. `dim`: the event already under way.
+struct Soon: Equatable { let title: String; let calendarID: String; let lead: String; let big: String; let tail: String; let dim: Bool }
+
+// The next event, the next all-day event (the next big day), and the event under way now.
+func comingUp(_ items: [Item], now: Date) -> [Soon] {
+    func span(_ s: TimeInterval) -> String {
+        let m = max(1, Int(s / 60)), h = m / 60, r = m % 60
+        return h == 0 ? "\(m) min" : r == 0 ? "\(h) h" : "\(h) h \(r) min"
+    }
+    func days(_ d: Date) -> (String, String) {
+        let n = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: d)).day!
+        return (n == 1 ? "1 day" : "\(n) days", " · " + dateText(d, "EEEE"))
+    }
+    var out: [Soon] = []
+    let timed = items.filter { !$0.allDay }.sorted { $0.start < $1.start }
+    if let n = timed.first(where: { $0.start > now }) {
+        if n.start.timeIntervalSince(now) < 86400 { out.append(Soon(title: n.shownTitle, calendarID: n.calendarID, lead: "starts in ", big: span(n.start.timeIntervalSince(now)), tail: "", dim: false)) }
+        else { let (b, t) = days(n.start); out.append(Soon(title: n.shownTitle, calendarID: n.calendarID, lead: "in ", big: b, tail: t, dim: false)) }
+    }
+    if let b = items.filter({ $0.allDay && $0.start > now }).min(by: { $0.start < $1.start }) {
+        let (big, t) = days(b.start)
+        out.append(Soon(title: b.shownTitle, calendarID: b.calendarID, lead: "in ", big: big, tail: t, dim: false))
+    }
+    if let c = timed.first(where: { $0.start <= now && $0.end > now }) {
+        out.append(Soon(title: c.shownTitle, calendarID: c.calendarID, lead: "ends in \(span(c.end.timeIntervalSince(now))) · started \(span(now.timeIntervalSince(c.start))) ago", big: "", tail: "", dim: true))
+    }
+    return out
 }
 
 func selftest() -> Int32 {
@@ -276,7 +381,47 @@ func selftest() -> Int32 {
     expect(p.start == at(11, 2, 9), "next Monday on a Monday is a week away")
     p = parseSentence("Standup 9:30", now: now)
     expect(p.start == at(10, 27, 9, 30), "9:30 with no am/pm stays morning")
+    p = parseSentence("Lunch with Sam tomorrow 1pm /Personal -a15m -r1w", now: now)
+    expect(p.title == "Lunch with Sam" && p.start == at(10, 27, 13) && p.calendarCode == "Personal" && p.alertMinutes == 15 && p.repeats == Repeat(unit: "w", n: 1), "short codes: \(p.title)")
+    p = parseSentence("-a1h Standup -r2d 9am free", now: now)
+    expect(p.title == "Standup" && p.alertMinutes == 60 && p.repeats?.text == "Every 2 days" && p.showAs == .free, "codes anywhere: \(p.title)")
+    expect(parseSentence("Read a-ha /", now: now).title == "Read a-ha /" && parseSentence("x -a1x", now: now).alertMinutes == nil, "not codes stay in the title")
+    expect(parseSentence("Call -a99999999999999999d", now: now).alertMinutes == nil, "huge alert code is ignored, not a crash")
+    let cals = ["Finance", "Family", "Fun Stuff"].map { CalInfo(id: $0, title: $0, account: "", color: .gray, writable: true) }
+    expect(matchCalendar("f", in: cals, hidden: ["Finance"])?.id == "Family" && matchCalendar("funstuff", in: cals, hidden: [])?.id == "Fun Stuff"
+           && matchCalendar("fin", in: cals, hidden: ["Finance"])?.id == "Finance" && matchCalendar("x", in: cals, hidden: []) == nil, "/code prefers shown calendars")
+    expect(alertText(15) == "15 minutes before" && alertText(60) == "1 hour before" && alertText(2880) == "2 days before", "alert text")
+    let pastList = [Item(id: "a", calendarID: "personal", title: "Lunch with the team", start: at(9, 30, 12), end: at(9, 30, 13), allDay: false, place: "Office", notes: "", showAs: .busy),
+                    Item(id: "b", calendarID: "personal", title: "Lunch with Sam", start: at(10, 13, 12), end: at(10, 13, 13, 30), allDay: false, place: "Casa Luna", notes: "", showAs: .maybe),
+                    Item(id: "c", calendarID: "work", title: "Gym", start: at(10, 1, 7), end: at(10, 1, 8), allDay: false, place: "", notes: "", showAs: .busy)]
+    let sug = suggestions("Lunch with Sam", in: pastList)
+    expect(sug.map(\.id) == ["b", "a"], "past events: exact start first, same first word next")
+    expect(suggestions("L", in: pastList).isEmpty, "one letter suggests nothing")
+    p = applying(sug[0], to: parseSentence("Lunch with sam tomorrow 1pm", now: now))
+    expect(p.title == "Lunch with Sam" && p.place == "Casa Luna" && p.end == at(10, 27, 14, 30) && p.showAs == .maybe, "past event fills place, length, show as")
+    p = applying(sug[0], to: parseSentence("Lunch tomorrow 1-2pm at Soda", now: now))
+    expect(p.place == "Soda" && p.end == at(10, 27, 14), "what was typed wins over the past event")
+    expect(quarterStart(at(11, 14, 9)) == at(10, 1, 0) && quarterStart(at(3, 31, 9)) == at(1, 1, 0), "quarter starts")
+    func it2(_ t: String, _ a: Date, _ b: Date, allDay: Bool = false) -> Item { Item(id: t, calendarID: "w", title: t, start: a, end: b, allDay: allDay, place: "", notes: "", showAs: .busy) }
+    let soon = comingUp([it2("Review", at(10, 26, 9), at(10, 26, 10, 21)), it2("Lunch", at(10, 26, 11, 21), at(10, 26, 12)),
+                         it2("Beach day", at(11, 1, 0), at(11, 2, 0), allDay: true), it2("Old", at(10, 26, 0), at(10, 27, 0), allDay: true)], now: now)
+    expect(soon.map(\.title) == ["Lunch", "Beach day", "Review"], "coming up order: \(soon.map(\.title))")
+    expect(soon[0].big == "1 h 40 min" && soon[1].big == "6 days" && soon[1].tail == " · Sunday" && soon[2].lead == "ends in 40 min · started 41 min ago", "coming up text: \(soon)")
+    expect(comingUp([it2("Trip", at(10, 29, 8), at(10, 29, 9))], now: now).first?.big == "3 days", "far next event counts days")
     expect(timeText(at(10, 26, 19)) == "7:00 PM" && timeText(at(10, 26, 19), short: true) == "7 PM", "clock text")
+    // Phase 3: formatted notes keep plain text the phone can read.
+    let plainNotes = "Fix before he leaves:\n[x] Kitchen tap\n[ ] Door lock\n- Gate code\n1. First"
+    expect(notesShown(plainNotes) == "Fix before he leaves:\n☑ Kitchen tap\n☐ Door lock\n• Gate code\n1. First", "notes shown with boxes and bullets")
+    expect(notesPlain(NSAttributedString(string: notesShown(plainNotes))) == plainNotes, "notes go back to the same plain text")
+    let phone = "• eggs\n[X] done\n[] milk"
+    expect(notesPlain(NSAttributedString(string: notesShown(phone) + "\n• new"), like: phone) == phone + "\n- new", "notes from the phone keep their marks when another line is added")
+    let linked = NSMutableAttributedString(string: "Parts list here")
+    linked.addAttribute(.link, value: URL(string: "https://x.com/a")!, range: NSRange(location: 0, length: 10))
+    expect(notesPlain(linked) == "Parts list (https://x.com/a) here", "a link keeps its address in the plain text")
+    expect(activeSet([CalSet(name: "W", calendars: ["w", "gone"])], calendars: ["w", "p"], hidden: ["p"])?.name == "W", "a set matches with a calendar gone from the Mac")
+    expect(activeSet([CalSet(name: "W", calendars: ["w"])], calendars: ["w", "p"], hidden: []) == nil, "no set matches when all are shown")
+    var tagged = it2("Tagged", at(10, 26, 9), at(10, 26, 10)); tagged.tags = ["Condo"]; tagged.emoji = "🏠"
+    expect(sameInCalendar(tagged, it2("Tagged", at(10, 26, 9), at(10, 26, 10))), "emoji and tags never reach the calendar")
 
     print(fails == 0 ? "selftest: all passed" : "selftest: \(fails) failed")
     return fails == 0 ? 0 : 1

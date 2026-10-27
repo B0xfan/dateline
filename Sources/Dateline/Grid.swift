@@ -2,7 +2,7 @@
 import SwiftUI
 import AppKit
 
-let hourH: CGFloat = 56
+var hourH: CGFloat { Look.hourHeight }
 let gutter: CGFloat = 52
 
 // Side-by-side columns for events that overlap in time: (column, columns in its group).
@@ -33,11 +33,11 @@ struct TimeGrid: View {
                 ForEach(days, id: \.self) { d in
                     let today = cal.isDate(d, inSameDayAs: app.now)
                     HStack(spacing: 4) {
-                        Text(dateText(d, "EEE")).font(.system(size: 12)).foregroundStyle(Palette.text2)
+                        Text(dateText(d, "EEE")).font(.ui(12)).foregroundStyle(Palette.text2)
                         if today {
-                            Text(dateText(d, "d")).font(.system(size: 14, weight: .medium)).foregroundStyle(.white)
+                            Text(dateText(d, "d")).font(.ui(14, weight: .medium)).foregroundStyle(.white)
                                 .frame(width: 28, height: 28).background(Circle().fill(Palette.now))
-                        } else { Text(dateText(d, "d")).font(.system(size: 18, weight: .medium)) }
+                        } else { Text(dateText(d, "d")).font(.ui(18, weight: .medium)) }
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 10).frame(height: 44).frame(maxWidth: .infinity)
@@ -48,13 +48,13 @@ struct TimeGrid: View {
             .frame(height: 44)
             .overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
             HStack(alignment: .top, spacing: 0) {
-                Text("all-day").font(.system(size: 11)).foregroundStyle(Palette.text3).frame(width: gutter - 8, alignment: .trailing).padding(.trailing, 8).padding(.top, 9)
+                Text("all-day").font(.ui(11)).foregroundStyle(Palette.text3).frame(width: gutter - 8, alignment: .trailing).padding(.trailing, 8).padding(.top, 9)
                 ForEach(days, id: \.self) { d in
                     VStack(spacing: 0) {
                         ForEach(items.filter { $0.allDay && $0.start < addDays(d, 1) && $0.end > d }) { it in
-                            let c = store.calendar(it.calendarID)?.color ?? .gray
-                            HStack(spacing: 5) { Mark(showAs: it.showAs, color: c); Text(it.title).lineLimit(1) }
-                                .font(.system(size: 12, weight: .medium))
+                            let c = store.color(it)
+                            HStack(spacing: 5) { Mark(showAs: it.showAs, color: c); Text(it.shownTitle).lineLimit(1) }
+                                .font(.ui(12, weight: .medium))
                                 .padding(.horizontal, 8).padding(.vertical, 3).frame(maxWidth: .infinity, alignment: .leading)
                                 .background(RoundedRectangle(cornerRadius: 5).fill(c.opacity(0.16)))
                                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(c, lineWidth: app.selectedID == it.id ? 2 : 0))
@@ -74,7 +74,7 @@ struct TimeGrid: View {
                             ForEach(0..<24, id: \.self) { h in
                                 ZStack(alignment: .topTrailing) {
                                     Color.clear
-                                    if h > 0 { Text(hourText(h)).font(.system(size: 11)).foregroundStyle(Palette.text3).offset(x: -8, y: -7) }
+                                    if h > 0 { Text(hourText(h)).font(.ui(11)).foregroundStyle(Palette.text3).offset(x: -8, y: -7) }
                                 }.frame(height: hourH).id(h)
                             }
                         }.frame(width: gutter)
@@ -116,7 +116,7 @@ struct DayColumn: View {
                     let d = drag?.id == it.id ? drag : nil
                     let colW = (w - 4) / CGFloat(max(n, 1))
                     let stretchDY = d?.stretch == true ? d!.dy : 0
-                    EventBlock(item: it, color: store.calendar(it.calendarID)?.color ?? .gray, selected: app.selectedID == it.id, height: f.h + stretchDY)
+                    EventBlock(item: it, color: store.color(it), selected: app.selectedID == it.id, height: f.h + stretchDY)
                         .frame(width: colW - 2, height: max(18, f.h + stretchDY - 2))
                         .onTapGesture(count: 2) { app.selectedID = it.id; app.panelOpen = true }
                         .onTapGesture { app.selectedID = it.id }
@@ -149,8 +149,9 @@ struct DayColumn: View {
     }
 
     // Moving (whole block, also to another day in the week view) or stretching (bottom edge), in 15-minute steps.
+    // Holding Option when you let go of a move drops a copy and leaves the event where it was.
     func dragGesture(_ it: Item, colWidth: CGFloat, stretch: Bool) -> some Gesture {
-        DragGesture(minimumDistance: 4)
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)  // global: the block moves under the pointer, so its local space would feed back and jitter
             .onChanged { v in
                 guard store.calendar(it.calendarID)?.writable == true else { return }
                 let step = hourH / 4
@@ -169,7 +170,8 @@ struct DayColumn: View {
                     new.start = addDays(it.start, dayShift).addingTimeInterval(Double(mins) * 60)
                     new.end = addDays(it.end, dayShift).addingTimeInterval(Double(mins) * 60)
                 }
-                if new != it { app.save(new) }
+                if new == it { return }
+                if !stretch && NSEvent.modifierFlags.contains(.option) { app.copy(new) } else { app.save(new) }
             }
     }
 }
@@ -188,16 +190,16 @@ struct EventBlock: View {
             if height < 34 {
                 HStack(spacing: 6) {
                     Mark(showAs: item.showAs, color: color)
-                    Text(item.title).fontWeight(.semibold).lineLimit(1)
-                    Text(meta).font(.system(size: 11.5)).foregroundStyle(Palette.text2).lineLimit(1)
+                    Text(item.shownTitle).fontWeight(.semibold).lineLimit(1)
+                    Text(meta).font(.ui(11.5)).foregroundStyle(Palette.text2).lineLimit(1)
                 }
             } else {
-                HStack(spacing: 5) { Mark(showAs: item.showAs, color: color); Text(item.title).fontWeight(.semibold).lineLimit(height > 60 ? 2 : 1) }
-                Text(meta).font(.system(size: 11.5)).foregroundStyle(Palette.text2).lineLimit(1)
+                HStack(spacing: 5) { Mark(showAs: item.showAs, color: color); Text(item.shownTitle).fontWeight(.semibold).lineLimit(height > 60 ? 2 : 1) }
+                Text(meta).font(.ui(11.5)).foregroundStyle(Palette.text2).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
-        .font(.system(size: 12))
+        .font(.ui(12))
         .padding(.leading, 9).padding(.trailing, 8).padding(.vertical, height < 34 ? 2 : 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(RoundedRectangle(cornerRadius: 6).fill(Palette.win))
@@ -238,12 +240,12 @@ struct MonthView: View {
             HStack(spacing: 0) {
                 Color.clear.frame(width: 34)
                 ForEach(0..<7, id: \.self) { i in
-                    Text(dateText(grid[i], "EEE")).font(.system(size: 11)).foregroundStyle(Palette.text3).frame(maxWidth: .infinity, alignment: .trailing).padding(8)
+                    Text(dateText(grid[i], "EEE")).font(.ui(11)).foregroundStyle(Palette.text3).frame(maxWidth: .infinity, alignment: .trailing).padding(8)
                 }
             }.frame(height: 30).overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
             ForEach(0..<weeks, id: \.self) { w in
                 HStack(spacing: 0) {
-                    Text("\(weekNumber(grid[w * 7]))").font(.system(size: 10.5)).foregroundStyle(Palette.text3)
+                    Text("\(weekNumber(grid[w * 7]))").font(.ui(10.5)).foregroundStyle(Palette.text3)
                         .frame(width: 34).frame(maxHeight: .infinity, alignment: .top).padding(.top, 8).background(Palette.lineSoft)
                     ForEach(0..<7, id: \.self) { i in
                         let d = grid[w * 7 + i]
@@ -262,25 +264,25 @@ struct MonthView: View {
                 HStack {
                     Spacer()
                     if cal.isDate(d, inSameDayAs: app.now) {
-                        Text(dateText(d, "d")).font(.system(size: 12)).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(Palette.now))
-                    } else { Text(dateText(d, "d")).font(.system(size: 12)).foregroundStyle(other ? Palette.text3.opacity(0.6) : Palette.text2) }
+                        Text(dateText(d, "d")).font(.ui(12)).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(Palette.now))
+                    } else { Text(dateText(d, "d")).font(.ui(12)).foregroundStyle(other ? Palette.text3.opacity(0.6) : Palette.text2) }
                 }.padding(.bottom, 3).contentShape(Rectangle()).onTapGesture { app.open(day: d) }
                 let shown = list.count > fit ? Array(list.prefix(max(0, fit - 1))) : list
                 ForEach(shown) { it in
-                    let c = store.calendar(it.calendarID)?.color ?? .gray
+                    let c = store.color(it)
                     HStack(spacing: 5) {
                         Mark(showAs: it.showAs, color: c)
                         if !it.allDay { Text(timeText(it.start, short: true)).foregroundStyle(Palette.text3) }
-                        Text(it.title).foregroundStyle(Palette.text)
+                        Text(it.shownTitle).foregroundStyle(Palette.text)
                     }
-                    .font(.system(size: 11)).lineLimit(1).padding(.vertical, 1).frame(height: 17)
+                    .font(.ui(11)).lineLimit(1).padding(.vertical, 1).frame(height: 17)
                     .background(app.selectedID == it.id ? c.opacity(0.16) : .clear)
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) { app.selectedID = it.id; app.panelOpen = true }
                     .onTapGesture { app.selectedID = it.id }
                 }
                 if list.count > shown.count {
-                    Text("\(list.count - shown.count) more").font(.system(size: 11)).foregroundStyle(Palette.text3).onTapGesture { app.open(day: d) }
+                    Text("\(list.count - shown.count) more").font(.ui(11)).foregroundStyle(Palette.text3).onTapGesture { app.open(day: d) }
                 }
                 Spacer(minLength: 0)
             }.padding(.horizontal, 6).padding(.vertical, 5)
@@ -298,6 +300,7 @@ struct DetailPanel: View {
     @ObservedObject var store: Store
     @State var item: Item
     @FocusState private var field: String?
+    @State private var notesEditing = false
 
     var body: some View {
         let c = store.calendar(item.calendarID)
@@ -305,12 +308,13 @@ struct DetailPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("EVENT").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.text3)
+                    Text("EVENT").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                     Spacer()
-                    Button { commit(); app.panelOpen = false } label: { Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)) }.buttonStyle(.plain).foregroundStyle(Palette.text3)
+                    Button { commit(); app.panelOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.buttonStyle(.plain).foregroundStyle(Palette.text3)
                 }.padding(.bottom, 10)
-                TextField("Title", text: $item.title, axis: .vertical).textFieldStyle(.plain).font(.system(size: 17, weight: .semibold))
+                TextField("Title", text: $item.title, axis: .vertical).textFieldStyle(.plain).font(.ui(17, weight: .semibold))
                     .focused($field, equals: "title").onSubmit { commit() }
+                    .disabled(locked)  // an invite's title is the sender's; an edit there would also block saving its emoji and tags
                 HStack(spacing: 8) {
                     Text("Calendar").foregroundStyle(Palette.text3).frame(width: 64, alignment: .leading)
                     Menu {
@@ -319,6 +323,15 @@ struct DetailPanel: View {
                         HStack(spacing: 6) { Circle().fill(c?.color ?? .gray).frame(width: 8, height: 8); Text(c?.title ?? ""); Text(c?.account ?? "").foregroundStyle(Palette.text3) }
                     }.menuStyle(.borderlessButton).fixedSize().disabled(locked)
                 }.padding(.top, 12)
+                // Phase 3: kept by Dateline on this Mac, so they work on invites and read-only calendars too.
+                row("Emoji") { EmojiRow(store: store, item: $item, commit: commit) }
+                row("Color") { ColorRow(store: store, item: $item, commit: commit) }
+                HStack(alignment: .top, spacing: 8) {
+                    Text("Tags").foregroundStyle(Palette.text3).frame(width: 64, alignment: .leading).padding(.top, 5)
+                    TagsRow(store: store, item: $item, commit: commit)
+                }.padding(.top, 8).zIndex(1)
+                Text("Tags, emoji and the event color are kept by Dateline on this Mac. They don't show on your phone or in Apple Calendar.")
+                    .font(.ui(11)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
                 section("WHEN")
                 Toggle("All day", isOn: Binding(get: { item.allDay }, set: { v in
                     item.allDay = v
@@ -345,19 +358,16 @@ struct DetailPanel: View {
                             }), displayedComponents: .hourAndMinute).labelsHidden()
                         }
                     }
-                    Text(lengthText).font(.system(size: 11.5)).foregroundStyle(Palette.text3).padding(.leading, 72)
+                    Text(lengthText).font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.leading, 72)
                 }
                 section("SHOW AS")
                 Seg(options: ShowAs.allCases.map(\.rawValue), selected: item.showAs.rawValue) { item.showAs = ShowAs(rawValue: $0)!; commit() }
                 section("PLACE")
                 TextField("Add a place", text: $item.place).textFieldStyle(.roundedBorder).focused($field, equals: "place").onSubmit { commit() }
                 section("NOTES")
-                TextEditor(text: $item.notes).font(.system(size: 13)).scrollContentBackground(.hidden)
-                    .padding(6).frame(minHeight: 90)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Palette.line))
-                    .focused($field, equals: "notes")
+                NotesBox(item: $item, editing: $notesEditing, locked: locked, commit: commit)
                 Text(locked ? "This calendar is read only." : "Changes save when you leave a field. Command Z undoes.")
-                    .font(.system(size: 11.5)).foregroundStyle(Palette.text3).padding(.top, 12)
+                    .font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.top, 12)
                 if !locked {
                     Button("Delete event") { commit(); app.confirmDelete = app.selected }
                         .buttonStyle(.plain).foregroundStyle(Palette.now).padding(.top, 14)
@@ -370,7 +380,7 @@ struct DetailPanel: View {
         .onDisappear { commit() }
         .onChange(of: store.items) { _, list in
             // Someone else (Apple Calendar, a drag in the grid, undo) changed it while the panel was open.
-            if field == nil, let fresh = list.first(where: { $0.id == item.id }), fresh != item { item = fresh }
+            if field == nil, !notesEditing, let fresh = list.first(where: { $0.id == item.id }), fresh != item { item = fresh }
         }
     }
 
@@ -381,16 +391,93 @@ struct DetailPanel: View {
     }
 
     func commit() {
-        guard store.calendar(item.calendarID)?.writable == true else { return }
+        let extrasOnly = store.items.first { $0.id == item.id }.map { sameInCalendar($0, item) } ?? false
+        guard extrasOnly || store.calendar(item.calendarID)?.writable == true else { return }
         app.save(item)
     }
 
     func section(_ t: String) -> some View {
-        Text(t).font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 18).padding(.bottom, 6)
+        Text(t).font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 18).padding(.bottom, 6)
     }
 
     func row<V: View>(_ k: String, @ViewBuilder _ v: () -> V) -> some View {
         HStack(spacing: 8) { Text(k).foregroundStyle(Palette.text3).frame(width: 64, alignment: .leading); v(); Spacer(minLength: 0) }.padding(.top, 8)
+    }
+}
+
+// The quarter view (approved Phase 2 mockup): three months side by side, with event names.
+struct QuarterView: View {
+    @ObservedObject var app: AppState
+    @ObservedObject var store: Store
+    var body: some View {
+        let q = quarterStart(app.anchor)
+        let items = app.shownItems
+        HStack(spacing: 0) {
+            ForEach(0..<3, id: \.self) { i in
+                if i > 0 { Palette.line.frame(width: 1) }
+                month(cal.date(byAdding: .month, value: i, to: q)!, items)
+            }
+        }.background(Palette.win)
+    }
+
+    func month(_ first: Date, _ items: [Item]) -> some View {
+        // Own grid from the anchor, as in MonthView, so a switch to another view cannot redraw this with the wrong days.
+        let grid = monthGrid(first), m = cal.component(.month, from: first)
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(dateText(first, "MMMM")).font(.ui(13, weight: .semibold))
+                .foregroundStyle(cal.isDate(first, equalTo: app.now, toGranularity: .month) ? Palette.now : Palette.text)
+                .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
+                .contentShape(Rectangle()).onTapGesture { app.anchor = first; app.mode = .month }
+            HStack(spacing: 0) {
+                Color.clear.frame(width: 24, height: 1)
+                ForEach(0..<7, id: \.self) { i in Text(dateText(grid[i], "EEE")).font(.ui(10)).foregroundStyle(Palette.text3).frame(maxWidth: .infinity) }
+            }.padding(.top, 2).padding(.bottom, 4).overlay(alignment: .bottom) { Palette.lineSoft.frame(height: 1) }
+            ForEach(0..<grid.count / 7, id: \.self) { w in
+                HStack(spacing: 0) {
+                    Text("\(weekNumber(grid[w * 7]))").font(.ui(9.5)).foregroundStyle(Palette.text3)
+                        .frame(width: 24).frame(maxHeight: .infinity, alignment: .top).padding(.top, 5).background(Palette.lineSoft)
+                    ForEach(0..<7, id: \.self) { i in
+                        let d = grid[w * 7 + i]
+                        if cal.component(.month, from: d) == m { cell(d, items.filter { $0.start < addDays(d, 1) && $0.end > d }) }
+                        else { Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) } }
+                    }
+                }.frame(maxHeight: .infinity)
+                .overlay(alignment: .bottom) { Palette.lineSoft.frame(height: 1) }
+            }
+        }.frame(maxWidth: .infinity)
+    }
+
+    func cell(_ d: Date, _ list: [Item]) -> some View {
+        GeometryReader { g in
+            let fit = max(0, Int((g.size.height - 20) / 14))
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Spacer()
+                    Text(dateText(d, "d")).font(.ui(11))
+                        .foregroundStyle(cal.isDate(d, inSameDayAs: app.now) ? .white : Palette.text2)
+                        .padding(.horizontal, cal.isDate(d, inSameDayAs: app.now) ? 5 : 0)
+                        .background { if cal.isDate(d, inSameDayAs: app.now) { Capsule().fill(Palette.now) } }
+                }.padding(.bottom, 2).contentShape(Rectangle()).onTapGesture { app.open(day: d) }
+                let shown = list.count > fit ? Array(list.prefix(max(0, fit - 1))) : list
+                ForEach(shown) { it in
+                    let c = store.color(it)
+                    HStack(spacing: 3) { Mark(showAs: it.showAs, color: c, size: 6); Text(it.shownTitle) }
+                        .font(.ui(10)).lineLimit(1).frame(height: 14)
+                        .background(app.selectedID == it.id ? c.opacity(0.16) : .clear)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) { app.selectedID = it.id; app.panelOpen = true }
+                        .onTapGesture { app.selectedID = it.id }
+                }
+                if list.count > shown.count {
+                    Text("\(list.count - shown.count) more").font(.ui(10)).foregroundStyle(Palette.text3).onTapGesture { app.open(day: d) }
+                }
+                Spacer(minLength: 0)
+            }.padding(.horizontal, 4).padding(.vertical, 3)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { app.newEvent(at: cal.date(byAdding: .hour, value: 9, to: d)!) }
     }
 }
 
@@ -425,17 +512,17 @@ struct YearView: View {
     func month(_ first: Date, _ dots: [Date: [String]]) -> some View {
         let grid = monthGrid(first), m = cal.component(.month, from: first)
         return VStack(alignment: .leading, spacing: 6) {
-            Text(dateText(first, "MMMM")).font(.system(size: 13, weight: .semibold))
+            Text(dateText(first, "MMMM")).font(.ui(13, weight: .semibold))
                 .foregroundStyle(cal.isDate(first, equalTo: app.now, toGranularity: .month) ? Palette.now : Palette.text)
                 .contentShape(Rectangle()).onTapGesture { app.anchor = first; app.mode = .month }
             VStack(spacing: 2) {
                 HStack(spacing: 0) {
                     Color.clear.frame(width: 22, height: 1)
-                    ForEach(0..<7, id: \.self) { i in Text(dateText(grid[i], "EEEEE")).font(.system(size: 10)).foregroundStyle(Palette.text3).frame(maxWidth: .infinity) }
+                    ForEach(0..<7, id: \.self) { i in Text(dateText(grid[i], "EEEEE")).font(.ui(10)).foregroundStyle(Palette.text3).frame(maxWidth: .infinity) }
                 }.padding(.bottom, 1)
                 ForEach(0..<grid.count / 7, id: \.self) { w in
                     HStack(spacing: 0) {
-                        Text("\(weekNumber(grid[w * 7]))").font(.system(size: 9.5)).foregroundStyle(Palette.text3).padding(.top, 4).frame(width: 22, height: 24, alignment: .top)
+                        Text("\(weekNumber(grid[w * 7]))").font(.ui(9.5)).foregroundStyle(Palette.text3).padding(.top, 4).frame(width: 22, height: 24, alignment: .top)
                         ForEach(0..<7, id: \.self) { i in
                             let d = grid[w * 7 + i]
                             if cal.component(.month, from: d) == m { day(d, dots[d] ?? []) } else { Color.clear.frame(maxWidth: .infinity).frame(height: 24) }
@@ -449,7 +536,7 @@ struct YearView: View {
     func day(_ d: Date, _ cals: [String]) -> some View {
         let today = cal.isDate(d, inSameDayAs: app.now)
         return VStack(spacing: 2) {
-            Text(dateText(d, "d")).font(.system(size: 11))
+            Text(dateText(d, "d")).font(.ui(11))
                 .foregroundStyle(today ? .white : cal.isDateInWeekend(d) ? Palette.text3 : Palette.text2)
                 .padding(.horizontal, today ? 5 : 0)
                 .background { if today { Capsule().fill(Palette.now) } }

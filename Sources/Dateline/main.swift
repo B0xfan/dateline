@@ -12,7 +12,8 @@ if let i = args.firstIndex(of: "--render"), i + 1 < args.count {
 }
 
 final class Delegate: NSObject, NSApplicationDelegate {
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    // Keeps running with the window closed, so quick add from any app still works; the Dock icon brings the window back.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 
 struct DatelineApp: App {
@@ -22,11 +23,12 @@ struct DatelineApp: App {
         Window("Dateline", id: "main") {
             MainView(app: app, store: app.store)
                 .frame(minWidth: 980, minHeight: 600)
-                .onAppear { app.startKeys() }
+                .onAppear { Look.apply(); app.startKeys() }
         }
         .defaultSize(width: 1380, height: 800)
         .windowStyle(.hiddenTitleBar)
         .commands { CommandGroup(replacing: .newItem) {} }
+        Settings { SettingsView(app: app) }
     }
 }
 
