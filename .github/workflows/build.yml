@@ -1,0 +1,23 @@
+# Manual trigger only, on purpose: start a run with scripts/cloud-build.sh. No push or schedule triggers.
+name: build
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release build
+        run: swift build -c release -j 2
+      - name: Self-test (pure logic only, no calendar access)
+        run: .build/release/Dateline --selftest
+      - name: Package the app
+        run: |
+          scripts/make-app.sh
+          ditto -c -k --keepParent "build/Dateline.app" Dateline.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Dateline
+          path: Dateline.zip
+          retention-days: 3
+          compression-level: 0
