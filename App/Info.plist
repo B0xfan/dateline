@@ -12,6 +12,8 @@
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
     <key>NSCalendarsFullAccessUsageDescription</key><string>Dateline shows and edits the calendars already set up on this Mac. Nothing leaves your Mac.</string>
+    <key>NSRemindersFullAccessUsageDescription</key><string>Dateline shows your Apple Reminders on the calendar and saves your changes back to Reminders. Nothing leaves your Mac.</string>
+    <key>NSContactsUsageDescription</key><string>Dateline reads the home and work address on your own contact card, only when you pick Home or Work for a place reminder.</string>
     <key>NSHumanReadableCopyright</key><string>John Hesch</string>
 </dict>
 </plist>

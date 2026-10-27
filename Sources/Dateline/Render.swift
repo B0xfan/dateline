@@ -27,6 +27,12 @@ import AppKit
         shot("details") { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Write proposal" }?.id; a.panelOpen = true }
         shot("details-extras") { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Christian at the condo" }?.id; a.panelOpen = true }
         shot("set-family") { a in a.pickSet(3) }
+        shot("tasks-week") { $0.mode = .week; $0.days = 5 }
+        // Pictures cannot scroll (they show midnight to 9 AM), so move the electrician into view to check the dashed block.
+        shot("task-timed") { a in a.mode = .week; a.days = 5
+            if let i = a.store.todos.firstIndex(where: { $0.title == "Electrician" }) { a.store.todos[i].due = cal.date(byAdding: .hour, value: 7, to: addDays(cal.startOfDay(for: today), 1)) } }
+        shot("task-list") { $0.mode = .week; $0.days = 5; $0.tasksOpen = true }
+        shot("task-details") { a in a.mode = .week; a.days = 5; a.openTaskID = a.store.todos.first { $0.title == "Buy AC filter" }?.id }
         do {
             let a = AppState(store: Store(sample: true), today: today)
             ok = save(SetEditor(app: a, store: a.store, draft: a.store.sets[1]).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/set-editor-\(tag).png") && ok

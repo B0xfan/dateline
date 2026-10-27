@@ -43,6 +43,7 @@ struct CalSet: Codable, Identifiable, Equatable {
     var name: String
     var calendars: [String]
     var defaultCalendar: String?
+    var lists: [String]? = nil  // Reminders lists shown (Phase 4); nil = sets saved before Phase 4, which leave lists alone
 }
 
 // The set whose calendars are exactly the ones shown (calendars no longer on this Mac are ignored).
@@ -74,10 +75,19 @@ final class Store: ObservableObject {
     @Published var recentEmoji: [String] = [] { didSet { save(recentEmoji, "recentEmoji") } }
     enum Access { case unknown, granted, denied, sample }
 
-    private let ek = EKEventStore()
+    let ek = EKEventStore()
     private var range: (Date, Date) = (Date(), Date())
     private var sample: [Item] = []
     private var observer: Any?
+    // Phase 4: Apple Reminders (Tasks.swift).
+    @Published var lists: [CalInfo] = []
+    @Published var hiddenLists: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "hiddenLists") ?? []) {
+        didSet { if access != .sample { UserDefaults.standard.set(Array(hiddenLists), forKey: "hiddenLists") } }
+    }
+    @Published var todos: [ToDo] = []
+    @Published var taskAccess: Access = .unknown
+    var taskObserver: Any?
+    var taskFetch = 0  // only the newest Reminders read is kept
 
     private var deletedAlarms: [String: [EKAlarm]] = [:]
     private var extras: [String: Extra] = [:] { didSet { save(extras, "eventExtras") } }
@@ -89,6 +99,7 @@ final class Store: ObservableObject {
         if let v: [String] = load("recentEmoji") { recentEmoji = v }
         if let v: [String: Extra] = load("eventExtras") { extras = v }
         requestAccess()
+        requestReminders()
     }
 
     // Dateline's own saved data. Sample mode (every test and picture) keeps it in memory only.
@@ -105,6 +116,7 @@ final class Store: ObservableObject {
     // Shows only that set's calendars; nil = all calendars.
     func use(_ s: CalSet?) {
         hidden = s.map { Set(calendars.map(\.id)).subtracting($0.calendars) } ?? []
+        if s == nil { hiddenLists = [] } else if let l = s?.lists, !lists.isEmpty { hiddenLists = Set(lists.map(\.id)).subtracting(l) }
     }
 
     // Every tag in use and how many events have it, most used first.
@@ -349,6 +361,7 @@ final class Store: ObservableObject {
         ev("work", "Design review", 3, 14, 0, 90)
         ev("personal", "Dinner with Ana", 4, 19, 0, 60, place: "Casa Luna")
         ev("family", "Beach day", 5, 9, 0, 240, .free)
+        loadSampleTasks(mon)
         sample.append(Item(id: "s-ad", calendarID: "school", title: "Holiday: no school", start: addDays(mon, 2), end: addDays(mon, 3), allDay: true, place: "", notes: "", showAs: .free))
         fetch()
     }

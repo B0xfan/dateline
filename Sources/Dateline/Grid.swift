@@ -67,6 +67,7 @@ struct TimeGrid: View {
                 }
             }
             .overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
+            if days.contains(where: { d in app.calendarTodos.contains { taskRowDay($0, now: app.now) == d } }) { TaskRow(app: app, store: store, days: days) }
             ScrollViewReader { sv in
                 ScrollView(.vertical) {
                     HStack(alignment: .top, spacing: 0) {
@@ -136,10 +137,23 @@ struct DayColumn: View {
                         Circle().fill(Palette.now).frame(width: 10, height: 10).offset(x: -5)
                     }.offset(y: y - 1).allowsHitTesting(false).zIndex(3)
                 }
+                // Reminders with a time on this day (not overdue: those sit in today's Tasks row).
+                ForEach(app.calendarTodos.filter { t in t.timed && !isOverdue(t, now: app.now) && t.due.map { cal.isDate($0, inSameDayAs: day) } == true }) { t in
+                    TaskBlock(app: app, store: store, task: t)
+                        .frame(width: w - 8, height: max(20, hourH / 2 - 2))
+                        .offset(x: 4, y: CGFloat(t.due!.timeIntervalSince(day) / 3600) * hourH + 1)
+                        .zIndex(2)
+                }
             }
         }
         .frame(height: hourH * 24)
         .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
+        // Drag a task here from the task list or the Tasks row to give it this day and time (15-minute steps).
+        .dropDestination(for: String.self) { ids, loc in
+            guard let id = ids.first, id.hasPrefix("task:") else { return false }
+            app.drop(taskID: String(id.dropFirst(5)), at: cal.date(byAdding: .minute, value: min(95, max(0, Int(loc.y / hourH * 4))) * 15, to: day)!)
+            return true
+        }
     }
 
     func frame(_ it: Item) -> (y: CGFloat, h: CGFloat) {

@@ -12,6 +12,7 @@ struct Parsed: Equatable {
     var place = ""
     var showAs = ShowAs.busy
     var lengthGiven = false  // an end time or "for 2 hours" was written
+    var dateGiven = false  // a day or a time was written (a task without one has no due date)
     // Short codes (Phase 2): "/Personal" picks a calendar, "-a15m" an alert, "-r1w" a repeat.
     var calendarCode: String? = nil
     var alertMinutes: Int? = nil
@@ -175,6 +176,7 @@ private func parsePlain(_ text: String, now: Date, defaultMinutes: Int) -> Parse
     p.title = join(0..<(placeFrom ?? words.count))
     if let placeFrom { p.place = join((placeFrom + 1)..<words.count) }
     p.showAs = showAs
+    p.dateGiven = day != nil || startMin != nil
     let base = day ?? today
     if allDay || startMin == nil {
         p.allDay = true
@@ -422,6 +424,26 @@ func selftest() -> Int32 {
     expect(activeSet([CalSet(name: "W", calendars: ["w"])], calendars: ["w", "p"], hidden: []) == nil, "no set matches when all are shown")
     var tagged = it2("Tagged", at(10, 26, 9), at(10, 26, 10)); tagged.tags = ["Condo"]; tagged.emoji = "🏠"
     expect(sameInCalendar(tagged, it2("Tagged", at(10, 26, 9), at(10, 26, 10))), "emoji and tags never reach the calendar")
+
+    // Phase 4: tasks.
+    expect(!parseSentence("Buy milk", now: now).dateGiven && parseSentence("Call the bank Friday 3pm", now: now).dateGiven, "a task with no day or time has no due date")
+    p = parseSentence("Call the bank Friday 3pm", now: now)
+    expect(p.title == "Call the bank" && p.start == at(10, 30, 15) && !p.allDay, "task sentence: due Friday at 3")
+    func td(_ due: Date?, timed: Bool = false, done: Bool = false) -> ToDo { ToDo(id: "x", listID: "l", title: "x", due: due, timed: timed, done: done) }
+    expect(taskGroup(td(at(10, 23, 0)), now: now) == .overdue && taskGroup(td(at(10, 26, 0)), now: now) == .today
+           && taskGroup(td(at(11, 2, 0)), now: now) == .week && taskGroup(td(at(11, 3, 0)), now: now) == .later && taskGroup(td(nil), now: now) == .none, "task groups")
+    expect(taskGroup(td(at(10, 23, 0), done: true), now: now) == .today, "a done task is never overdue")
+    expect(taskRowDay(td(at(10, 23, 0)), now: now) == at(10, 26, 0) && taskRowDay(td(at(10, 23, 15), timed: true), now: now) == at(10, 26, 0), "an unfinished task moves to today")
+    expect(taskRowDay(td(at(10, 27, 11), timed: true), now: now) == nil && taskRowDay(td(at(10, 27, 0)), now: now) == at(10, 27, 0), "a timed task shows in the grid, not the row")
+    expect(taskRowDay(td(at(10, 23, 0), done: true), now: now) == at(10, 23, 0), "a ticked task stays on its own day")
+    MainActor.assumeIsolated {
+        let a = AppState(store: Store(sample: true), today: now)
+        for (typed, saved) in [("Pick up keys at the condo", "Pick up keys at the condo"), ("Buy rice for free", "Buy rice for free"), ("Call the bank Friday 3pm", "Call the bank")] {
+            a.taskText = typed; a.commitTask()
+            expect(a.store.todos.last?.title == saved, "task title kept: \(typed)")
+        }
+    }
+    expect(shortDay(at(10, 23, 0), now: now) == "Fri" && shortDay(at(11, 14, 0), now: now) == "Nov 14", "task day text")
 
     print(fails == 0 ? "selftest: all passed" : "selftest: \(fails) failed")
     return fails == 0 ? 0 : 1

@@ -12,7 +12,14 @@ final class AppState: ObservableObject {
     @Published var days: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() { didSet { UserDefaults.standard.set(days, forKey: "weekDays"); reload() } }
     @Published var anchor: Date { didSet { reload() } }
     @Published var selectedID: String?
-    @Published var panelOpen = false
+    @Published var panelOpen = false { didSet { if panelOpen { openTaskID = nil } } }
+    // Phase 4 tasks: the task list (R) and one task's details share the right side with the event details.
+    @Published var tasksOpen = false { didSet { if tasksOpen { openTaskID = nil; panelOpen = false } } }
+    @Published var openTaskID: String? { didSet { if openTaskID != nil { panelOpen = false } } }
+    @Published var taskText = ""
+    @Published var taskListFilter: String?
+    @Published var showDone = false
+    @Published var hideNoDate = false
     @Published var addText = ""
     @Published var addFocused = false
     @Published var addCalendarID: String?
@@ -99,6 +106,11 @@ final class AppState: ObservableObject {
 
     var shownItems: [Item] { store.items.filter { !store.hidden.contains($0.calendarID) } }
     var selected: Item? { selectedID.flatMap { id in store.items.first { $0.id == id } } }
+    var openTask: ToDo? { openTaskID.flatMap { id in store.todos.first { $0.id == id } } }
+    var sideOpen: Bool { panelOpen || tasksOpen || openTaskID != nil }
+    // Tasks in lists that are ticked in the sidebar: for the list (done ones only with "Show done") and for the calendar (ticked ones stay, struck through).
+    var calendarTodos: [ToDo] { store.todos.filter { !store.hiddenLists.contains($0.listID) } }
+    var shownTodos: [ToDo] { calendarTodos.filter { showDone || !$0.done } }
 
     func step(_ n: Int) {
         switch mode {
@@ -203,6 +215,38 @@ final class AppState: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in if self?.toast == t { self?.toast = nil } }
     }
 
+    // MARK: tasks
+
+    func saveTask(_ new: ToDo) {
+        guard let old = store.todos.first(where: { $0.id == new.id }), old != new else { return }
+        if let f = store.updateTask(new) { error = f.message; return }
+        undoStack.append { [weak self] in self?.store.updateTask(old) }
+    }
+
+    func toggle(_ t: ToDo) { var n = t; n.done.toggle(); saveTask(n) }
+
+    // Return in the task list's add box: "Call the bank Friday 3pm" is due Friday at 3; no day or time means no due date.
+    func commitTask() {
+        let text = taskText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        let p = parseSentence(text, now: Date())
+        // shortcut: with a day or time, the parser's title plus "at <place>" is kept, so short codes like /List are dropped; keep the whole text when that bites.
+        let title = !p.dateGiven || p.title.isEmpty ? text : p.place.isEmpty ? p.title : "\(p.title) at \(p.place)"
+        var t = ToDo(id: "", listID: "", title: title)
+        if p.dateGiven { t.due = p.allDay ? cal.startOfDay(for: p.start) : p.start; t.timed = !p.allDay }
+        switch store.addTask(t, listID: taskListFilter) {
+        case .failure(let f): error = f.message
+        case .success(let added): taskText = ""; undoStack.append { [weak self] in self?.store.deleteTask(added) }
+        }
+    }
+
+    // A task dropped on the day grid takes that day and time.
+    func drop(taskID: String, at time: Date) {
+        guard var t = store.todos.first(where: { $0.id == taskID }) else { return }
+        t.due = time; t.timed = true
+        saveTask(t)
+    }
+
     func undo() {
         guard let u = undoStack.popLast() else { NSSound.beep(); return }
         toast = nil
@@ -257,6 +301,8 @@ final class AppState: ObservableObject {
             if confirmDelete != nil { confirmDelete = nil; return true }
             if addFocused || !addText.isEmpty { addText = ""; addFocused = false; NSApp.keyWindow?.makeFirstResponder(nil); return true }
             if panelOpen { panelOpen = false; NSApp.keyWindow?.makeFirstResponder(nil); return true }
+            if openTaskID != nil { openTaskID = nil; NSApp.keyWindow?.makeFirstResponder(nil); return true }
+            if tasksOpen { tasksOpen = false; return true }
             if selectedID != nil { selectedID = nil; return true }
             return false
         }
@@ -277,6 +323,7 @@ final class AppState: ObservableObject {
         switch e.charactersIgnoringModifiers {
         case "n": focusAdd += 1
         case "t": goToday()
+        case "r": tasksOpen.toggle()
         case "1": mode = .day
         case "2": mode = .week
         case "3": mode = .month

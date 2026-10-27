@@ -81,9 +81,15 @@ struct MainView: View {
                 }
                 StatusBar()
             }
-            if app.panelOpen, let it = app.selected {
+            if let t = app.openTask {
+                Divider().overlay(Palette.line)
+                TaskDetail(app: app, store: store, task: t).id(t.id).frame(width: 320)
+            } else if app.panelOpen, let it = app.selected {
                 Divider().overlay(Palette.line)
                 DetailPanel(app: app, store: store, item: it).id(it.id).frame(width: 320)
+            } else if app.tasksOpen {
+                Divider().overlay(Palette.line)
+                TaskList(app: app, store: store).frame(width: 320)
             }
         }
         .background(Palette.win)
@@ -126,6 +132,12 @@ struct Sidebar: View {
                         Text(acct).font(.ui(11)).foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 2)
                         ForEach(groups[acct]!) { c in row(c) }
                     }
+                    if !store.lists.isEmpty {
+                        Text("Reminders lists").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).textCase(.uppercase).padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 4)
+                        ForEach(store.lists) { l in listRow(l) }
+                        Text("Untick a list to hide its tasks. Sets remember lists too.").font(.ui(11)).foregroundStyle(Palette.text3)
+                            .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 8).padding(.top, 4)
+                    }
                     let soon = comingUp(store.soon.filter { !store.hidden.contains($0.calendarID) }, now: app.now)
                     if !soon.isEmpty {
                         VStack(alignment: .leading, spacing: 0) {
@@ -160,6 +172,20 @@ struct Sidebar: View {
             Text("Your data stays on this Mac").font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 10)
         }
         .background(Palette.side)
+    }
+
+    func listRow(_ l: CalInfo) -> some View {
+        let on = !store.hiddenLists.contains(l.id)
+        return Button {
+            if on { store.hiddenLists.insert(l.id) } else { store.hiddenLists.remove(l.id) }
+        } label: {
+            HStack(spacing: 8) {
+                Tick(on: on, color: l.color)
+                Text(l.title).lineLimit(1)
+                Spacer()
+                Text("\(store.todos.filter { $0.listID == l.id && !$0.done }.count)").font(.ui(11.5)).foregroundStyle(Palette.text3)
+            }.padding(.horizontal, 8).padding(.vertical, 4 * Look.packFactor).contentShape(Rectangle())
+        }.buttonStyle(.plain)
     }
 
     func row(_ c: CalInfo) -> some View {
@@ -294,6 +320,8 @@ struct SetEditor: View {
         var s = draft
         s.name = s.name.trimmingCharacters(in: .whitespaces)
         if let d = s.defaultCalendar, !s.calendars.contains(d) { s.defaultCalendar = nil }
+        // shortcut: a new or active set keeps the Reminders lists shown now; add list ticks to this editor if that ever confuses.
+        if !store.lists.isEmpty, s.lists == nil || store.activeSet?.id == s.id { s.lists = store.lists.map(\.id).filter { !store.hiddenLists.contains($0) } }
         if let i = store.sets.firstIndex(where: { $0.id == s.id }) { store.sets[i] = s } else { store.sets.append(s) }
         store.use(s)
         app.editingSet = nil
@@ -321,17 +349,17 @@ struct Toolbar: View {
                 Text(app.title).fixedSize()
                 Text(app.shortTitle).fixedSize()
             }.font(.ui(15, weight: .semibold)).padding(.leading, 4).layoutPriority(2)
-            if app.mode != .year && !app.panelOpen {
+            if app.mode != .year && !app.sideOpen {
                 Text(app.weekLabel).font(.ui(11, weight: .medium)).foregroundStyle(Palette.text2)
                     .padding(.horizontal, 7).padding(.vertical, 2).background(RoundedRectangle(cornerRadius: 5).fill(Palette.lineSoft)).fixedSize()
             }
-            if !app.panelOpen, let s = store.activeSet, !store.calendars.allSatisfy({ !store.hidden.contains($0.id) }) {
+            if !app.sideOpen, let s = store.activeSet, !store.calendars.allSatisfy({ !store.hidden.contains($0.id) }) {
                 Text("· \(s.name) set").font(.ui(12)).foregroundStyle(Palette.text3).lineLimit(1)
             }
             Spacer(minLength: 8)
             if app.mode == .week {
                 HStack(spacing: 6) {
-                    if !app.panelOpen { Text("Days").font(.ui(12)).foregroundStyle(Palette.text2) }
+                    if !app.sideOpen { Text("Days").font(.ui(12)).foregroundStyle(Palette.text2) }
                     Seg(options: ["3", "5", "7"], selected: String(app.days), small: true) { app.days = Int($0)! }
                 }.fixedSize()
             }
@@ -342,8 +370,15 @@ struct Toolbar: View {
                     app.mode = Mode.allCases.first { $0.rawValue.hasPrefix(l) }!
                 }.fixedSize()
             }.layoutPriority(1)
+            Button { app.tasksOpen.toggle() } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "checklist")
+                    if !app.sideOpen { Text("Tasks"); Key("R") }
+                }
+            }.buttonStyle(TButton(icon: app.sideOpen)).fixedSize().help("Your Apple Reminders (R)")
             AddBox(app: app).frame(minWidth: 130, maxWidth: 300)
-            Button("?") { app.showShortcuts = true }.buttonStyle(TButton(icon: true)).help("Keyboard shortcuts")
+            // With a panel open there is no room for it; the ? key still opens the list.
+            if !app.sideOpen { Button("?") { app.showShortcuts = true }.buttonStyle(TButton(icon: true)).help("Keyboard shortcuts") }
         }
         .padding(.horizontal, 14).frame(height: 52)
         .background(Palette.bar)
@@ -616,7 +651,7 @@ struct ShortcutList: View {
         ("New event", "N"), ("Go to today", "T"), ("Day view", "1"), ("Previous", "Left"), ("Week view", "2"), ("Next", "Right"),
         ("Month view", "3"), ("Next or previous event", "Up / Down"), ("Quarter view", "4"), ("Open event", "Return"), ("Year view", "5"),
         ("Delete event", "Delete"), ("Move event 15 min", "Option Up / Down"), ("Copy event", "Option drag"), ("Undo", "Command Z"), ("This list", "?"),
-        ("Quick add from any app", app.quickName), ("All calendars", "Command 1"), ("Calendar sets", "Command 2 to 9"),
+        ("Quick add from any app", app.quickName), ("All calendars", "Command 1"), ("Calendar sets", "Command 2 to 9"), ("Tasks", "R"),
     ] }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
