@@ -84,8 +84,9 @@ struct TimeGrid: View {
                         }
                     }
                 }
-                .onAppear { DispatchQueue.main.async { sv.scrollTo(max(0, min(cal.component(.hour, from: app.now) - 1, 15)), anchor: .top) } }
-                .onChange(of: app.mode) { _, _ in DispatchQueue.main.async { sv.scrollTo(8, anchor: .top) } }
+                // Opens at the start of the working day (Settings, Week).
+                .onAppear { DispatchQueue.main.async { sv.scrollTo(WorkWeek.from / 60, anchor: .top) } }
+                .onChange(of: app.mode) { _, _ in DispatchQueue.main.async { sv.scrollTo(WorkWeek.from / 60, anchor: .top) } }
             }
         }
         .background(Palette.win)
@@ -105,6 +106,7 @@ struct DayColumn: View {
             let w = g.size.width
             let lane = lanes(items)
             ZStack(alignment: .topLeading) {
+                OffHours(day: day)
                 VStack(spacing: 0) { ForEach(0..<24, id: \.self) { _ in Palette.lineSoft.frame(height: 1).frame(maxHeight: hourH, alignment: .top) } }
                 Color.clear.contentShape(Rectangle())
                     .gesture(SpatialTapGesture(count: 2).onEnded { v in

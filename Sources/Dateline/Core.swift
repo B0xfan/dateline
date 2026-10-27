@@ -31,20 +31,22 @@ struct Repeat: Equatable {
 var cal: Calendar = { var c = Calendar(identifier: .gregorian); c.locale = Locale(identifier: "en_US"); return c }()
 
 // ISO week number (B21): the week with the year's first Thursday is week 1.
+// Weeks that start on another day count from January 1st, as Apple Calendar does.
 func weekNumber(_ d: Date) -> Int {
-    var iso = Calendar(identifier: .iso8601); iso.timeZone = cal.timeZone
-    return iso.component(.weekOfYear, from: d)
+    var c = Calendar(identifier: WorkWeek.firstWeekday == 2 ? .iso8601 : .gregorian); c.timeZone = cal.timeZone
+    if WorkWeek.firstWeekday != 2 { c.firstWeekday = WorkWeek.firstWeekday; c.minimumDaysInFirstWeek = 1 }
+    return c.component(.weekOfYear, from: d)
 }
 
-func startOfWeek(_ d: Date) -> Date {  // Monday, as in the mockup
+func startOfWeek(_ d: Date) -> Date {  // the day picked in Settings, Week
     let day = cal.startOfDay(for: d)
     let wd = cal.component(.weekday, from: day)  // 1 = Sunday
-    return cal.date(byAdding: .day, value: -((wd + 5) % 7), to: day)!
+    return cal.date(byAdding: .day, value: -((wd - WorkWeek.firstWeekday + 7) % 7), to: day)!
 }
 
 func addDays(_ d: Date, _ n: Int) -> Date { cal.date(byAdding: .day, value: n, to: d)! }
 
-// The 35 or 42 days the month grid shows, Monday first.
+// The 35 or 42 days the month grid shows, from the first day of the week.
 func monthGrid(_ d: Date) -> [Date] {
     let first = cal.date(from: cal.dateComponents([.year, .month], from: d))!
     let start = startOfWeek(first)
@@ -318,6 +320,7 @@ func comingUp(_ items: [Item], now: Date) -> [Soon] {
 }
 
 func selftest() -> Int32 {
+    WorkWeek.reset()  // the mockup's week: Monday first, Mon to Fri, 8 AM to 6 PM
     var fails = 0
     func expect(_ ok: Bool, _ what: String) { if !ok { fails += 1; print("FAIL:", what) } }
     var c = DateComponents(); c.year = 2026; c.month = 10; c.day = 26; c.hour = 9; c.minute = 41
@@ -436,6 +439,26 @@ func selftest() -> Int32 {
     expect(taskRowDay(td(at(10, 23, 0)), now: now) == at(10, 26, 0) && taskRowDay(td(at(10, 23, 15), timed: true), now: now) == at(10, 26, 0), "an unfinished task moves to today")
     expect(taskRowDay(td(at(10, 27, 11), timed: true), now: now) == nil && taskRowDay(td(at(10, 27, 0)), now: now) == at(10, 27, 0), "a timed task shows in the grid, not the row")
     expect(taskRowDay(td(at(10, 23, 0), done: true), now: now) == at(10, 23, 0), "a ticked task stays on its own day")
+    // Week settings.
+    MainActor.assumeIsolated {
+        let a = AppState(store: Store(sample: true), today: now)
+        a.mode = .week; a.days = 5
+        expect(a.visibleDays == (0..<5).map { at(10, 26 + $0, 0) }, "5 days = Mon to Fri")
+        WorkWeek.days = [1, 3, 5]
+        expect(a.visibleDays == [at(10, 27, 0), at(10, 29, 0), at(11, 1, 0)], "5 days = only the working days of this week (Tue, Thu, Sun)")
+        WorkWeek.start = "Sunday"
+        expect(startOfWeek(at(10, 31, 12)) == at(10, 25, 0) && monthGrid(now).first == at(9, 27, 0), "week starts Sunday")
+        expect(a.visibleDays == [at(10, 25, 0), at(10, 27, 0), at(10, 29, 0)], "Sunday first: Sun, Tue, Thu")
+        expect(weekNumber(at(1, 4, 12)) == 2 && weekNumber(at(1, 3, 12)) == 1, "Sunday weeks count from January 1st")
+        WorkWeek.days = [3]
+        expect(a.visibleDays == [at(10, 27, 0)] && a.title == "Tuesday, October 27, 2026", "one working day: one column, one-day title")
+        WorkWeek.days = []
+        expect(a.visibleDays.count == 7, "no working days: the 5-day view shows the whole week")
+        WorkWeek.start = "Saturday"
+        expect(startOfWeek(now) == at(10, 24, 0), "week starts Saturday")
+        WorkWeek.reset()
+        expect(minuteText(8 * 60) == "8:00 AM" && minuteText(18 * 60 + 30) == "6:30 PM" && minuteText(0) == "12:00 AM" && minuteText(1440) == "Midnight" && minuteText(8 * 60, short: true) == "8 AM" && minuteText(18 * 60 + 30, short: true) == "6:30 PM", "working hours text")
+    }
     MainActor.assumeIsolated {
         let a = AppState(store: Store(sample: true), today: now)
         for (typed, saved) in [("Pick up keys at the condo", "Pick up keys at the condo"), ("Buy rice for free", "Buy rice for free"), ("Call the bank Friday 3pm", "Call the bank")] {

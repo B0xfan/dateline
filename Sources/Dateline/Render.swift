@@ -8,7 +8,7 @@ import AppKit
     cal.timeZone = TimeZone(identifier: "America/Costa_Rica")!
     let today = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 9, minute: 41))!  // the mockup's "today"
     sampleToday = today
-    Look.reset()  // pictures always use the normal look and never change the saved one
+    Look.reset(); WorkWeek.reset()  // pictures always use the normal look and the mockup's week, and never change the saved ones
     var ok = true
     for dark in [false, true] {
         let tag = dark ? "dark" : "light"
@@ -37,6 +37,7 @@ import AppKit
             let a = AppState(store: Store(sample: true), today: today)
             ok = save(SetEditor(app: a, store: a.store, draft: a.store.sets[1]).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/set-editor-\(tag).png") && ok
             ok = save(LookSettings(app: a).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/look-\(tag).png") && ok
+            ok = save(WeekSettings(app: a).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/week-settings-\(tag).png") && ok
             ok = save(EmojiPicker(recent: ["🏠", "🦷"]) { _ in }.background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/emoji-\(tag).png") && ok
         }
         let app = AppState(store: Store(sample: true), today: today)

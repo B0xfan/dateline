@@ -338,7 +338,8 @@ final class Store: ObservableObject {
         sets = [CalSet(name: "Work", calendars: ["work"], defaultCalendar: "work"),
                 CalSet(name: "Family", calendars: ["family", "personal", "school"], defaultCalendar: "family"),
                 CalSet(name: "Just me", calendars: ["personal"], defaultCalendar: "personal")]
-        let mon = startOfWeek(sampleToday ?? Date())
+        let today = cal.startOfDay(for: sampleToday ?? Date())
+        let mon = addDays(today, -((cal.component(.weekday, from: today) + 5) % 7))  // always Monday, whatever week start is saved, so samples match the mockups
         func at(_ d: Int, _ h: Int, _ m: Int = 0) -> Date { cal.date(byAdding: .minute, value: h * 60 + m, to: addDays(mon, d))! }
         var n = 0
         func ev(_ c: String, _ t: String, _ d: Int, _ h: Int, _ m: Int, _ mins: Int, _ s: ShowAs = .busy, place: String = "", notes: String = "",

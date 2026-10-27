@@ -580,6 +580,7 @@ struct SettingsView: View {
         TabView {
             QuickSettings(app: app).tabItem { Label("Quick add", systemImage: "plus.square") }
             LookSettings(app: app).tabItem { Label("Look", systemImage: "paintpalette") }
+            WeekSettings(app: app).tabItem { Label("Week", systemImage: "calendar") }
         }
     }
 }

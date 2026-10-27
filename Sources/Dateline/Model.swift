@@ -9,7 +9,7 @@ enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Mont
 final class AppState: ObservableObject {
     let store: Store
     @Published var mode: Mode = Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .day { didSet { UserDefaults.standard.set(mode.rawValue, forKey: "mode"); reload() } }
-    @Published var days: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() { didSet { UserDefaults.standard.set(days, forKey: "weekDays"); reload() } }
+    @Published var days: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() { didSet { if Look.saves { UserDefaults.standard.set(days, forKey: "weekDays") }; reload() } }
     @Published var anchor: Date { didSet { reload() } }
     @Published var selectedID: String?
     @Published var panelOpen = false { didSet { if panelOpen { openTaskID = nil } } }
@@ -54,13 +54,14 @@ final class AppState: ObservableObject {
         reload()
     }
 
-    // The days the day or week view shows. A 7 day week starts on Monday; a 3 or 5 day week starts on the day you are on.
+    // The days the day or week view shows. A 7 day week starts on the first day of the week, a 5 day week is that week's working days, a 3 day week starts on the day you are on.
     var visibleDays: [Date] {
         switch mode {
         case .day: return [anchor]
         case .week:
-            if days == 7 { let m = startOfWeek(anchor); return (0..<7).map { addDays(m, $0) } }
-            return (0..<days).map { addDays(anchor, $0) }
+            if days == 3 { return (0..<3).map { addDays(anchor, $0) } }
+            let s = startOfWeek(anchor), week = (0..<7).map { addDays(s, $0) }, work = week.filter(WorkWeek.isWorkDay)
+            return days == 5 && !work.isEmpty ? work : week  // no working days ticked: the whole week
         case .month: return monthGrid(anchor)
         case .quarter:
             let q = quarterStart(anchor), a = startOfWeek(q), b = monthGrid(cal.date(byAdding: .month, value: 2, to: q)!).last!
@@ -74,6 +75,7 @@ final class AppState: ObservableObject {
         case .day: return dateText(anchor, "EEEE, MMMM d, yyyy")
         case .week:
             let d = visibleDays, a = d.first!, b = d.last!
+            if a == b { return dateText(a, "EEEE, MMMM d, yyyy") }  // one working day
             if cal.isDate(a, equalTo: b, toGranularity: .month) { return dateText(a, "MMMM d") + " to " + dateText(b, "d, yyyy") }
             return dateText(a, "MMM d") + " to " + dateText(b, "MMM d, yyyy")
         case .month: return dateText(anchor, "MMMM yyyy")
@@ -86,7 +88,7 @@ final class AppState: ObservableObject {
     var shortTitle: String {
         switch mode {
         case .day: return dateText(anchor, "EEE, MMM d")
-        case .week: return dateText(visibleDays.first!, "MMM d") + " to " + dateText(visibleDays.last!, "MMM d")
+        case .week: let d = visibleDays; return d.count == 1 ? dateText(d[0], "EEE, MMM d") : dateText(d.first!, "MMM d") + " to " + dateText(d.last!, "MMM d")
         case .month: return dateText(anchor, "MMM yyyy")
         case .quarter: let q = quarterStart(anchor); return dateText(q, "MMM") + " to " + dateText(cal.date(byAdding: .month, value: 2, to: q)!, "MMM yyyy")
         case .year: return dateText(anchor, "yyyy")
@@ -115,7 +117,7 @@ final class AppState: ObservableObject {
     func step(_ n: Int) {
         switch mode {
         case .day: anchor = addDays(anchor, n)
-        case .week: anchor = addDays(anchor, n * days)
+        case .week: anchor = addDays(anchor, n * (days == 3 ? 3 : 7))
         case .month: anchor = cal.date(byAdding: .month, value: n, to: cal.date(from: cal.dateComponents([.year, .month], from: anchor))!)!
         case .quarter: anchor = cal.date(byAdding: .month, value: 3 * n, to: quarterStart(anchor))!
         case .year: anchor = cal.date(byAdding: .year, value: n, to: cal.dateInterval(of: .year, for: anchor)!.start)!
