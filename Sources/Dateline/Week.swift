@@ -9,6 +9,8 @@ enum WorkWeek {
     static var from = d.object(forKey: "workFrom") as? Int ?? 8 * 60 { didSet { save(from, "workFrom") } }  // minutes after midnight
     static var to = d.object(forKey: "workTo") as? Int ?? 18 * 60 { didSet { save(to, "workTo") } }
     static var stripe = d.object(forKey: "workStripe") as? Bool ?? true { didSet { save(stripe, "workStripe") } }
+    static var sun = d.object(forKey: "showSun") as? Bool ?? true { didSet { save(sun, "showSun") } }  // Phase 5: sun and moon in the day and week views
+    static var leave = d.object(forKey: "leaveAlerts") as? Bool ?? true { didSet { save(leave, "leaveAlerts") } }  // Phase 5: the leave alert's default per event
 
     private static func save(_ v: Any, _ key: String) { if Look.saves { d.set(v, forKey: key) } }
 
@@ -17,7 +19,7 @@ enum WorkWeek {
     static func isWorkDay(_ day: Date) -> Bool { days.contains(cal.component(.weekday, from: day)) }
 
     // The mockup's week, for the off-screen pictures and the self-checks; never saved.
-    static func reset() { Look.saves = false; start = "Monday"; days = [2, 3, 4, 5, 6]; from = 8 * 60; to = 18 * 60; stripe = true }
+    static func reset() { Look.saves = false; start = "Monday"; days = [2, 3, 4, 5, 6]; from = 8 * 60; to = 18 * 60; stripe = true; sun = true; leave = true }
 }
 
 // Days off in light grey, and (when on) light stripes over the hours outside work. Drawn behind a full 24-hour day column.
@@ -78,6 +80,14 @@ struct WeekSettings: View {
                 }
                 row("Show off-hours", nil) {
                     Toggle("Stripe the hours outside work", isOn: Binding(get: { WorkWeek.stripe }, set: { WorkWeek.stripe = $0; changed() }))
+                        .toggleStyle(.switch).controlSize(.small)
+                }
+                row("Sun and moon", "Sunrise and sunset for where you are, in each day's heading, with a line in the grid and a faint tint on the night hours.") {
+                    Toggle("Show sunrise, sunset and the moon", isOn: Binding(get: { WorkWeek.sun }, set: { WorkWeek.sun = $0; changed() }))
+                        .toggleStyle(.switch).controlSize(.small)
+                }
+                row("Leave alerts", "For events with a place: an alert on the Mac when it is time to drive there. Each event can still turn it on or off.") {
+                    Toggle("Alert me when it's time to leave", isOn: Binding(get: { WorkWeek.leave }, set: { WorkWeek.leave = $0; changed(); app.planTravel() }))
                         .toggleStyle(.switch).controlSize(.small)
                 }
             }.frame(width: 430, alignment: .leading)

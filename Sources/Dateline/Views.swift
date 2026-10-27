@@ -97,6 +97,9 @@ struct MainView: View {
         .font(.ui(13))
         .id(app.look)  // shortcut: rebuilds the whole window (scroll resets); make Look observable if changing it while working gets annoying. Look settings are read while drawing, so a change redraws the whole window
         .sheet(isPresented: $app.showShortcuts) { ShortcutList(app: app) }
+        .sheet(isPresented: $app.mapOpen) { PlacesMap(app: app, store: store) }
+        .onAppear { app.planTravel() }
+        .onChange(of: store.soon) { _, _ in app.planTravel() }
         .sheet(item: $app.confirmDelete) { it in ConfirmDelete(app: app, store: store, item: it) }
         .sheet(item: $app.editingSet) { s in SetEditor(app: app, store: store, draft: s) }
         .alert("Couldn't save", isPresented: Binding(get: { app.error != nil }, set: { if !$0 { app.error = nil } })) {
@@ -376,6 +379,12 @@ struct Toolbar: View {
                     if !app.sideOpen { Text("Tasks"); Key("R") }
                 }
             }.buttonStyle(TButton(icon: app.sideOpen)).fixedSize().help("Your Apple Reminders (R)")
+            Button { app.mapOpen = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "map")
+                    if !app.sideOpen { Text("Map"); Key("P") }
+                }
+            }.buttonStyle(TButton(icon: app.sideOpen)).fixedSize().help("All event places on one map (P)")
             AddBox(app: app).frame(minWidth: 130, maxWidth: 300)
             // With a panel open there is no room for it; the ? key still opens the list.
             if !app.sideOpen { Button("?") { app.showShortcuts = true }.buttonStyle(TButton(icon: true)).help("Keyboard shortcuts") }
@@ -652,7 +661,7 @@ struct ShortcutList: View {
         ("New event", "N"), ("Go to today", "T"), ("Day view", "1"), ("Previous", "Left"), ("Week view", "2"), ("Next", "Right"),
         ("Month view", "3"), ("Next or previous event", "Up / Down"), ("Quarter view", "4"), ("Open event", "Return"), ("Year view", "5"),
         ("Delete event", "Delete"), ("Move event 15 min", "Option Up / Down"), ("Copy event", "Option drag"), ("Undo", "Command Z"), ("This list", "?"),
-        ("Quick add from any app", app.quickName), ("All calendars", "Command 1"), ("Calendar sets", "Command 2 to 9"), ("Tasks", "R"),
+        ("Quick add from any app", app.quickName), ("All calendars", "Command 1"), ("Calendar sets", "Command 2 to 9"), ("Tasks", "R"), ("Map of places", "P"),
     ] }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

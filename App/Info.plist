@@ -14,6 +14,8 @@
     <key>NSCalendarsFullAccessUsageDescription</key><string>Dateline shows and edits the calendars already set up on this Mac. Nothing leaves your Mac.</string>
     <key>NSRemindersFullAccessUsageDescription</key><string>Dateline shows your Apple Reminders on the calendar and saves your changes back to Reminders. Nothing leaves your Mac.</string>
     <key>NSContactsUsageDescription</key><string>Dateline reads the home and work address on your own contact card, only when you pick Home or Work for a place reminder.</string>
+    <key>NSLocationUsageDescription</key><string>Dateline uses your location for drive times to your events and for sunrise and sunset. It stays on your Mac; only Apple Maps sees it, to work out the drive.</string>
+    <key>NSLocationWhenInUseUsageDescription</key><string>Dateline uses your location for drive times to your events and for sunrise and sunset. It stays on your Mac; only Apple Maps sees it, to work out the drive.</string>
     <key>NSHumanReadableCopyright</key><string>John Hesch</string>
 </dict>
 </plist>

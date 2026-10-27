@@ -8,14 +8,17 @@ import AppKit
     cal.timeZone = TimeZone(identifier: "America/Costa_Rica")!
     let today = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 9, minute: 41))!  // the mockup's "today"
     sampleToday = today
+    Here.shared.spot = tamarindo  // the mockups' sunrise and sunset; never the Mac's own location
     Look.reset(); WorkWeek.reset()  // pictures always use the normal look and the mockup's week, and never change the saved ones
     var ok = true
     for dark in [false, true] {
         let tag = dark ? "dark" : "light"
-        func shot(_ name: String, _ setup: (AppState) -> Void) {
+        func shot(_ name: String, wait: Double = 0.2, _ setup: (AppState) -> Void) {
             let app = AppState(store: Store(sample: true), today: today)
             setup(app)
-            ok = save(MainView(app: app, store: app.store).frame(width: 1380, height: 800), dark: dark, to: "\(dir)/\(name)-\(tag).png") && ok
+            // A sheet (the places map) does not draw off-screen, so it is drawn on its own.
+            let view = app.mapOpen ? AnyView(PlacesMap(app: app, store: app.store)) : AnyView(MainView(app: app, store: app.store))
+            ok = save(view.frame(width: 1380, height: 800), dark: dark, wait: wait, to: "\(dir)/\(name)-\(tag).png") && ok
         }
         shot("day") { $0.mode = .day }
         shot("week") { $0.mode = .week; $0.days = 7 }
@@ -31,6 +34,10 @@ import AppKit
         // Pictures cannot scroll (they show midnight to 9 AM), so move the electrician into view to check the dashed block.
         shot("task-timed") { a in a.mode = .week; a.days = 5
             if let i = a.store.todos.firstIndex(where: { $0.title == "Electrician" }) { a.store.todos[i].due = cal.date(byAdding: .hour, value: 7, to: addDays(cal.startOfDay(for: today), 1)) } }
+        // Phase 5 (approved mockups): the event map, drive time block, sun and moon. The map picture loads from Apple Maps, so it waits longer.
+        shot("place-details", wait: 4) { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Dinner with Ana" }?.id; a.panelOpen = true }
+        shot("sun-week5") { $0.mode = .week; $0.days = 5 }
+        shot("places-map", wait: 4) { $0.mode = .week; $0.days = 7; $0.mapOpen = true }
         shot("task-list") { $0.mode = .week; $0.days = 5; $0.tasksOpen = true }
         shot("task-details") { a in a.mode = .week; a.days = 5; a.openTaskID = a.store.todos.first { $0.title == "Buy AC filter" }?.id }
         do {
@@ -49,12 +56,12 @@ import AppKit
     return ok
 }
 
-@MainActor private func save<V: View>(_ view: V, dark: Bool, to path: String) -> Bool {
+@MainActor private func save<V: View>(_ view: V, dark: Bool, wait: Double = 0.2, to path: String) -> Bool {
     let host = NSHostingView(rootView: view)
     host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
     host.frame = NSRect(x: 0, y: 0, width: 1380, height: 800)
     host.layoutSubtreeIfNeeded()
-    RunLoop.main.run(until: Date().addingTimeInterval(0.2))  // let onAppear and the first layout pass run
+    RunLoop.main.run(until: Date().addingTimeInterval(wait))  // let onAppear and the first layout pass run
     host.layoutSubtreeIfNeeded()
     guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return false }
     host.cacheDisplay(in: host.bounds, to: rep)

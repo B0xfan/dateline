@@ -24,6 +24,10 @@ final class AppState: ObservableObject {
     @Published var addFocused = false
     @Published var addCalendarID: String?
     @Published var showShortcuts = false
+    @Published var mapOpen = false  // Phase 5: the map of all places (P)
+    @Published var drive: [String: Int] = [:]  // Phase 5: minutes of driving before each coming event with a place
+    let trips = Trips()
+    private var travelTimer: Timer?
     @Published var editingSet: CalSet?  // the set editor is open on this (a new one when it is not in the list yet)
     @Published var look = 0  // bumped when a Look setting changes, to redraw everything
     @Published var confirmDelete: Item?
@@ -281,6 +285,8 @@ final class AppState: ObservableObject {
         guard monitor == nil else { return }  // the window can appear again after being closed
         registerQuick()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in self?.now = Date() } }
+        if store.access != .sample { Here.shared.start() }
+        travelTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in Task { @MainActor in Here.shared.refresh(); self?.planTravel() } }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self else { return e }
             return self.key(e) ? nil : e
@@ -292,6 +298,8 @@ final class AppState: ObservableObject {
         if recordingKey { return false }
         if e.window is QuickPanel { return quickKey(e) }
         if e.keyCode == 53 && showShortcuts { showShortcuts = false; return true }  // Esc on the shortcut list, which is its own window
+        // The map is its own window too: Esc or a plain P closes it.
+        if mapOpen, e.keyCode == 53 || (e.charactersIgnoringModifiers == "p" && e.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty) { mapOpen = false; return true }
         if e.window?.title != "Dateline" { return false }  // Settings, or the main window is closed
         let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
         let responder = NSApp.keyWindow?.firstResponder
@@ -308,7 +316,7 @@ final class AppState: ObservableObject {
             if selectedID != nil { selectedID = nil; return true }
             return false
         }
-        if typing || confirmDelete != nil || showShortcuts || error != nil { return false }
+        if typing || confirmDelete != nil || showShortcuts || mapOpen || error != nil { return false }
         if mods == .command, let n = Int(e.charactersIgnoringModifiers ?? ""), (1...9).contains(n) { pickSet(n); return true }
         switch (e.keyCode, mods) {
         case (123, []): step(-1); return true
@@ -326,6 +334,7 @@ final class AppState: ObservableObject {
         case "n": focusAdd += 1
         case "t": goToday()
         case "r": tasksOpen.toggle()
+        case "p": mapOpen = true
         case "1": mode = .day
         case "2": mode = .week
         case "3": mode = .month

@@ -3,6 +3,7 @@
 import Foundation
 import EventKit
 import SwiftUI
+import CoreLocation
 
 struct CalInfo: Identifiable, Hashable {
     let id: String
@@ -27,6 +28,9 @@ struct Item: Identifiable, Equatable {
     var color: Int? = nil  // a place in Palette.tags; nil = the calendar's color
     var tags: [String] = []
     var rich: Data? = nil  // the notes with their formatting (RTF); the calendar gets the plain text
+    var geo: Geo? = nil  // where the place is on the map (Phase 5); saved in the calendar with the place, so the phone sees it too
+    // Phase 5 travel, kept by Dateline on this Mac: no drive time, the leave alert (nil = the Settings default), where the drive starts.
+    var noTravel = false, leave: Bool? = nil, from: From = .here
     var shownTitle: String { emoji.isEmpty ? title : emoji + " " + title }
 }
 
@@ -34,7 +38,8 @@ struct Item: Identifiable, Equatable {
 struct Extra: Codable, Equatable {
     var emoji = "", color: Int? = nil, tags: [String] = [], rich: Data? = nil
     var plain: String? = nil  // the notes text `rich` was made from; if the notes changed elsewhere, the formatting is dropped
-    var isEmpty: Bool { emoji.isEmpty && color == nil && tags.isEmpty && rich == nil }
+    var noTravel: Bool? = nil, leave: Bool? = nil, from: From? = nil  // optional, so extras saved before Phase 5 still read back
+    var isEmpty: Bool { emoji.isEmpty && color == nil && tags.isEmpty && rich == nil && noTravel == nil && leave == nil && from == nil }
 }
 
 // A calendar set (B6, F7): which calendars it shows and where its new events go.
@@ -56,8 +61,8 @@ func activeSet(_ sets: [CalSet], calendars: [String], hidden: Set<String>) -> Ca
 // Same event in the calendar's eyes: only Dateline's own extras may differ.
 func sameInCalendar(_ a: Item, _ b: Item) -> Bool {
     var a = a, b = b
-    a.emoji = ""; a.color = nil; a.tags = []; a.rich = nil
-    b.emoji = ""; b.color = nil; b.tags = []; b.rich = nil
+    a.emoji = ""; a.color = nil; a.tags = []; a.rich = nil; a.noTravel = false; a.leave = nil; a.from = .here
+    b.emoji = ""; b.color = nil; b.tags = []; b.rich = nil; b.noTravel = false; b.leave = nil; b.from = .here
     return a == b
 }
 
@@ -134,12 +139,14 @@ final class Store: ObservableObject {
         guard let x = extras[key(it.id)] else { return it }
         var it = it
         it.emoji = x.emoji; it.color = x.color; it.tags = x.tags
+        it.noTravel = x.noTravel ?? false; it.leave = x.leave; it.from = x.from ?? .here
         if x.plain == it.notes { it.rich = x.rich }
         return it
     }
 
     private func setExtras(_ it: Item) {
-        let x = Extra(emoji: it.emoji, color: it.color, tags: it.tags, rich: it.rich, plain: it.rich == nil ? nil : it.notes)
+        let x = Extra(emoji: it.emoji, color: it.color, tags: it.tags, rich: it.rich, plain: it.rich == nil ? nil : it.notes,
+                      noTravel: it.noTravel ? true : nil, leave: it.leave, from: it.from == .here ? nil : it.from)
         if extras[key(it.id)] != (x.isEmpty ? nil : x) { extras[key(it.id)] = x.isEmpty ? nil : x }
     }
 
@@ -177,15 +184,17 @@ final class Store: ObservableObject {
     private func fetch() {
         let (a, b) = range
         let now = sampleToday ?? Date(), later = now.addingTimeInterval(120 * 86400)
-        if access == .sample {
-            items = sample.filter { $0.end > a && $0.start < b }.sorted { $0.start < $1.start }
-            soon = sample.filter { $0.end > now && $0.start < later }
-            return
-        }
+        items = between(a, b)
+        if access == .sample { soon = sample.filter { $0.end > now && $0.start < later }; return }
         guard access == .granted else { return }
-        let pred = ek.predicateForEvents(withStart: a, end: b, calendars: nil)
-        items = ek.events(matching: pred).map { decorated(Self.item($0)) }.sorted { $0.start < $1.start }
         soon = ek.events(matching: ek.predicateForEvents(withStart: now.addingTimeInterval(-86400), end: later, calendars: nil)).map { decorated(Self.item($0)) }
+    }
+
+    // Events between two dates, read without changing what the window shows (the map of places).
+    func between(_ a: Date, _ b: Date) -> [Item] {
+        if access == .sample { return sample.filter { $0.end > a && $0.start < b }.sorted { $0.start < $1.start } }
+        guard access == .granted else { return [] }
+        return ek.events(matching: ek.predicateForEvents(withStart: a, end: b, calendars: nil)).map { decorated(Self.item($0)) }.sorted { $0.start < $1.start }
     }
 
     // The last year's events, one per title, newest first (quick add's "From your past events"). Kept until the calendars change.
@@ -207,7 +216,8 @@ final class Store: ObservableObject {
         let occ = e.hasRecurrenceRules ? "|" + String(e.occurrenceDate?.timeIntervalSince1970 ?? 0) : ""
         return Item(id: (e.eventIdentifier ?? UUID().uuidString) + occ,
                     calendarID: e.calendar.calendarIdentifier, title: e.title ?? "", start: e.startDate, end: e.endDate,
-                    allDay: e.isAllDay, place: e.location ?? "", notes: e.notes ?? "", showAs: s)
+                    allDay: e.isAllDay, place: e.location ?? "", notes: e.notes ?? "", showAs: s,
+                    geo: e.structuredLocation?.geoLocation.map { Geo(lat: $0.coordinate.latitude, lon: $0.coordinate.longitude) })
     }
 
     private func ekEvent(_ it: Item) -> EKEvent? {
@@ -235,7 +245,7 @@ final class Store: ObservableObject {
         let calID = calendarID ?? defaultCalendarID ?? calendars.first(where: \.writable)?.id
         guard let calID else { return .failure(Failure("No calendar on this Mac can take new events.")) }
         var it = Item(id: UUID().uuidString, calendarID: calID, title: p.title.isEmpty ? "New event" : p.title, start: p.start, end: p.end,
-                      allDay: p.allDay, place: p.place, notes: "", showAs: p.showAs)
+                      allDay: p.allDay, place: p.place, notes: "", showAs: p.showAs, geo: p.geo)
         if access == .sample { sample.append(it); fetch(); return .success(it) }
         guard let c = ek.calendar(withIdentifier: calID) else { return .failure(Failure("That calendar is gone.")) }
         let e = EKEvent(eventStore: ek)
@@ -300,10 +310,11 @@ final class Store: ObservableObject {
     // A new one-time event with everything `it` has (Option drag, undo of a delete).
     func duplicate(_ it: Item) -> Item? {
         if access == .sample { var back = it; back.id = UUID().uuidString; sample.append(back); fetch(); return back }
-        var p = Parsed(start: it.start, end: it.end); p.title = it.title; p.allDay = it.allDay; p.place = it.place; p.showAs = it.showAs
+        var p = Parsed(start: it.start, end: it.end); p.title = it.title; p.allDay = it.allDay; p.place = it.place; p.geo = it.geo; p.showAs = it.showAs
         guard case .success(let added) = add(p, calendarID: it.calendarID) else { return nil }
         var back = added
         back.notes = it.notes; back.emoji = it.emoji; back.color = it.color; back.tags = it.tags; back.rich = it.rich
+        back.noTravel = it.noTravel; back.leave = it.leave; back.from = it.from
         if back != added { update(back) }
         if let alarms = ekEvent(it)?.alarms ?? deletedAlarms[it.id], !alarms.isEmpty, let e = ek.event(withIdentifier: back.id) {
             alarms.forEach { a in e.addAlarm(a.absoluteDate.map(EKAlarm.init(absoluteDate:)) ?? EKAlarm(relativeOffset: a.relativeOffset)) }
@@ -317,7 +328,15 @@ final class Store: ObservableObject {
         e.isAllDay = it.allDay
         e.startDate = it.start
         e.endDate = it.end
-        e.location = it.place.isEmpty ? nil : it.place
+        // A place picked from Apple Maps keeps its spot on the map; only rewritten when it changed, so a phone-made place keeps its address.
+        let had = e.structuredLocation?.geoLocation.map { Geo(lat: $0.coordinate.latitude, lon: $0.coordinate.longitude) }
+        if e.location ?? "" != it.place || had != it.geo {
+            if let g = it.geo, !it.place.isEmpty {
+                let l = EKStructuredLocation(title: it.place)
+                l.geoLocation = CLLocation(latitude: g.lat, longitude: g.lon)
+                e.structuredLocation = l
+            } else { e.structuredLocation = nil; e.location = it.place.isEmpty ? nil : it.place }
+        }
         e.notes = it.notes.isEmpty ? nil : it.notes
         let want: EKEventAvailability = it.showAs == .free ? .free : it.showAs == .maybe ? .tentative : .busy
         // Not every account takes every mark (many only know busy and free); keep what it allows.
@@ -343,10 +362,10 @@ final class Store: ObservableObject {
         func at(_ d: Int, _ h: Int, _ m: Int = 0) -> Date { cal.date(byAdding: .minute, value: h * 60 + m, to: addDays(mon, d))! }
         var n = 0
         func ev(_ c: String, _ t: String, _ d: Int, _ h: Int, _ m: Int, _ mins: Int, _ s: ShowAs = .busy, place: String = "", notes: String = "",
-                emoji: String = "", color: Int? = nil, tags: [String] = []) {
+                emoji: String = "", color: Int? = nil, tags: [String] = [], geo: Geo? = nil) {
             n += 1
             sample.append(Item(id: "s\(n)", calendarID: c, title: t, start: at(d, h, m), end: at(d, h, m + mins), allDay: false, place: place, notes: notes, showAs: s,
-                               emoji: emoji, color: color, tags: tags))
+                               emoji: emoji, color: color, tags: tags, geo: geo))
         }
         ev("personal", "Lunch with Sam", -14, 12, 30, 60, place: "Casa Luna")
         ev("work", "Lunch with the team", -27, 12, 0, 60, place: "Office")
@@ -356,12 +375,14 @@ final class Store: ObservableObject {
         ev("family", "School pickup", 0, 15, 0, 30)
         ev("personal", "Gym", 0, 17, 30, 60, .free)
         ev("work", "Client call", 1, 11, 0, 60, place: "Zoom")
-        ev("family", "Christian at the condo", 1, 13, 30, 60, notes: "Fix before he leaves:\n[x] Kitchen tap drips\n[ ] Balcony door lock sticks\n- Gate code is in the group chat",
-           emoji: "🏠", color: 3, tags: ["Condo", "Visitors"])
-        ev("family", "Dentist", 2, 8, 30, 60, place: "Clínica Dental", emoji: "🦷")
+        ev("family", "Christian at the condo", 1, 13, 30, 60, place: "Condo", notes: "Fix before he leaves:\n[x] Kitchen tap drips\n[ ] Balcony door lock sticks\n- Gate code is in the group chat",
+           emoji: "🏠", color: 3, tags: ["Condo", "Visitors"], geo: Geo(lat: 10.2930, lon: -85.8318))
+        ev("family", "Dentist", 2, 8, 30, 60, place: "Clínica Dental Tamarindo", emoji: "🦷", geo: Geo(lat: 10.2995, lon: -85.8371))
         ev("work", "Design review", 3, 14, 0, 90)
-        ev("personal", "Dinner with Ana", 4, 19, 0, 60, place: "Casa Luna")
-        ev("family", "Beach day", 5, 9, 0, 240, .free)
+        ev("work", "Site visit", 3, 10, 0, 60, place: "Hotel Pasatiempo", geo: Geo(lat: 10.2958, lon: -85.8362))
+        ev("personal", "Call with Lee", 4, 16, 0, 60)
+        ev("personal", "Dinner with Ana", 4, 19, 0, 120, place: "Casa Luna, Tamarindo", notes: "Table on the terrace", geo: Geo(lat: 10.3046, lon: -85.8405))
+        ev("family", "Beach day", 5, 9, 0, 240, .free, place: "Playa Grande", geo: Geo(lat: 10.3329, lon: -85.8586))
         loadSampleTasks(mon)
         sample.append(Item(id: "s-ad", calendarID: "school", title: "Holiday: no school", start: addDays(mon, 2), end: addDays(mon, 3), allDay: true, place: "", notes: "", showAs: .free))
         fetch()

@@ -12,6 +12,9 @@ if let i = args.firstIndex(of: "--render"), i + 1 < args.count {
 }
 
 final class Delegate: NSObject, NSApplicationDelegate {
+    // Before launch ends, so a click on a leave alert that started the app is still handled.
+    // Only inside the app bundle: the bare built program has no bundle and alerts would stop it.
+    func applicationWillFinishLaunching(_ n: Notification) { if Bundle.main.bundleIdentifier != nil { LeaveAlerts.shared.install() } }
     // Keeps running with the window closed, so quick add from any app still works; the Dock icon brings the window back.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }

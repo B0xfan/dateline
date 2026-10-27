@@ -23,29 +23,35 @@ func lanes(_ items: [Item]) -> [String: (Int, Int)] {
 struct TimeGrid: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
+    @ObservedObject private var here = Here.shared
 
     var body: some View {
         let days = app.visibleDays
         let items = app.shownItems
+        let sun = WorkWeek.sun ? here.spot : nil  // Phase 5: sunrise and sunset under each day's name
+        let headH: CGFloat = sun == nil ? 44 : 56
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Color.clear.frame(width: gutter)
                 ForEach(days, id: \.self) { d in
                     let today = cal.isDate(d, inSameDayAs: app.now)
-                    HStack(spacing: 4) {
-                        Text(dateText(d, "EEE")).font(.ui(12)).foregroundStyle(Palette.text2)
-                        if today {
-                            Text(dateText(d, "d")).font(.ui(14, weight: .medium)).foregroundStyle(.white)
-                                .frame(width: 28, height: 28).background(Circle().fill(Palette.now))
-                        } else { Text(dateText(d, "d")).font(.ui(18, weight: .medium)) }
-                        Spacer(minLength: 0)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 4) {
+                            Text(dateText(d, "EEE")).font(.ui(12)).foregroundStyle(Palette.text2)
+                            if today {
+                                Text(dateText(d, "d")).font(.ui(14, weight: .medium)).foregroundStyle(.white)
+                                    .frame(width: 28, height: 28).background(Circle().fill(Palette.now))
+                            } else { Text(dateText(d, "d")).font(.ui(18, weight: .medium)) }
+                            Spacer(minLength: 0)
+                        }
+                        if let sun { SunRow(day: d, at: sun) }
                     }
-                    .padding(.horizontal, 10).frame(height: 44).frame(maxWidth: .infinity)
+                    .padding(.horizontal, 10).frame(height: headH).frame(maxWidth: .infinity)
                     .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
                     .contentShape(Rectangle()).onTapGesture { if app.mode == .week { app.open(day: d) } }
                 }
             }
-            .frame(height: 44)
+            .frame(height: headH)
             .overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
             HStack(alignment: .top, spacing: 0) {
                 Text("all-day").font(.ui(11)).foregroundStyle(Palette.text3).frame(width: gutter - 8, alignment: .trailing).padding(.trailing, 8).padding(.top, 9)
@@ -98,6 +104,7 @@ struct TimeGrid: View {
 struct DayColumn: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
+    @ObservedObject private var here = Here.shared
     let day: Date, days: [Date], items: [Item]
     @State private var drag: (id: String, dy: CGFloat, dx: CGFloat, stretch: Bool)?
 
@@ -107,12 +114,21 @@ struct DayColumn: View {
             let lane = lanes(items)
             ZStack(alignment: .topLeading) {
                 OffHours(day: day)
+                if WorkWeek.sun, let g = here.spot { SunHours(day: day, at: g, labels: day == days.first) }
                 VStack(spacing: 0) { ForEach(0..<24, id: \.self) { _ in Palette.lineSoft.frame(height: 1).frame(maxHeight: hourH, alignment: .top) } }
                 Color.clear.contentShape(Rectangle())
                     .gesture(SpatialTapGesture(count: 2).onEnded { v in
                         let mins = Int(v.location.y / hourH * 60) / 30 * 30
                         app.newEvent(at: cal.date(byAdding: .minute, value: mins, to: day)!)
                     }.exclusively(before: TapGesture().onEnded { app.selectedID = nil; app.panelOpen = false }))
+                // Phase 5: the drive there, as a striped block just before the event.
+                ForEach(items.filter { app.drive[$0.id] != nil && !$0.noTravel && $0.start >= day }) { it in
+                    let (l, n) = lane[it.id] ?? (0, 1), colW = (w - 4) / CGFloat(max(n, 1))
+                    let m = app.drive[it.id]!, top = frame(it).y + 1, h = min(CGFloat(m) / 60 * hourH, top)  // an event just after midnight: the block stops at the day's top
+                    TravelBlock(minutes: m, color: store.color(it))
+                        .frame(width: colW - 2, height: h)
+                        .offset(x: 2 + CGFloat(l) * colW, y: top - h)
+                }
                 ForEach(items) { it in
                     let (l, n) = lane[it.id] ?? (0, 1)
                     let f = frame(it)
@@ -379,7 +395,12 @@ struct DetailPanel: View {
                 section("SHOW AS")
                 Seg(options: ShowAs.allCases.map(\.rawValue), selected: item.showAs.rawValue) { item.showAs = ShowAs(rawValue: $0)!; commit() }
                 section("PLACE")
-                TextField("Add a place", text: $item.place).textFieldStyle(.roundedBorder).focused($field, equals: "place").onSubmit { commit() }
+                if locked { Text(item.place.isEmpty ? "No place" : "📍 " + item.place).foregroundStyle(item.place.isEmpty ? Palette.text3 : Palette.text) }
+                else { PlaceField(item: $item, field: $field, commit: commit).zIndex(2) }
+                if let g = item.geo {
+                    SmallMap(geo: g, name: item.place, color: store.color(item), from: mapFrom).padding(.top, 8)
+                    if !item.allDay { travel }
+                }
                 section("NOTES")
                 NotesBox(item: $item, editing: $notesEditing, locked: locked, commit: commit)
                 Text(locked ? "This calendar is read only." : "Changes save when you leave a field. Command Z undoes.")
@@ -400,6 +421,33 @@ struct DetailPanel: View {
         }
     }
 
+    // "2.4 km from you": how far the place is from where the Mac is now.
+    var mapFrom: (String, Geo)? { Here.shared.spot.map { ("you", $0) } }
+
+    // Phase 5: drive time, where it starts and the leave alert.
+    @ViewBuilder var travel: some View {
+        section("TRAVEL")
+        row("Travel time", w: 80) {
+            Menu {
+                Button("Drive time from Apple Maps") { item.noTravel = false; commit() }
+                Button("No travel time") { item.noTravel = true; commit() }
+            } label: {
+                Text(item.noTravel ? "None" : app.drive[item.id].map { "🚗 \($0) min drive" } ?? (item.start > Date() ? "🚗 Drive time from Apple Maps" : "🚗 Only for coming events"))
+            }.menuStyle(.borderlessButton).fixedSize()
+        }
+        if !item.noTravel {
+            row("From", w: 80) {
+                Menu { ForEach(From.allCases, id: \.self) { f in Button(f.label) { item.from = f; commit() } } } label: { Text(item.from.label) }
+                    .menuStyle(.borderlessButton).fixedSize()
+            }
+            row("Leave alert", w: 80) {
+                Seg(options: ["On", "Off"], selected: item.leave ?? WorkWeek.leave ? "On" : "Off", small: true) { v in item.leave = v == "On"; commit() }
+            }
+            Text("Drive time comes from Apple Maps and is checked again an hour before, so traffic is counted. \"From\" can also be Home, Work, or the place of the event before.")
+                .font(.ui(11)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
+        }
+    }
+
     var lengthText: String {
         let m = Int(item.end.timeIntervalSince(item.start) / 60)
         let h = m / 60, r = m % 60
@@ -416,8 +464,8 @@ struct DetailPanel: View {
         Text(t).font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 18).padding(.bottom, 6)
     }
 
-    func row<V: View>(_ k: String, @ViewBuilder _ v: () -> V) -> some View {
-        HStack(spacing: 8) { Text(k).foregroundStyle(Palette.text3).frame(width: 64, alignment: .leading); v(); Spacer(minLength: 0) }.padding(.top, 8)
+    func row<V: View>(_ k: String, w: CGFloat = 64, @ViewBuilder _ v: () -> V) -> some View {
+        HStack(spacing: 8) { Text(k).foregroundStyle(Palette.text3).frame(width: w, alignment: .leading); v(); Spacer(minLength: 0) }.padding(.top, 8)
     }
 }
 

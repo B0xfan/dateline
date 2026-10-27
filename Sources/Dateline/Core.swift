@@ -10,6 +10,7 @@ struct Parsed: Equatable {
     var end: Date
     var allDay = false
     var place = ""
+    var geo: Geo? = nil  // set when the place was picked from Apple Maps
     var showAs = ShowAs.busy
     var lengthGiven = false  // an end time or "for 2 hours" was written
     var dateGiven = false  // a day or a time was written (a task without one has no due date)
@@ -467,6 +468,31 @@ func selftest() -> Int32 {
         }
     }
     expect(shortDay(at(10, 23, 0), now: now) == "Fri" && shortDay(at(11, 14, 0), now: now) == "Nov 14", "task day text")
+
+    // Phase 5: sun and moon (Tamarindo, the week of the mockups), travel extras.
+    if let s = sunTimes(at(10, 26, 0), at: tamarindo) {
+        expect(abs(s.rise.timeIntervalSince(at(10, 26, 5, 32))) < 150 && abs(s.set.timeIntervalSince(at(10, 26, 17, 21))) < 150, "Tamarindo Oct 26 sun: \(timeText(s.rise)) to \(timeText(s.set))")
+    } else { expect(false, "Tamarindo has a sunrise") }
+    expect(sunTimes(at(12, 21, 0), at: Geo(lat: 80, lon: 15)) == nil, "no sunrise at 80 north in December")
+    let phases = (16...31).map { moonDay(at(10, $0, 0)) } + (1...12).map { moonDay(at(11, $0, 0)) }
+    expect(phases.compactMap { $0 }.count == 4, "four moon phase days from Oct 16 to Nov 12")
+    expect(moonDay(at(10, 18, 0)) == .firstHalf && moonDay(at(10, 25, 0)) == .full && moonDay(at(11, 1, 0)) == .lastHalf && moonDay(at(11, 9, 0)) == .new,
+           "moon: half Oct 18, full Oct 25 (Oct 26 04:12 UTC), half Nov 1, new Nov 9")
+    let oldExtra = try? JSONDecoder().decode(Extra.self, from: Data(#"{"emoji":"🏠","tags":[]}"#.utf8))
+    expect(oldExtra?.emoji == "🏠" && oldExtra?.leave == nil && oldExtra?.from == nil, "extras saved before Phase 5 still read")
+    var t1 = ev("x", at(10, 30, 19), at(10, 30, 21)), t2 = t1
+    t2.leave = false; t2.from = .home; t2.noTravel = true
+    expect(sameInCalendar(t1, t2), "travel choices stay on this Mac, never in the calendar")
+    t1.geo = tamarindo
+    expect(!sameInCalendar(t1, t2), "a place's map spot goes to the calendar")
+    MainActor.assumeIsolated {
+        sampleToday = now
+        let a = AppState(store: Store(sample: true), today: now)
+        a.planTravel()
+        let dinner = a.store.soon.first { $0.title == "Dinner with Ana" }
+        expect(dinner.flatMap { a.drive[$0.id] } == 25 && a.store.soon.filter { $0.geo == nil }.allSatisfy { a.drive[$0.id] == nil }, "sample drive times only for events with a place")
+        sampleToday = nil
+    }
 
     print(fails == 0 ? "selftest: all passed" : "selftest: \(fails) failed")
     return fails == 0 ? 0 : 1
