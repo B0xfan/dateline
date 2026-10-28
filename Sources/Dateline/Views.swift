@@ -341,7 +341,19 @@ struct SetEditor: View {
 struct Toolbar: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
+    @State private var width: CGFloat = 1000
     var body: some View {
+        // A tight bar first drops the set's name and the Days word; the smallest window's compact bar drops the rest, so the add box and every button stay on screen.
+        bar(compact: width < 800, roomy: width >= 1200)
+        .padding(.horizontal, 14).frame(height: 52)
+        // Still too wide: the end of the bar is cut, never the sidebar or the window.
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .background(Palette.bar)
+        .overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
+    }
+
+    func bar(compact: Bool, roomy: Bool) -> some View {
         HStack(spacing: 10) {
             Button("Today") { app.goToday() }.buttonStyle(TButton()).fixedSize()
             HStack(spacing: 4) {
@@ -352,46 +364,48 @@ struct Toolbar: View {
                 Text(app.title).fixedSize()
                 Text(app.shortTitle).fixedSize()
             }.font(.ui(15, weight: .semibold)).padding(.leading, 4).layoutPriority(2)
-            if app.mode != .year && !app.sideOpen {
+            if app.mode != .year && !app.sideOpen && !compact {
                 Text(app.weekLabel).font(.ui(11, weight: .medium)).foregroundStyle(Palette.text2)
                     .padding(.horizontal, 7).padding(.vertical, 2).background(RoundedRectangle(cornerRadius: 5).fill(Palette.lineSoft)).fixedSize()
             }
-            if !app.sideOpen, let s = store.activeSet, !store.calendars.allSatisfy({ !store.hidden.contains($0.id) }) {
+            if !app.sideOpen && roomy, let s = store.activeSet, !store.calendars.allSatisfy({ !store.hidden.contains($0.id) }) {
                 Text("· \(s.name) set").font(.ui(12)).foregroundStyle(Palette.text3).lineLimit(1)
             }
             Spacer(minLength: 8)
             if app.mode == .week {
                 HStack(spacing: 6) {
-                    if !app.sideOpen { Text("Days").font(.ui(12)).foregroundStyle(Palette.text2) }
+                    if !app.sideOpen && roomy { Text("Days").font(.ui(12)).foregroundStyle(Palette.text2) }
                     Seg(options: ["3", "5", "7"], selected: String(app.days), small: true) { app.days = Int($0)! }
                 }.fixedSize()
             }
             // With the details panel open there is less room: the views shrink to their first letters (D W M Q Y).
             ViewThatFits(in: .horizontal) {
                 Seg(options: Mode.allCases.map(\.rawValue), selected: app.mode.rawValue) { app.mode = Mode(rawValue: $0)! }.fixedSize()
-                Seg(options: Mode.allCases.map { String($0.rawValue.prefix(1)) }, selected: String(app.mode.rawValue.prefix(1))) { l in
+                Seg(options: Mode.allCases.map { String($0.rawValue.prefix(1)) }, selected: String(app.mode.rawValue.prefix(1)), small: compact) { l in
                     app.mode = Mode.allCases.first { $0.rawValue.hasPrefix(l) }!
                 }.fixedSize()
             }.layoutPriority(1)
-            Button { app.tasksOpen.toggle() } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "checklist")
-                    if !app.sideOpen { Text("Tasks"); Key("R") }
-                }
-            }.buttonStyle(TButton(icon: app.sideOpen)).fixedSize().help("Your Apple Reminders (R)")
-            Button { app.mapOpen = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "map")
-                    if !app.sideOpen { Text("Map"); Key("P") }
-                }
-            }.buttonStyle(TButton(icon: app.sideOpen)).fixedSize().help("All event places on one map (P)")
-            AddBox(app: app).frame(minWidth: 130, maxWidth: 300)
+            // Short of room (a set's name showing, a narrow window): Tasks and Map drop their words, so the window never spills past its edges.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { tasksButton(words: !app.sideOpen && !compact); mapButton(words: !app.sideOpen && !compact) }
+                HStack(spacing: 10) { tasksButton(words: false); mapButton(words: false) }
+            }
+            AddBox(app: app).frame(minWidth: compact ? 100 : 130, maxWidth: 300)
             // With a panel open there is no room for it; the ? key still opens the list.
-            if !app.sideOpen { Button("?") { app.showShortcuts = true }.buttonStyle(TButton(icon: true)).help("Keyboard shortcuts") }
+            if !app.sideOpen && !compact { Button("?") { app.showShortcuts = true }.buttonStyle(TButton(icon: true)).help("Keyboard shortcuts") }
         }
-        .padding(.horizontal, 14).frame(height: 52)
-        .background(Palette.bar)
-        .overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
+    }
+
+    func tasksButton(words: Bool) -> some View {
+        Button { app.tasksOpen.toggle() } label: {
+            HStack(spacing: 5) { Image(systemName: "checklist"); if words { Text("Tasks"); Key("R") } }
+        }.buttonStyle(TButton(icon: !words)).fixedSize().help("Your Apple Reminders (R)")
+    }
+
+    func mapButton(words: Bool) -> some View {
+        Button { app.mapOpen = true } label: {
+            HStack(spacing: 5) { Image(systemName: "map"); if words { Text("Map"); Key("P") } }
+        }.buttonStyle(TButton(icon: !words)).fixedSize().help("All event places on one map (P)")
     }
 }
 
