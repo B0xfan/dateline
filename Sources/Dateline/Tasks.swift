@@ -431,6 +431,8 @@ struct TaskDetail: View {
     @State private var placeError: String?
     @State private var finding = false
     @FocusState private var field: String?
+    @AppStorage("taskNotesHeight") private var notesHeight = 100.0  // set by dragging the grip under the notes; kept across restarts
+    @State private var dragHeight: Double?  // the height while the grip is being dragged; saved once on letting go
 
     var body: some View {
         let l = store.taskList(task.listID)
@@ -459,7 +461,6 @@ struct TaskDetail: View {
                         }), displayedComponents: .date).labelsHidden().datePickerStyle(.field)
                         if task.timed {
                             DatePicker("", selection: Binding(get: { d }, set: { task.due = $0; commit() }), displayedComponents: .hourAndMinute).labelsHidden()
-                            Button("no time") { task.timed = false; task.due = cal.startOfDay(for: d); commit() }.buttonStyle(.plain).foregroundStyle(Palette.text3)
                         } else {
                             Button("add time") { task.timed = true; task.due = cal.date(byAdding: .hour, value: 9, to: cal.startOfDay(for: d)); commit() }.buttonStyle(.plain).foregroundStyle(Palette.accent)
                         }
@@ -495,10 +496,24 @@ struct TaskDetail: View {
                     }.padding(.top, 8)
                 }
                 section("NOTES")
-                TextField("Add notes", text: $task.notes, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(3...10)
+                TextEditor(text: $task.notes).font(.ui(13)).scrollContentBackground(.hidden).padding(.horizontal, 3).padding(.vertical, 5)
                     .focused($field, equals: "notes")
+                    .frame(height: dragHeight ?? notesHeight)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Palette.field))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(field == "notes" ? Palette.accent : Palette.line, lineWidth: field == "notes" ? 1.5 : 1))
+                    .overlay(alignment: .topLeading) {
+                        if task.notes.isEmpty { Text("Add notes").font(.ui(13)).foregroundStyle(Palette.text3).padding(.leading, 9).padding(.top, 5).allowsHitTesting(false) }
+                    }
+                // The grip sits under the box, not on it, so a drag never lands in the text. Drag down for taller notes, up to shrink them.
+                Capsule().fill(Palette.text3.opacity(0.5)).frame(width: 36, height: 4)
+                    .frame(maxWidth: .infinity).frame(height: 14).contentShape(Rectangle())
+                    .onHover { h in if dragHeight == nil { (h ? NSCursor.resizeUpDown : NSCursor.arrow).set() } }  // set, not push/pop, as in the grid
+                    .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)  // global: the grip moves with the box, so its own space would jitter
+                        .onChanged { v in dragHeight = min(max(notesHeight + v.translation.height, 50), 600) }
+                        .onEnded { _ in if let h = dragHeight { notesHeight = h }; dragHeight = nil; NSCursor.arrow.set() })
+                    .help("Drag to resize the notes")
                 Text("Saved in Apple Reminders, so your iPhone sees it too. A place reminder goes off on your iPhone when you get there, even with the Mac closed.")
-                    .font(.ui(11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 14)
+                    .font(.ui(11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 4)
             }
             .padding(16)
         }

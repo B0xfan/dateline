@@ -49,6 +49,8 @@ import AppKit
         shot("task-one-list") { a in a.mode = .week; a.days = 5; a.tasksOpen = true; a.taskListFilter = "r-condo"
             for t in ["Fix the gate", "Paint the balcony"] { a.store.todos.append(ToDo(id: t, listID: "r-condo", title: t)) } }
         shot("task-details") { a in a.mode = .week; a.days = 5; a.openTaskID = a.store.todos.first { $0.title == "Buy AC filter" }?.id }
+        // A task with a time: no "no time" link next to the time (John 2026-10-28), and the notes box with its resize grip.
+        shot("task-details-timed") { a in a.mode = .week; a.days = 5; a.openTaskID = a.store.todos.first { $0.title == "Electrician" }?.id }
         do {
             let a = AppState(store: Store(sample: true), today: today)
             ok = save(SetEditor(app: a, store: a.store, draft: a.store.sets[1]).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/set-editor-\(tag).png") && ok
