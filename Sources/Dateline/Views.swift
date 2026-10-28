@@ -385,27 +385,15 @@ struct Toolbar: View {
                     app.mode = Mode.allCases.first { $0.rawValue.hasPrefix(l) }!
                 }.fixedSize()
             }.layoutPriority(1)
-            // Short of room (a set's name showing, a narrow window): Tasks and Map drop their words, so the window never spills past its edges.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) { tasksButton(words: !app.sideOpen && !compact); mapButton(words: !app.sideOpen && !compact) }
-                HStack(spacing: 10) { tasksButton(words: false); mapButton(words: false) }
-            }
+            // Icons in every view (John 2026-10-28); the hover tip names each one and its key.
+            Button { app.tasksOpen.toggle() } label: { Image(systemName: "checklist") }
+                .buttonStyle(TButton(icon: true)).fixedSize().help("Tasks: your Apple Reminders (R)")
+            Button { app.mapOpen = true } label: { Image(systemName: "map") }
+                .buttonStyle(TButton(icon: true)).fixedSize().help("Map: all event places on one map (P)")
             AddBox(app: app).frame(minWidth: compact ? 100 : 130, maxWidth: 300)
             // With a panel open there is no room for it; the ? key still opens the list.
             if !app.sideOpen && !compact { Button("?") { app.showShortcuts = true }.buttonStyle(TButton(icon: true)).help("Keyboard shortcuts") }
         }
-    }
-
-    func tasksButton(words: Bool) -> some View {
-        Button { app.tasksOpen.toggle() } label: {
-            HStack(spacing: 5) { Image(systemName: "checklist"); if words { Text("Tasks"); Key("R") } }
-        }.buttonStyle(TButton(icon: !words)).fixedSize().help("Your Apple Reminders (R)")
-    }
-
-    func mapButton(words: Bool) -> some View {
-        Button { app.mapOpen = true } label: {
-            HStack(spacing: 5) { Image(systemName: "map"); if words { Text("Map"); Key("P") } }
-        }.buttonStyle(TButton(icon: !words)).fixedSize().help("All event places on one map (P)")
     }
 }
 
