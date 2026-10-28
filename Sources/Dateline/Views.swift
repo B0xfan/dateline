@@ -387,9 +387,9 @@ struct Toolbar: View {
             }.layoutPriority(1)
             // Icons in every view (John 2026-10-28); the hover tip names each one and its key.
             Button { app.tasksOpen.toggle() } label: { Image(systemName: "checklist") }
-                .buttonStyle(TButton(icon: true)).fixedSize().help("Tasks: your Apple Reminders (R)")
+                .buttonStyle(TButton(icon: true)).fixedSize().help("Tasks: Reminders (R)")
             Button { app.mapOpen = true } label: { Image(systemName: "map") }
-                .buttonStyle(TButton(icon: true)).fixedSize().help("Map: all event places on one map (P)")
+                .buttonStyle(TButton(icon: true)).fixedSize().help("Map: Events (P)")
             AddBox(app: app).frame(minWidth: compact ? 100 : 130, maxWidth: 300)
             // With a panel open there is no room for it; the ? key still opens the list.
             if !app.sideOpen && !compact { Button("?") { app.showShortcuts = true }.buttonStyle(TButton(icon: true)).help("Keyboard shortcuts") }
