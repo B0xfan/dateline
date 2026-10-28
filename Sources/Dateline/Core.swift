@@ -236,10 +236,10 @@ func timeText(_ d: Date, short: Bool = false) -> String {
 
 // One formatter per format, reused: the views ask for dates many times per redraw.
 @MainActor private var formatters: [String: DateFormatter] = [:]
-func dateText(_ d: Date, _ format: String) -> String {
+func dateText(_ d: Date, _ format: String, in tz: TimeZone = cal.timeZone) -> String {
     MainActor.assumeIsolated {
         let f = formatters[format] ?? { let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = format; formatters[format] = f; return f }()
-        f.timeZone = cal.timeZone
+        f.timeZone = tz
         return f.string(from: d)
     }
 }
@@ -295,11 +295,13 @@ func quarterStart(_ d: Date) -> Date {
 struct Soon: Equatable { let title: String; let calendarID: String; let lead: String; let big: String; let tail: String; let dim: Bool }
 
 // The next event, the next all-day event (the next big day), and the event under way now.
+// "5 min", "2 h", "5 h 28 min" (also the menu bar's "What's next").
+func span(_ s: TimeInterval) -> String {
+    let m = max(1, Int(s / 60)), h = m / 60, r = m % 60
+    return h == 0 ? "\(m) min" : r == 0 ? "\(h) h" : "\(h) h \(r) min"
+}
+
 func comingUp(_ items: [Item], now: Date) -> [Soon] {
-    func span(_ s: TimeInterval) -> String {
-        let m = max(1, Int(s / 60)), h = m / 60, r = m % 60
-        return h == 0 ? "\(m) min" : r == 0 ? "\(h) h" : "\(h) h \(r) min"
-    }
     func days(_ d: Date) -> (String, String) {
         let n = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: d)).day!
         return (n == 1 ? "1 day" : "\(n) days", " · " + dateText(d, "EEEE"))
@@ -495,5 +497,20 @@ func selftest() -> Int32 {
     }
 
     print(fails == 0 ? "selftest: all passed" : "selftest: \(fails) failed")
+    // Phase 6: alerts, time zones, menu bar words
+    expect(startWord(at(10, 26, 10), now: at(10, 26, 10).addingTimeInterval(-295)) == "IN 5 MIN", "5 min before reads IN 5 MIN")
+    expect(startWord(at(10, 26, 10), now: at(10, 26, 10).addingTimeInterval(5)) == "STARTING NOW", "starting now")
+    expect(startWord(at(10, 26, 10), now: at(10, 26, 10, 5)) == "STARTED 5 MIN AGO", "after a snooze")
+    let tenAM = ev("work", at(10, 26, 10), at(10, 26, 11))
+    expect(fullScreenDue([tenAM], from: at(10, 26, 9, 54).addingTimeInterval(55), to: at(10, 26, 9, 55).addingTimeInterval(5), lead: 5) { _ in true }.count == 1, "full alert 5 min before")
+    expect(fullScreenDue([tenAM], from: at(10, 26, 10), to: at(10, 26, 10).addingTimeInterval(10), lead: 0) { _ in true }.isEmpty, "a check landing exactly on the start shows it once, not twice")
+    expect(fullScreenDue([tenAM], from: at(10, 26, 9, 59), to: at(10, 26, 10), lead: 0) { $0 != "work" }.isEmpty, "only the picked calendars")
+    expect(zoneDiff(TimeZone(identifier: "Asia/Kolkata")!, at: now) == "11 h 30 min ahead", "half-hour zone")
+    expect(zoneDiff(TimeZone(identifier: "America/Costa_Rica")!, at: now) == "same time", "same zone")
+    expect(zoneOffset(TimeZone(identifier: "America/Los_Angeles")!, at: now) == "-1 h", "zone behind")
+    expect(menuWords(2, now: now, today: []) == "W44", "week number in the menu bar")
+    expect(menuWords(3, now: now, today: [ev("work", at(10, 26, 9, 46).addingTimeInterval(-1), at(10, 26, 11))]) != nil, "what's next")
+    expect(menuWords(3, now: now, today: []) == nil, "a clear day shows the icon alone")
+    expect(keySymbols("Control Option Space") == "⌃⌥Space", "quick add keys")
     return fails == 0 ? 0 : 1
 }

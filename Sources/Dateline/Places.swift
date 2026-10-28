@@ -264,7 +264,7 @@ final class Trips {
             let c = UNMutableNotificationContent()
             c.title = "Time to leave for \(it.title)"
             c.body = "\(m) min drive to \(it.place). Leave now to arrive at \(timeText(it.start, short: true))."
-            c.sound = .default
+            c.sound = nil  // Dateline plays the sound picked in Settings, Alerts
             c.categoryIdentifier = "leave"
             c.userInfo = ["lat": it.geo!.lat, "lon": it.geo!.lon, "place": it.place]
             let t = UNCalendarNotificationTrigger(dateMatching: cal.dateComponents([.year, .month, .day, .hour, .minute], from: at), repeats: false)
@@ -301,6 +301,7 @@ final class LeaveAlerts: NSObject, UNUserNotificationCenterDelegate {
             }
         case "snooze":
             try? await c.add(UNNotificationRequest(identifier: "snooze|" + UUID().uuidString, content: n.content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 300, repeats: false)))
+            await MainActor.run { DispatchQueue.main.asyncAfter(deadline: .now() + 300) { Alerts.play("leave") } }
         default: break
         }
     }

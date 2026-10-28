@@ -52,6 +52,7 @@ struct Key: View {
 struct MainView: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         HStack(spacing: 0) {
@@ -98,7 +99,7 @@ struct MainView: View {
         .id(app.look)  // shortcut: rebuilds the whole window (scroll resets); make Look observable if changing it while working gets annoying. Look settings are read while drawing, so a change redraws the whole window
         .sheet(isPresented: $app.showShortcuts) { ShortcutList(app: app) }
         .sheet(isPresented: $app.mapOpen) { PlacesMap(app: app, store: store) }
-        .onAppear { app.planTravel() }
+        .onAppear { app.planTravel(); app.openMain = { [openWindow] in openWindow(id: "main") } }
         .onChange(of: store.soon) { _, _ in app.planTravel() }
         .sheet(item: $app.confirmDelete) { it in ConfirmDelete(app: app, store: store, item: it) }
         .sheet(item: $app.editingSet) { s in SetEditor(app: app, store: store, draft: s) }
@@ -161,6 +162,7 @@ struct Sidebar: View {
                         .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Palette.line))
                         .padding(.horizontal, 8).padding(.top, 12)
                     }
+                    if Zones.card && !Zones.list.isEmpty { ZoneCard(now: app.now) }
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Uses your Mac's accounts").font(.ui(12, weight: .semibold))
                         Text("Shows the calendars already set up in your Mac's settings. No separate sign-ins.").foregroundStyle(Palette.text2)
@@ -592,6 +594,9 @@ struct SettingsView: View {
             QuickSettings(app: app).tabItem { Label("Quick add", systemImage: "plus.square") }
             LookSettings(app: app).tabItem { Label("Look", systemImage: "paintpalette") }
             WeekSettings(app: app).tabItem { Label("Week", systemImage: "calendar") }
+            AlertSettings(app: app, store: app.store).tabItem { Label("Alerts", systemImage: "bell") }
+            ZoneSettings(app: app).tabItem { Label("Time zones", systemImage: "globe") }
+            MenuBarSettings(app: app).tabItem { Label("Menu bar", systemImage: "menubar.rectangle") }
         }
     }
 }

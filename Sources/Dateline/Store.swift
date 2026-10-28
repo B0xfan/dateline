@@ -31,6 +31,7 @@ struct Item: Identifiable, Equatable {
     var geo: Geo? = nil  // where the place is on the map (Phase 5); saved in the calendar with the place, so the phone sees it too
     // Phase 5 travel, kept by Dateline on this Mac: no drive time, the leave alert (nil = the Settings default), where the drive starts.
     var noTravel = false, leave: Bool? = nil, from: From = .here
+    var alerts: [Date] = []  // when the calendar's own alerts go off (Phase 6 plays the picked sound with them)
     var shownTitle: String { emoji.isEmpty ? title : emoji + " " + title }
 }
 
@@ -217,7 +218,9 @@ final class Store: ObservableObject {
         return Item(id: (e.eventIdentifier ?? UUID().uuidString) + occ,
                     calendarID: e.calendar.calendarIdentifier, title: e.title ?? "", start: e.startDate, end: e.endDate,
                     allDay: e.isAllDay, place: e.location ?? "", notes: e.notes ?? "", showAs: s,
-                    geo: e.structuredLocation?.geoLocation.map { Geo(lat: $0.coordinate.latitude, lon: $0.coordinate.longitude) })
+                    geo: e.structuredLocation?.geoLocation.map { Geo(lat: $0.coordinate.latitude, lon: $0.coordinate.longitude) },
+                    alerts: (e.alarms ?? []).filter { $0.proximity == .none && ($0.type == .display || $0.type == .audio) && !(e.hasRecurrenceRules && $0.absoluteDate != nil) }
+                        .map { $0.absoluteDate ?? e.startDate.addingTimeInterval($0.relativeOffset) })
     }
 
     private func ekEvent(_ it: Item) -> EKEvent? {

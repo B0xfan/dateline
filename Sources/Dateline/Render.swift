@@ -9,7 +9,7 @@ import AppKit
     let today = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 9, minute: 41))!  // the mockup's "today"
     sampleToday = today
     Here.shared.spot = tamarindo  // the mockups' sunrise and sunset; never the Mac's own location
-    Look.reset(); WorkWeek.reset()  // pictures always use the normal look and the mockup's week, and never change the saved ones
+    Look.reset(); WorkWeek.reset(); Alerts.reset(); Zones.reset(); MenuIcon.reset()  // pictures always use the normal look and the mockup's week, and never change the saved ones
     var ok = true
     for dark in [false, true] {
         let tag = dark ? "dark" : "light"
@@ -47,6 +47,14 @@ import AppKit
             ok = save(SetEditor(app: a, store: a.store, draft: a.store.sets[1]).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/set-editor-\(tag).png") && ok
             ok = save(LookSettings(app: a).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/look-\(tag).png") && ok
             ok = save(WeekSettings(app: a).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/week-settings-\(tag).png") && ok
+            ok = save(AlertSettings(app: a, store: a.store).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/alert-settings-\(tag).png") && ok
+            ok = save(ZoneSettings(app: a).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/zone-settings-\(tag).png") && ok
+            ok = save(MenuBarSettings(app: a).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/menubar-settings-\(tag).png") && ok
+            let soon = a.store.soon.filter { cal.isDate($0.start, inSameDayAs: today) && !$0.allDay }.sorted { $0.start < $1.start }
+            if let first = soon.first {
+                ok = save(FullAlertView(items: [first], store: a.store, now: first.start, next: soon.dropFirst().first, close: {}, snooze: {}, open: { _ in }).frame(width: 1380, height: 800), dark: dark, to: "\(dir)/full-alert-\(tag).png") && ok
+            }
+            ok = save(MenuDrop(app: a, store: a.store, now: today, items: soon, close: {}).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/menu-drop-\(tag).png") && ok
             ok = save(EmojiPicker(recent: ["🏠", "🦷"]) { _ in }.background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/emoji-\(tag).png") && ok
         }
         let app = AppState(store: Store(sample: true), today: today)
