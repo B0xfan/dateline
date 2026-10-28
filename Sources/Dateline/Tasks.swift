@@ -36,6 +36,17 @@ func taskGroup(_ t: ToDo, now: Date) -> TaskGroup {
     return day <= addDays(today, 7) ? .week : .later
 }
 
+// The No date part of the task list: one folded list per Reminders list, biggest first (approved folded-lists mockup).
+func noDateLists(_ ts: [ToDo], title: (String) -> String) -> [(id: String, rows: [ToDo])] {
+    Dictionary(grouping: ts, by: \.listID)
+        .map { (id: $0.key, rows: $0.value.sorted { $0.done != $1.done ? !$0.done : $0.title.localizedStandardCompare($1.title) == .orderedAscending }) }
+        .sorted { a, b in
+            if a.rows.count != b.rows.count { return a.rows.count > b.rows.count }
+            let o = title(a.id).localizedStandardCompare(title(b.id))
+            return o == .orderedSame ? a.id < b.id : o == .orderedAscending  // two lists with one name keep a steady order
+        }
+}
+
 func isOverdue(_ t: ToDo, now: Date) -> Bool { !t.done && t.due.map { cal.startOfDay(for: $0) < cal.startOfDay(for: now) } == true }
 
 // The day a task shows on in the calendar's Tasks row; nil when it has no date or shows in the grid at its time instead.
@@ -294,6 +305,7 @@ struct TaskList: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
     @FocusState private var adding: Bool
+    @State private var showAll: Set<String> = []  // open lists showing past their first 20 tasks
     var body: some View {
         let filter = app.taskListFilter.flatMap(store.taskList)
         let list = app.shownTodos.filter { filter == nil || $0.listID == filter!.id }
@@ -332,8 +344,12 @@ struct TaskList: View {
                                     Text(g.rawValue.uppercased()).font(.ui(11, weight: .semibold)).foregroundStyle(g == .overdue ? Palette.now : Palette.text3)
                                     Text("\(rows.count)").font(.ui(11)).foregroundStyle(Palette.text3)
                                 }.padding(.top, 14).padding(.bottom, 4)
-                                ForEach(rows.sorted { ($0.done ? 1 : 0, $0.due ?? .distantFuture, $0.title) < ($1.done ? 1 : 0, $1.due ?? .distantFuture, $1.title) }) { t in
-                                    row(t, late: g == .overdue)
+                                if g == .none && filter == nil {
+                                    folded(rows)
+                                } else {
+                                    ForEach(rows.sorted { ($0.done ? 1 : 0, $0.due ?? .distantFuture, $0.title) < ($1.done ? 1 : 0, $1.due ?? .distantFuture, $1.title) }) { t in
+                                        row(t, late: g == .overdue, showList: filter == nil)
+                                    }
                                 }
                             }
                         }
@@ -351,9 +367,38 @@ struct TaskList: View {
         .background(Palette.win)
     }
 
-    func row(_ t: ToDo, late: Bool) -> some View {
+    // No-date tasks with every list shown: each list folds, and remembers whether it was left open.
+    func folded(_ rows: [ToDo]) -> some View {
+        ForEach(noDateLists(rows) { store.taskList($0)?.title ?? "Other" }, id: \.id) { l in
+            let info = store.taskList(l.id), open = app.openTaskLists.contains(l.id), all = showAll.contains(l.id)
+            Button {
+                if open { app.openTaskLists.remove(l.id); showAll.remove(l.id) } else { app.openTaskLists.insert(l.id) }
+            } label: { HStack(spacing: 8) {
+                Image(systemName: "chevron.right").font(.ui(9, weight: .semibold)).foregroundStyle(Palette.text3)
+                    .rotationEffect(.degrees(open ? 90 : 0)).frame(width: 12)
+                RoundedRectangle(cornerRadius: 3).fill(info?.color ?? .gray).frame(width: 10, height: 10)
+                Text(info?.title ?? "Other").lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(l.rows.count)").font(.ui(12)).foregroundStyle(Palette.text3)
+            }
+            .padding(.vertical, 6).padding(.horizontal, 4)
+            .contentShape(Rectangle()) }
+            .buttonStyle(.plain).accessibilityValue(open ? "open" : "folded")
+            .help(open ? "Fold this list" : "Show this list's tasks")
+            if open {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(all ? l.rows : Array(l.rows.prefix(20))) { t in row(t, late: false, showList: false) }
+                    if l.rows.count > 20 && !all {
+                        Button("Show all \(l.rows.count)") { showAll.insert(l.id) }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.accent).padding(.vertical, 4)
+                    }
+                }.padding(.leading, 22).padding(.bottom, 4)
+            }
+        }
+    }
+
+    func row(_ t: ToDo, late: Bool, showList: Bool = true) -> some View {
         let l = store.taskList(t.listID)
-        let sub = [l?.title ?? "", t.place.map { (t.remind == .arriving ? "when I arrive at " : t.remind == .leaving ? "when I leave " : "") + $0.name } ?? ""]
+        let sub = [showList ? l?.title ?? "" : "", t.place.map { (t.remind == .arriving ? "when I arrive at " : t.remind == .leaving ? "when I leave " : "") + $0.name } ?? ""]
             .filter { !$0.isEmpty }.joined(separator: " · ")
         let right = t.due.map { taskGroup(t, now: app.now) == .today ? (t.timed ? timeText($0, short: true) : "") : shortDay($0, now: app.now) } ?? ""
         return HStack(alignment: .top, spacing: 8) {
@@ -363,7 +408,7 @@ struct TaskList: View {
                     Text(t.title).strikethrough(t.done).foregroundStyle(t.done ? Palette.text3 : Palette.text)
                     if t.place != nil && t.remind != .time { Text("📍").font(.ui(10)) }
                 }
-                Text(sub).font(.ui(11.5)).foregroundStyle(Palette.text3).lineLimit(1)
+                if !sub.isEmpty { Text(sub).font(.ui(11.5)).foregroundStyle(Palette.text3).lineLimit(1) }
             }
             Spacer(minLength: 4)
             Text(right).font(.ui(11.5)).foregroundStyle(late ? Palette.now : Palette.text3)

@@ -439,6 +439,10 @@ func selftest() -> Int32 {
     expect(taskGroup(td(at(10, 23, 0)), now: now) == .overdue && taskGroup(td(at(10, 26, 0)), now: now) == .today
            && taskGroup(td(at(11, 2, 0)), now: now) == .week && taskGroup(td(at(11, 3, 0)), now: now) == .later && taskGroup(td(nil), now: now) == .none, "task groups")
     expect(taskGroup(td(at(10, 23, 0), done: true), now: now) == .today, "a done task is never overdue")
+    func nd(_ list: String, _ title: String, done: Bool = false) -> ToDo { ToDo(id: list + title, listID: list, title: title, done: done) }
+    let folds = noDateLists([nd("b", "Rice"), nd("a", "Eggs"), nd("c", "zinc"), nd("c", "Apples", done: true), nd("c", "Milk"), nd("d", "Mop"), nd("e", "Rake")]) { ["a": "Groceries", "b": "garden", "c": "Shopping", "d": "Condo", "e": "Condo"][$0]! }
+    expect(folds.map(\.id) == ["c", "d", "e", "b", "a"], "no-date lists: biggest first, then A to Z by name ignoring case, same names in a steady order")
+    expect(folds[0].rows.map(\.title) == ["Milk", "zinc", "Apples"], "no-date lists: open tasks A to Z, done ones last")
     expect(taskRowDay(td(at(10, 23, 0)), now: now) == at(10, 26, 0) && taskRowDay(td(at(10, 23, 15), timed: true), now: now) == at(10, 26, 0), "an unfinished task moves to today")
     expect(taskRowDay(td(at(10, 27, 11), timed: true), now: now) == nil && taskRowDay(td(at(10, 27, 0)), now: now) == at(10, 27, 0), "a timed task shows in the grid, not the row")
     expect(taskRowDay(td(at(10, 23, 0), done: true), now: now) == at(10, 23, 0), "a ticked task stays on its own day")

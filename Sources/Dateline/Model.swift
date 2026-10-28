@@ -20,6 +20,8 @@ final class AppState: ObservableObject {
     @Published var taskListFilter: String?
     @Published var showDone = false
     @Published var hideNoDate = false
+    // Reminders lists left unfolded in the task list's No date part; kept across restarts.
+    @Published var openTaskLists = Set(UserDefaults.standard.stringArray(forKey: "openTaskLists") ?? []) { didSet { if Look.saves { UserDefaults.standard.set(Array(openTaskLists), forKey: "openTaskLists") } } }
     @Published var addText = ""
     @Published var addFocused = false
     @Published var addCalendarID: String?
@@ -246,7 +248,9 @@ final class AppState: ObservableObject {
         if p.dateGiven { t.due = p.allDay ? cal.startOfDay(for: p.start) : p.start; t.timed = !p.allDay }
         switch store.addTask(t, listID: taskListFilter) {
         case .failure(let f): error = f.message
-        case .success(let added): taskText = ""; undoStack.append { [weak self] in self?.store.deleteTask(added) }
+        case .success(let added):
+            taskText = ""; undoStack.append { [weak self] in self?.store.deleteTask(added) }
+            if added.due == nil { openTaskLists.insert(added.listID) }  // so a new no-date task is not hidden in a folded list
         }
     }
 

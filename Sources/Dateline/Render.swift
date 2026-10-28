@@ -15,6 +15,7 @@ import AppKit
         let tag = dark ? "dark" : "light"
         func shot(_ name: String, wait: Double = 0.2, width: CGFloat = 1380, _ setup: (AppState) -> Void) {
             let app = AppState(store: Store(sample: true), today: today)
+            app.openTaskLists = []  // never the folds saved on this Mac
             setup(app)
             // A sheet (the places map) does not draw off-screen, so it is drawn on its own.
             let view = app.mapOpen ? AnyView(PlacesMap(app: app, store: app.store)) : AnyView(MainView(app: app, store: app.store))
@@ -41,6 +42,12 @@ import AppKit
         shot("set-narrow", width: 980) { a in a.mode = .week; a.days = 7; a.pickSet(3) }
         shot("places-map", wait: 4) { $0.mode = .week; $0.days = 7; $0.mapOpen = true }
         shot("task-list") { $0.mode = .week; $0.days = 5; $0.tasksOpen = true }
+        // Folded no-date lists (approved mockup): Groceries open past 20 tasks, so "Show all" shows; the others folded.
+        shot("task-folded") { a in a.mode = .week; a.days = 5; a.tasksOpen = true; a.openTaskLists = ["r-groc"]
+            for i in 1...22 { a.store.todos.append(ToDo(id: "g\(i)", listID: "r-groc", title: "Grocery item \(i)")) }
+            for t in ["Fix the gate", "Paint the balcony"] { a.store.todos.append(ToDo(id: t, listID: "r-condo", title: t)) } }
+        shot("task-one-list") { a in a.mode = .week; a.days = 5; a.tasksOpen = true; a.taskListFilter = "r-condo"
+            for t in ["Fix the gate", "Paint the balcony"] { a.store.todos.append(ToDo(id: t, listID: "r-condo", title: t)) } }
         shot("task-details") { a in a.mode = .week; a.days = 5; a.openTaskID = a.store.todos.first { $0.title == "Buy AC filter" }?.id }
         do {
             let a = AppState(store: Store(sample: true), today: today)
