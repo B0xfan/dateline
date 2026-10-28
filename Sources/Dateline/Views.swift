@@ -56,8 +56,10 @@ struct MainView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Sidebar(app: app, store: store).frame(width: 236)
-            Divider().overlay(Palette.line)
+            if app.sidebarOpen {
+                Sidebar(app: app, store: store).frame(width: 236)
+                Divider().overlay(Palette.line)
+            }
             VStack(spacing: 0) {
                 Toolbar(app: app, store: store)
                 ZStack(alignment: .bottom) {
@@ -347,10 +349,14 @@ struct Toolbar: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
     @State private var width: CGFloat = 1000
+    @State private var fullScreen = false
     var body: some View {
         // A tight bar first drops the set's name and the Days word; the smallest window's compact bar drops the rest, so the add box and every button stay on screen.
         bar(compact: width < 800, roomy: width >= 1200)
-        .padding(.horizontal, 14).frame(height: 52)
+        // With the sidebar gone, the window's close/minimize/zoom buttons sit over the bar's start (not in full screen, where they are not drawn).
+        .padding(.leading, app.sidebarOpen || fullScreen ? 14 : 80).padding(.trailing, 14).frame(height: 52)
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in fullScreen = true }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in fullScreen = false }
         // Still too wide: the end of the bar is cut, never the sidebar or the window.
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
@@ -359,7 +365,9 @@ struct Toolbar: View {
     }
 
     func bar(compact: Bool, roomy: Bool) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: compact ? 6 : 10) {  // tighter at the smallest window, so the sidebar button still leaves room for the add box
+            Button { app.sidebarOpen.toggle() } label: { Image(systemName: "sidebar.left") }
+                .buttonStyle(TButton(icon: true)).fixedSize().help(app.sidebarOpen ? "Hide calendars (S)" : "Show calendars (S)")
             Button("Today") { app.goToday() }.buttonStyle(TButton()).fixedSize()
             HStack(spacing: 4) {
                 Button { app.step(-1) } label: { Image(systemName: "chevron.left") }.buttonStyle(TButton(icon: true))
@@ -671,7 +679,7 @@ struct ShortcutList: View {
         ("New event", "N"), ("Go to today", "T"), ("Day view", "1"), ("Previous", "Left"), ("Week view", "2"), ("Next", "Right"),
         ("Month view", "3"), ("Next or previous event", "Up / Down"), ("Quarter view", "4"), ("Open event", "Return"), ("Year view", "5"),
         ("Delete event", "Delete"), ("Move event 15 min", "Option Up / Down"), ("Copy event", "Option drag"), ("Undo", "Command Z"), ("This list", "?"),
-        ("Quick add from any app", app.quickName), ("All calendars", "Command 1"), ("Calendar sets", "Command 2 to 9"), ("Tasks", "R"), ("Map of places", "P"),
+        ("Quick add from any app", app.quickName), ("All calendars", "Command 1"), ("Calendar sets", "Command 2 to 9"), ("Tasks", "R"), ("Map of places", "P"), ("Hide or show calendars", "S"),
     ] }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

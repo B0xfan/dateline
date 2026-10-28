@@ -20,6 +20,8 @@ final class AppState: ObservableObject {
     @Published var taskListFilter: String?
     @Published var showDone = false
     @Published var hideNoDate = false
+    // The calendars sidebar on the left, hidden with the toolbar's first button or S (John 2026-10-28); kept across restarts.
+    @Published var sidebarOpen = UserDefaults.standard.object(forKey: "sidebarOpen") as? Bool ?? true { didSet { if Look.saves { UserDefaults.standard.set(sidebarOpen, forKey: "sidebarOpen") } } }
     // Reminders lists left unfolded in the task list's No date part; kept across restarts.
     @Published var openTaskLists = Set(UserDefaults.standard.stringArray(forKey: "openTaskLists") ?? []) { didSet { if Look.saves { UserDefaults.standard.set(Array(openTaskLists), forKey: "openTaskLists") } } }
     @Published var addText = ""
@@ -345,6 +347,7 @@ final class AppState: ObservableObject {
         case "t": goToday()
         case "r": tasksOpen.toggle()
         case "p": mapOpen = true
+        case "s": sidebarOpen.toggle()
         case "1": mode = .day
         case "2": mode = .week
         case "3": mode = .month

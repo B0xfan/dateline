@@ -15,7 +15,7 @@ import AppKit
         let tag = dark ? "dark" : "light"
         func shot(_ name: String, wait: Double = 0.2, width: CGFloat = 1380, _ setup: (AppState) -> Void) {
             let app = AppState(store: Store(sample: true), today: today)
-            app.openTaskLists = []  // never the folds saved on this Mac
+            app.openTaskLists = []; app.sidebarOpen = true  // never the folds or sidebar saved on this Mac
             setup(app)
             // A sheet (the places map) does not draw off-screen, so it is drawn on its own.
             let view = app.mapOpen ? AnyView(PlacesMap(app: app, store: app.store)) : AnyView(MainView(app: app, store: app.store))
@@ -40,6 +40,9 @@ import AppKit
         shot("sun-week5") { $0.mode = .week; $0.days = 5 }
         // A set's name in the toolbar at the smallest window: nothing may spill past the window's edges (John's 2026-10-28 bug).
         shot("set-narrow", width: 980) { a in a.mode = .week; a.days = 7; a.pickSet(3) }
+        // The calendars sidebar hidden with the toolbar's first button (John 2026-10-28), at full and smallest width.
+        shot("no-sidebar") { a in a.mode = .week; a.days = 7; a.sidebarOpen = false }
+        shot("no-sidebar-narrow", width: 980) { a in a.mode = .week; a.days = 7; a.sidebarOpen = false; a.tasksOpen = true }
         shot("places-map", wait: 4) { $0.mode = .week; $0.days = 7; $0.mapOpen = true }
         shot("task-list") { $0.mode = .week; $0.days = 5; $0.tasksOpen = true }
         // Folded no-date lists (approved mockup): Groceries open past 20 tasks, so "Show all" shows; the others folded.
