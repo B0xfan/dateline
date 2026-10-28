@@ -7,5 +7,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$(swift build -c release --show-bin-path)/Dateline" "$APP/Contents/MacOS/Dateline"
 cp App/Info.plist "$APP/Contents/Info.plist"
-codesign --force --sign AB33048703517BE9CB52B2E3781C8B1B00C8A64D "$APP"
+ID=AB33048703517BE9CB52B2E3781C8B1B00C8A64D
+# On any other Mac (no such identity) sign ad hoc: it works, but macOS asks for permissions again after each update there.
+security find-identity -v -p codesigning | grep -q "$ID" || ID=-
+codesign --force --sign "$ID" "$APP"
 echo "$APP"
