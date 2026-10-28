@@ -30,7 +30,7 @@ struct DatelineApp: App {
         }
         .defaultSize(width: 1380, height: 800)
         .windowStyle(.hiddenTitleBar)
-        .commands { CommandGroup(replacing: .newItem) {} }
+        .commands { CommandGroup(replacing: .newItem) { Button("Subscribe to Calendar…") { app.openMain?(); app.subscribing = true } } }
         Settings { SettingsView(app: app) }
     }
 }

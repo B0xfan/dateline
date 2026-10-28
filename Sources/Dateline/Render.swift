@@ -55,6 +55,10 @@ import AppKit
                 ok = save(FullAlertView(items: [first], store: a.store, now: first.start, next: soon.dropFirst().first, close: {}, snooze: {}, open: { _ in }).frame(width: 1380, height: 800), dark: dark, to: "\(dir)/full-alert-\(tag).png") && ok
             }
             ok = save(MenuDrop(app: a, store: a.store, now: today, items: soon, close: {}).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/menu-drop-\(tag).png") && ok
+            // Phase 7 (approved mockup): the Subscribe window's two tabs, drawn on their own like the set editor.
+            let addr = "https://calendar.example-school.cr/grade5/schedule.ics"
+            ok = save(SubscribeSheet(app: a, store: a.store, address: addr, name: "Grade 5 schedule", found: (sampleICS, parseICS(sampleICS)), checked: addr).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/subscribe-\(tag).png") && ok
+            ok = save(SubscribeSheet(app: a, store: a.store, tab: 1).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/ready-made-\(tag).png") && ok
             ok = save(EmojiPicker(recent: ["🏠", "🦷"]) { _ in }.background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/emoji-\(tag).png") && ok
         }
         let app = AppState(store: Store(sample: true), today: today)

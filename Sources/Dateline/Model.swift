@@ -31,6 +31,7 @@ final class AppState: ObservableObject {
     var alertCheck = Date()  // Phase 6: alerts are checked from here on
     private var alertTimer: Timer?
     var openMain: (() -> Void)?  // brings the main window back, also after it was closed
+    @Published var subscribing = false  // Phase 7: the Subscribe window
     @Published var editingSet: CalSet?  // the set editor is open on this (a new one when it is not in the list yet)
     @Published var look = 0  // bumped when a Look setting changes, to redraw everything
     @Published var confirmDelete: Item?
@@ -289,7 +290,7 @@ final class AppState: ObservableObject {
         registerQuick()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in self?.now = Date(); if let self { MenuBar.shared.update(self) } } }
         if store.access != .sample { Here.shared.start() }
-        travelTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in Task { @MainActor in Here.shared.refresh(); self?.planTravel() } }
+        travelTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in Task { @MainActor in Here.shared.refresh(); self?.planTravel(); self?.store.refreshSubs() } }
         alertTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in Task { @MainActor in self?.checkAlerts() } }
         MenuBar.shared.update(self)
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in

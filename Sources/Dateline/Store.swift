@@ -96,6 +96,10 @@ final class Store: ObservableObject {
     var taskFetch = 0  // only the newest Reminders read is kept
 
     private var deletedAlarms: [String: [EKAlarm]] = [:]
+    // Phase 7: subscribed and ready-made calendars (Subscribed.swift).
+    @Published var subs: [Sub] = [] { didSet { save(subs, "subscriptions") } }
+    var subParsed: [String: [ICalEvent]] = [:]
+    var subTried: [String: Date] = [:]
     private var extras: [String: Extra] = [:] { didSet { save(extras, "eventExtras") } }
 
     init(sample: Bool) {
@@ -104,6 +108,7 @@ final class Store: ObservableObject {
         if let v: [CalSet] = load("calendarSets") { sets = v }
         if let v: [String] = load("recentEmoji") { recentEmoji = v }
         if let v: [String: Extra] = load("eventExtras") { extras = v }
+        loadSubs()
         requestAccess()
         requestReminders()
     }
@@ -113,7 +118,7 @@ final class Store: ObservableObject {
         guard access != .sample, let data = try? JSONEncoder().encode(v) else { return }
         UserDefaults.standard.set(data, forKey: key)
     }
-    private func load<T: Decodable>(_ key: String) -> T? {
+    func load<T: Decodable>(_ key: String) -> T? {
         UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
     }
 
@@ -136,7 +141,7 @@ final class Store: ObservableObject {
     // A repeating event's occurrences share their extras.
     private func key(_ id: String) -> String { String(resolve(id).split(separator: "|").first ?? "") }
 
-    private func decorated(_ it: Item) -> Item {
+    func decorated(_ it: Item) -> Item {
         guard let x = extras[key(it.id)] else { return it }
         var it = it
         it.emoji = x.emoji; it.color = x.color; it.tags = x.tags
@@ -159,6 +164,7 @@ final class Store: ObservableObject {
                 self.access = ok ? .granted : .denied
                 guard ok else { return }
                 self.reloadCalendars()
+                self.refreshSubs()
                 // Changes made in Apple Calendar or on another device show up here straight away.
                 self.observer = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: self.ek, queue: .main) { _ in
                     Task { @MainActor in self.reloadCalendars() }
@@ -171,10 +177,13 @@ final class Store: ObservableObject {
         calendars = ek.calendars(for: .event)
             .sorted { ($0.source.title, $0.title) < ($1.source.title, $1.title) }
             .map { CalInfo(id: $0.calendarIdentifier, title: $0.title, account: $0.source.title, color: Color(nsColor: $0.color), writable: $0.allowsContentModifications) }
+            + subInfos
         defaultCalendarID = ek.defaultCalendarForNewEvents?.calendarIdentifier
         pastCache = nil
         fetch()
     }
+
+    func refetch() { fetch() }
 
     // Loads the events between two dates (the visible view plus a margin).
     func show(from: Date, to: Date) {
@@ -186,16 +195,17 @@ final class Store: ObservableObject {
         let (a, b) = range
         let now = sampleToday ?? Date(), later = now.addingTimeInterval(120 * 86400)
         items = between(a, b)
-        if access == .sample { soon = sample.filter { $0.end > now && $0.start < later }; return }
-        guard access == .granted else { return }
-        soon = ek.events(matching: ek.predicateForEvents(withStart: now.addingTimeInterval(-86400), end: later, calendars: nil)).map { decorated(Self.item($0)) }
+        let subSoon = subEvents(from: now.addingTimeInterval(-86400), to: later).filter { sub($0.calendarID)?.kind == nil }  // not a sunrise line every day
+        if access == .sample { soon = sample.filter { $0.end > now && $0.start < later } + subSoon; return }
+        guard access == .granted else { soon = subSoon; return }  // subscribed calendars need no calendar access
+        soon = ek.events(matching: ek.predicateForEvents(withStart: now.addingTimeInterval(-86400), end: later, calendars: nil)).map { decorated(Self.item($0)) } + subSoon
     }
 
     // Events between two dates, read without changing what the window shows (the map of places).
     func between(_ a: Date, _ b: Date) -> [Item] {
-        if access == .sample { return sample.filter { $0.end > a && $0.start < b }.sorted { $0.start < $1.start } }
-        guard access == .granted else { return [] }
-        return ek.events(matching: ek.predicateForEvents(withStart: a, end: b, calendars: nil)).map { decorated(Self.item($0)) }.sorted { $0.start < $1.start }
+        if access == .sample { return (sample.filter { $0.end > a && $0.start < b } + subEvents(from: a, to: b)).sorted { $0.start < $1.start } }
+        guard access == .granted else { return subEvents(from: a, to: b).sorted { $0.start < $1.start } }
+        return (ek.events(matching: ek.predicateForEvents(withStart: a, end: b, calendars: nil)).map { decorated(Self.item($0)) } + subEvents(from: a, to: b)).sorted { $0.start < $1.start }
     }
 
     // The last year's events, one per title, newest first (quick add's "From your past events"). Kept until the calendars change.
@@ -275,6 +285,7 @@ final class Store: ObservableObject {
         }
         // Only Dateline's extras changed (also on read-only calendars and invites): nothing goes to the calendar.
         if let old = items.first(where: { $0.id == it.id }), sameInCalendar(old, it) { setExtras(it); fetch(); return nil }
+        if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be changed.") }
         guard let e = ekEvent(it) else { return Failure("That event is gone.") }
         if e.calendar.calendarIdentifier != it.calendarID, let c = ek.calendar(withIdentifier: it.calendarID) { e.calendar = c }
         apply(it, to: e)
@@ -293,6 +304,7 @@ final class Store: ObservableObject {
             guard sample.contains(where: { $0.id == resolve(it.id) }) else { return Failure("That event is gone.") }
             sample.removeAll { $0.id == resolve(it.id) }; fetch(); return nil
         }
+        if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be deleted. Remove the whole calendar from the sidebar instead.") }
         guard let e = ekEvent(it) else { return Failure("That event is gone.") }
         let alarms = e.alarms ?? [], oneTime = !e.hasRecurrenceRules
         do { try ek.remove(e, span: series ? .futureEvents : .thisEvent, commit: true) } catch { return Failure(error.localizedDescription) }
@@ -314,7 +326,7 @@ final class Store: ObservableObject {
     func duplicate(_ it: Item) -> Item? {
         if access == .sample { var back = it; back.id = UUID().uuidString; sample.append(back); fetch(); return back }
         var p = Parsed(start: it.start, end: it.end); p.title = it.title; p.allDay = it.allDay; p.place = it.place; p.geo = it.geo; p.showAs = it.showAs
-        guard case .success(let added) = add(p, calendarID: it.calendarID) else { return nil }
+        guard case .success(let added) = add(p, calendarID: isSub(it.calendarID) ? nil : it.calendarID) else { return nil }  // a copy of a subscribed event goes to your own calendar
         var back = added
         back.notes = it.notes; back.emoji = it.emoji; back.color = it.color; back.tags = it.tags; back.rich = it.rich
         back.noTravel = it.noTravel; back.leave = it.leave; back.from = it.from
@@ -387,6 +399,9 @@ final class Store: ObservableObject {
         ev("personal", "Dinner with Ana", 4, 19, 0, 120, place: "Casa Luna, Tamarindo", notes: "Table on the terrace", geo: Geo(lat: 10.3046, lon: -85.8405))
         ev("family", "Beach day", 5, 9, 0, 240, .free, place: "Playa Grande", geo: Geo(lat: 10.3329, lon: -85.8586))
         loadSampleTasks(mon)
+        subs = [Sub(id: "sub-sample", url: "https://calendar.example-school.cr/grade5/schedule.ics", name: "Grade 5 schedule", color: 3, updated: sampleToday)]
+        subParsed["sub-sample"] = parseICS(sampleICS)
+        calendars += subInfos
         sample.append(Item(id: "s-ad", calendarID: "school", title: "Holiday: no school", start: addDays(mon, 2), end: addDays(mon, 3), allDay: true, place: "", notes: "", showAs: .free))
         fetch()
     }

@@ -496,7 +496,6 @@ func selftest() -> Int32 {
         sampleToday = nil
     }
 
-    print(fails == 0 ? "selftest: all passed" : "selftest: \(fails) failed")
     // Phase 6: alerts, time zones, menu bar words
     expect(startWord(at(10, 26, 10), now: at(10, 26, 10).addingTimeInterval(-295)) == "IN 5 MIN", "5 min before reads IN 5 MIN")
     expect(startWord(at(10, 26, 10), now: at(10, 26, 10).addingTimeInterval(5)) == "STARTING NOW", "starting now")
@@ -512,5 +511,8 @@ func selftest() -> Int32 {
     expect(menuWords(3, now: now, today: [ev("work", at(10, 26, 9, 46).addingTimeInterval(-1), at(10, 26, 11))]) != nil, "what's next")
     expect(menuWords(3, now: now, today: []) == nil, "a clear day shows the icon alone")
     expect(keySymbols("Control Option Space") == "⌃⌥Space", "quick add keys")
+    // Phase 7: subscribed calendars
+    subSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
+    print(fails == 0 ? "selftest: all passed" : "selftest: \(fails) failed")
     return fails == 0 ? 0 : 1
 }

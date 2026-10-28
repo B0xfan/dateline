@@ -103,6 +103,7 @@ struct MainView: View {
         .onChange(of: store.soon) { _, _ in app.planTravel() }
         .sheet(item: $app.confirmDelete) { it in ConfirmDelete(app: app, store: store, item: it) }
         .sheet(item: $app.editingSet) { s in SetEditor(app: app, store: store, draft: s) }
+        .sheet(isPresented: $app.subscribing) { SubscribeSheet(app: app, store: store) }
         .alert("Couldn't save", isPresented: Binding(get: { app.error != nil }, set: { if !$0 { app.error = nil } })) {
             Button("OK") { app.error = nil }
         } message: { Text(app.error ?? "") }
@@ -131,11 +132,12 @@ struct Sidebar: View {
                 VStack(alignment: .leading, spacing: 2) {
                     SetList(app: app, store: store)
                     Text("Calendars on this Mac").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 4)
-                    let groups = Dictionary(grouping: store.calendars, by: \.account)
+                    let groups = Dictionary(grouping: store.calendars.filter { !isSub($0.id) }, by: \.account)
                     ForEach(groups.keys.sorted(), id: \.self) { acct in
                         Text(acct).font(.ui(11)).foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 2)
                         ForEach(groups[acct]!) { c in row(c) }
                     }
+                    SubscribedList(app: app, store: store) { AnyView(row($0, trailing: $1)) }
                     if !store.lists.isEmpty {
                         Text("Reminders lists").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).textCase(.uppercase).padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 4)
                         ForEach(store.lists) { l in listRow(l) }
@@ -193,15 +195,16 @@ struct Sidebar: View {
         }.buttonStyle(.plain)
     }
 
-    func row(_ c: CalInfo) -> some View {
+    func row(_ c: CalInfo, trailing: AnyView? = nil) -> some View {
         let on = !store.hidden.contains(c.id)
         return Button {
             if on { store.hidden.insert(c.id) } else { store.hidden.remove(c.id) }
         } label: {
             HStack(spacing: 8) {
                 Tick(on: on, color: c.color)
-                Text(c.title).lineLimit(1)
-                Spacer()
+                Text(c.title).lineLimit(1).layoutPriority(1)
+                Spacer(minLength: 4)
+                if let trailing { trailing }
             }.padding(.horizontal, 8).padding(.vertical, 4 * Look.packFactor).contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
