@@ -81,9 +81,12 @@ enum AccountSecrets {
 final class KeepSignInHome: NSObject, URLSessionTaskDelegate {
     func urlSession(_ s: URLSession, task: URLSessionTask, willPerformHTTPRedirection r: HTTPURLResponse, newRequest: URLRequest) async -> URLRequest? {
         var n = newRequest
-        // Same site = same last two name parts (p12-caldav.icloud.com and caldav.icloud.com), so iCloud's own hops keep working.
-        func site(_ u: URL?) -> String { (u?.host ?? "").split(separator: ".").suffix(2).joined(separator: ".") }
-        if site(n.url) != site(task.originalRequest?.url) || n.url?.scheme != task.originalRequest?.url?.scheme { n.setValue(nil, forHTTPHeaderField: "Authorization") }
+        // Kept only for the same server, or a hop between Apple's own iCloud servers (caldav.icloud.com to p12-caldav.icloud.com).
+        let from = task.originalRequest?.url, to = n.url
+        func apple(_ h: String) -> Bool { h == "icloud.com" || h.hasSuffix(".icloud.com") }
+        let f = from?.host?.lowercased() ?? "", t = to?.host?.lowercased() ?? ""
+        let same = !t.isEmpty && to?.scheme == from?.scheme && to?.port == from?.port && (t == f || (to?.scheme == "https" && apple(f) && apple(t)))
+        if !same { n.setValue(nil, forHTTPHeaderField: "Authorization") }
         return n
     }
 }
