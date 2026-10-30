@@ -207,7 +207,7 @@ func davEventsIn(_ c: AccCal, auth: String, from a: Date, to b: Date) async thro
 // MARK: writing calendar files
 
 private func icsEsc(_ s: String) -> String {
-    s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: ";", with: "\\;").replacingOccurrences(of: ",", with: "\\,").replacingOccurrences(of: "\n", with: "\\n")
+    s.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: ";", with: "\\;").replacingOccurrences(of: ",", with: "\\,").replacingOccurrences(of: "\n", with: "\\n")
 }
 
 private func icsDay(_ d: Date) -> String {
