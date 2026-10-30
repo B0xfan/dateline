@@ -837,8 +837,9 @@ struct AccountSettings: View {
                 }
                 .background(Palette.win).overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.text3.opacity(0.3)))
                 HStack(spacing: 0) {
-                    Menu { Button("iCloud…") { adding = "icloud"; picked = nil; note = "" }; Button("Google…") { google() } } label: { Image(systemName: "plus") }
-                        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 26, height: 20)
+                    // Plain button back to the add choices; a Menu here was easy to miss.
+                    Button { picked = nil; adding = nil; note = "" } label: { Image(systemName: "plus") }
+                        .buttonStyle(.borderless).frame(width: 26, height: 20).help("Add an account")
                     Button { if let p = picked, p != "mac" { store.removeAccount(p); picked = nil } } label: { Image(systemName: "minus") }
                         .buttonStyle(.borderless).frame(width: 26, height: 20).disabled(picked == nil || picked == "mac")
                     Spacer()
@@ -851,6 +852,7 @@ struct AccountSettings: View {
                 else if picked == "mac" {
                     Text("Calendars set up in the Mac's own settings keep working as before. If an account is also signed in here, Dateline shows its calendars once, from here.")
                         .font(.system(size: 12)).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)
+                    addChoices.padding(.top, 6)
                 } else { addChoices }
                 if !note.isEmpty { Text(note).font(.system(size: 11.5)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
                 Spacer()

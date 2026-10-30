@@ -68,6 +68,7 @@ import AppKit
             ok = save(AccountSettings(store: a.store).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-\(tag).png") && ok
             a.store.accounts = [Account(kind: "icloud", email: "john@icloud.com", cals: [AccCal(id: "acc-x-1", remote: "", title: "Home", color: "#FF2968", writable: true), AccCal(id: "acc-x-2", remote: "", title: "Family", color: "#34C759", writable: false)], synced: today)]
             ok = save(AccountSettings(store: a.store, picked: a.store.accounts[0].id).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-icloud-\(tag).png") && ok
+            ok = save(AccountSettings(store: a.store, picked: "mac").background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-mac-\(tag).png") && ok
             ok = save(AccountSettings(store: a.store, adding: "icloud").background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-add-\(tag).png") && ok
             a.store.accounts = []
             ok = save(UpdateSettings().background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/update-settings-\(tag).png") && ok
