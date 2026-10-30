@@ -428,6 +428,15 @@ func selftest() -> Int32 {
     expect(notesPlain(linked) == "Parts list (https://x.com/a) here", "a link keeps its address in the plain text")
     expect(activeSet([CalSet(name: "W", calendars: ["w", "gone"])], calendars: ["w", "p"], hidden: ["p"])?.name == "W", "a set matches with a calendar gone from the Mac")
     expect(activeSet([CalSet(name: "W", calendars: ["w"])], calendars: ["w", "p"], hidden: []) == nil, "no set matches when all are shown")
+    func callIn(link: String = "", place: String = "", notes: String = "") -> String? {
+        callLink(Item(id: "", calendarID: "", title: "", start: now, end: now, allDay: false, place: place, notes: notes, showAs: .busy, link: link))?.service
+    }
+    expect(callIn(notes: "Join: https://us02web.zoom.us/j/8123456789?pwd=abc") == "Zoom", "a Zoom link in the notes")
+    expect(callIn(place: "meet.google.com/xkd-pqrv-tmn") == "Google Meet", "a Meet link in the place, no https")
+    expect(callIn(notes: "https://teams.microsoft.com/l/meetup-join/19%3ameeting_x/0") == "Microsoft Teams", "a Teams link")
+    expect(callIn(link: "https://zoom.us/j/1", notes: "https://meet.google.com/abc-defg-hij") == "Zoom", "the event's own link wins")
+    expect(callIn(notes: "https://evilzoom.us/j/1 https://notteams.live.com/meet/x") == nil, "a look-alike address is not a call")
+    expect(callIn(notes: "see https://zoom.us/pricing and https://meet.google.com/") == nil, "a plain Zoom or Meet page is not a call")
     var tagged = it2("Tagged", at(10, 26, 9), at(10, 26, 10)); tagged.tags = ["Condo"]; tagged.emoji = "🏠"
     expect(sameInCalendar(tagged, it2("Tagged", at(10, 26, 9), at(10, 26, 10))), "emoji and tags never reach the calendar")
 
@@ -516,6 +525,17 @@ func selftest() -> Int32 {
     expect(menuWords(3, now: now, today: []) == nil, "a clear day shows the icon alone")
     expect(keySymbols("Control Option Space") == "⌃⌥Space", "quick add keys")
     // Phase 7: subscribed calendars
+    weatherSelftest(expect)
+    MainActor.assumeIsolated {
+        let d = UserDefaults.standard, before = (d.object(forKey: "hiddenCalendars") as? [String], d.string(forKey: "mode"))
+        let a = AppState(store: Store(sample: true), today: now)
+        a.store.hidden = ["selftest"]; a.mode = a.mode == .month ? .day : .month
+        expect(d.object(forKey: "hiddenCalendars") as? [String] == before.0 && d.string(forKey: "mode") == before.1, "tests never change the saved calendar choice or view")
+    }
+    let checked = at(10, 30, 9)
+    expect(updateStatus(version: "0.8", last: nil, newer: nil, now: checked) == "Dateline 0.8 · not checked yet"
+           && updateStatus(version: "0.8", last: checked, newer: false, now: checked.addingTimeInterval(60)).hasSuffix("you're up to date")
+           && updateStatus(version: "0.8", last: checked, newer: true, now: addDays(checked, 2)).hasPrefix("Last checked Oct 30"), "updates: the status line")
     subSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     print(fails == 0 ? "selftest: all passed" : "selftest: \(fails) failed")
     return fails == 0 ? 0 : 1

@@ -8,7 +8,7 @@ enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Mont
 @MainActor
 final class AppState: ObservableObject {
     let store: Store
-    @Published var mode: Mode = Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .day { didSet { UserDefaults.standard.set(mode.rawValue, forKey: "mode"); reload() } }
+    @Published var mode: Mode = Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .day { didSet { if store.access != .sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") }; reload() } }
     @Published var days: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() { didSet { if Look.saves { UserDefaults.standard.set(days, forKey: "weekDays") }; reload() } }
     @Published var anchor: Date { didSet { reload() } }
     @Published var selectedID: String?

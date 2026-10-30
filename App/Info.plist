@@ -16,6 +16,13 @@
     <key>NSContactsUsageDescription</key><string>Dateline reads the home and work address on your own contact card, only when you pick Home or Work for a place reminder.</string>
     <key>NSLocationUsageDescription</key><string>Dateline uses your location for drive times to your events and for sunrise and sunset. It stays on your Mac; only Apple Maps sees it, to work out the drive.</string>
     <key>NSLocationWhenInUseUsageDescription</key><string>Dateline uses your location for drive times to your events and for sunrise and sunset. It stays on your Mac; only Apple Maps sees it, to work out the drive.</string>
+    <key>SUFeedURL</key><string>https://github.com/B0xfan/dateline/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key><string>TTnBhbVmhOJeh9tVnYMzb6Th+07CC20zTJbnOihScXg=</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUScheduledCheckInterval</key><integer>86400</integer>
+    <key>SUAutomaticallyUpdate</key><false/>
+    <key>SUAllowsAutomaticUpdates</key><true/>
+    <key>SUVerifyUpdateBeforeExtraction</key><true/>
     <key>NSHumanReadableCopyright</key><string>John Hesch</string>
 </dict>
 </plist>

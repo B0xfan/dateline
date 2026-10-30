@@ -7,9 +7,10 @@ DST="/Applications/Dateline.app"
 [[ -d "$SRC" ]] || { echo "No build found. Run scripts/local-build.sh first."; exit 1; }
 codesign --verify --strict "$SRC"
 pkill -x Dateline 2>/dev/null && sleep 1 || true
-rm -rf "$DST.new"
-ditto "$SRC" "$DST.new"  # copy first: a failed copy must not leave /Applications without the app
+STAGE="/Applications/.dateline-install"  # hidden folder: the copy is never seen under a temporary name like "Dateline.app.new" (macOS kept that name once)
+rm -rf "$STAGE"; mkdir "$STAGE"
+ditto "$SRC" "$STAGE/Dateline.app"  # copy first: a failed copy must not leave /Applications without the app
 rm -rf "$DST"
-mv "$DST.new" "$DST"
+mv "$STAGE/Dateline.app" "$DST"; rmdir "$STAGE"
 open "$DST"
 echo "Installed: $DST"

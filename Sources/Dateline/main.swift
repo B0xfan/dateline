@@ -7,6 +7,7 @@ import AppKit
 
 let args = CommandLine.arguments
 if args.contains("--selftest") { exit(selftest()) }
+if args.contains("--sample") { MainActor.assumeIsolated { WeatherStore.sample = true } }  // made-up weather, no network
 if let i = args.firstIndex(of: "--render"), i + 1 < args.count {
     exit(MainActor.assumeIsolated { renderAll(to: args[i + 1]) } ? 0 : 1)
 }
@@ -16,6 +17,8 @@ final class Delegate: NSObject, NSApplicationDelegate {
     // Only inside the app bundle: the bare built program has no bundle and alerts would stop it.
     func applicationWillFinishLaunching(_ n: Notification) { if Bundle.main.bundleIdentifier != nil { LeaveAlerts.shared.install() } }
     // Keeps running with the window closed, so quick add from any app still works; the Dock icon brings the window back.
+    // Phase 8: the daily update check, only for the real app (never --sample).
+    func applicationDidFinishLaunching(_ n: Notification) { if !CommandLine.arguments.contains("--sample") { Updater.shared.start() } }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 
@@ -30,7 +33,10 @@ struct DatelineApp: App {
         }
         .defaultSize(width: 1380, height: 800)
         .windowStyle(.hiddenTitleBar)
-        .commands { CommandGroup(replacing: .newItem) { Button("Subscribe to Calendar…") { app.openMain?(); app.subscribing = true } } }
+        .commands {
+            CommandGroup(replacing: .newItem) { Button("Subscribe to Calendar…") { app.openMain?(); app.subscribing = true } }
+            CommandGroup(after: .appInfo) { CheckForUpdatesItem() }
+        }
         Settings { SettingsView(app: app) }
     }
 }

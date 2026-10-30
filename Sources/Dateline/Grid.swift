@@ -42,7 +42,9 @@ struct TimeGrid: View {
                                 Text(dateText(d, "d")).font(.ui(14, weight: .medium)).foregroundStyle(.white)
                                     .frame(width: 28, height: 28).background(Circle().fill(Palette.now))
                             } else { Text(dateText(d, "d")).font(.ui(18, weight: .medium)) }
-                            Spacer(minLength: 0)
+                            // Phase 8: the weather, only when the column has room for it
+                            if WeatherPrefs.on, let g = headerSpot() { ViewThatFits(in: .horizontal) { HStack { WxChip(day: d, at: g); Spacer(minLength: 0) }; Spacer(minLength: 0) } }
+                            else { Spacer(minLength: 0) }
                         }
                         if let sun { SunRow(day: d, at: sun) }
                     }
@@ -135,7 +137,7 @@ struct DayColumn: View {
                     let d = drag?.id == it.id ? drag : nil
                     let colW = (w - 4) / CGFloat(max(n, 1))
                     let stretchDY = d?.stretch == true ? d!.dy : 0
-                    EventBlock(item: it, color: store.color(it), selected: app.selectedID == it.id, height: f.h + stretchDY)
+                    EventBlock(item: it, color: store.color(it), selected: app.selectedID == it.id, height: f.h + stretchDY, now: app.now)
                         .frame(width: colW - 2, height: max(18, f.h + stretchDY - 2))
                         .onTapGesture(count: 2) { app.selectedID = it.id; app.panelOpen = true }
                         .onTapGesture { app.selectedID = it.id }
@@ -209,8 +211,10 @@ struct DayColumn: View {
 }
 
 struct EventBlock: View {
-    let item: Item, color: Color, selected: Bool, height: CGFloat
+    let item: Item, color: Color, selected: Bool, height: CGFloat, now: Date
     var body: some View {
+        // Phase 8: a Join button from 10 minutes before a call until it ends.
+        let call = !item.allDay && now >= item.start.addingTimeInterval(-600) && now < item.end ? callLink(item) : nil
         let tint: AnyShapeStyle = switch item.showAs {
         case .busy: AnyShapeStyle(color.opacity(0.14))
         case .free: AnyShapeStyle(color.opacity(0.06))
@@ -224,6 +228,8 @@ struct EventBlock: View {
                     Mark(showAs: item.showAs, color: color)
                     Text(item.shownTitle).fontWeight(.semibold).lineLimit(1)
                     Text(meta).font(.ui(11.5)).foregroundStyle(Palette.text2).lineLimit(1)
+                    Spacer(minLength: 0)
+                    if let call { join(call) }  // a short event: in the line, not over the title
                 }
             } else {
                 HStack(spacing: 5) { Mark(showAs: item.showAs, color: color); Text(item.shownTitle).fontWeight(.semibold).lineLimit(height > 60 ? 2 : 1) }
@@ -238,8 +244,18 @@ struct EventBlock: View {
         .background(RoundedRectangle(cornerRadius: 6).fill(tint).padding(0))
         .overlay(alignment: .leading) { UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 6).fill(color).frame(width: 3) }
         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(color, lineWidth: selected ? 2 : 0))
+        .overlay(alignment: .topTrailing) {
+            if let call, height >= 34 { join(call).padding(3) }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
+    }
+
+    func join(_ call: Call) -> some View {
+        Button { NSWorkspace.shared.open(call.url) } label: {
+            Text("Join").font(.ui(11, weight: .semibold)).foregroundStyle(.white).padding(.horizontal, 8).frame(height: 16)
+                .background(Capsule().fill(Palette.accent))
+        }.buttonStyle(.plain).help("Join the \(call.service) call")
     }
 }
 
@@ -399,8 +415,11 @@ struct DetailPanel: View {
                 else { PlaceField(item: $item, field: $field, commit: commit).zIndex(2) }
                 if let g = item.geo {
                     SmallMap(geo: g, name: item.place, color: store.color(item), from: mapFrom).padding(.top, 8)
+                    WxAtPlace(geo: g, start: item.start, allDay: item.allDay)
                     if !item.allDay { travel }
                 }
+                section("VIDEO CALL")
+                videoCall(callLink(item), locked)
                 section("NOTES")
                 NotesBox(item: $item, editing: $notesEditing, locked: locked, commit: commit)
                 Text(locked ? "This calendar is read only." : "Changes save when you leave a field. Command Z undoes.")
@@ -418,6 +437,27 @@ struct DetailPanel: View {
         .onChange(of: store.items) { _, list in
             // Someone else (Apple Calendar, a drag in the grid, undo) changed it while the panel was open.
             if field == nil, !notesEditing, let fresh = list.first(where: { $0.id == item.id }), fresh != item { item = fresh }
+        }
+    }
+
+    // Phase 8: the call found in the event, or a box to paste one (making a new meeting needs the sign-ins, still to come).
+    @ViewBuilder func videoCall(_ call: Call?, _ locked: Bool) -> some View {
+        if let call {
+            HStack(spacing: 8) {
+                Text(call.service).fontWeight(.medium)
+                Text((call.url.host ?? "") + call.url.path).foregroundStyle(Palette.text3).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 0)
+                Button("Copy") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(call.url.absoluteString, forType: .string) }
+                Button("Join") { NSWorkspace.shared.open(call.url) }.buttonStyle(.borderedProminent)
+            }.controlSize(.small)
+            if !locked, callLink(in: [item.link]) != nil {
+                Button("Remove link") { item.link = ""; commit() }.buttonStyle(.plain).font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.top, 6)
+            }
+        } else if locked {
+            Text("No video call").foregroundStyle(Palette.text3)
+        } else {
+            TextField("Paste a Zoom, Meet or Teams link…", text: $item.link).textFieldStyle(.roundedBorder)
+                .focused($field, equals: "link").onSubmit { commit() }
         }
     }
 

@@ -32,6 +32,7 @@ struct Item: Identifiable, Equatable {
     // Phase 5 travel, kept by Dateline on this Mac: no drive time, the leave alert (nil = the Settings default), where the drive starts.
     var noTravel = false, leave: Bool? = nil, from: From = .here
     var alerts: [Date] = []  // when the calendar's own alerts go off (Phase 6 plays the picked sound with them)
+    var link = ""  // the event's own web link (Phase 8: a pasted Zoom, Meet or Teams link goes here)
     var shownTitle: String { emoji.isEmpty ? title : emoji + " " + title }
 }
 
@@ -67,11 +68,34 @@ func sameInCalendar(_ a: Item, _ b: Item) -> Bool {
     return a == b
 }
 
+// Phase 8: the Zoom, Meet or Teams link in an event: its own link first, then the place, then the notes.
+struct Call: Equatable { let service: String, url: URL }
+private let linkFinder = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+func callLink(_ it: Item) -> Call? { callLink(in: [it.link, it.place, it.notes]) }
+func callLink(in texts: [String]) -> Call? {
+    func on(_ h: String, _ d: String) -> Bool { h == d || h.hasSuffix("." + d) }  // never a look-alike such as evilzoom.us
+    for text in texts where !text.isEmpty {
+        for m in linkFinder?.matches(in: text, range: NSRange(text.startIndex..., in: text)) ?? [] {
+            guard let u = m.url, let h = u.host?.lowercased() else { continue }
+            let path = u.path.lowercased()
+            if on(h, "zoom.us"), ["/j/", "/my/", "/w/"].contains(where: path.hasPrefix) { return Call(service: "Zoom", url: u) }
+            if h == "meet.google.com", path.count > 4 { return Call(service: "Google Meet", url: u) }
+            if on(h, "teams.microsoft.com") || on(h, "teams.live.com"), path.contains("meetup-join") || path.hasPrefix("/meet/") { return Call(service: "Microsoft Teams", url: u) }
+        }
+    }
+    return nil
+}
+
 @MainActor
 final class Store: ObservableObject {
     @Published var calendars: [CalInfo] = []
     @Published var hidden: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "hiddenCalendars") ?? []) {
-        didSet { UserDefaults.standard.set(Array(hidden), forKey: "hiddenCalendars") }
+        didSet {
+            guard access != .sample else { return }  // tests and pictures never touch the real choice
+            UserDefaults.standard.set(Array(hidden), forKey: "hiddenCalendars")
+            // The set by name too, so a launch reopens on it even when a calendar came or went since (empty = all, or a hand-picked mix).
+            if !calendars.isEmpty { UserDefaults.standard.set(activeSet?.id ?? "", forKey: "lastSet") }
+        }
     }
     @Published private(set) var items: [Item] = []
     @Published private(set) var soon: [Item] = []  // the next 120 days, for the "Coming up" card
@@ -173,11 +197,16 @@ final class Store: ObservableObject {
         }
     }
 
+    private var reopened = false
     private func reloadCalendars() {
         calendars = ek.calendars(for: .event)
             .sorted { ($0.source.title, $0.title) < ($1.source.title, $1.title) }
             .map { CalInfo(id: $0.calendarIdentifier, title: $0.title, account: $0.source.title, color: Color(nsColor: $0.color), writable: $0.allowsContentModifications) }
             + subInfos
+        if !reopened {
+            reopened = true
+            if let id = UserDefaults.standard.string(forKey: "lastSet"), let s = sets.first(where: { $0.id == id }), activeSet?.id != id { use(s) }
+        }
         defaultCalendarID = ek.defaultCalendarForNewEvents?.calendarIdentifier
         pastCache = nil
         fetch()
@@ -230,7 +259,8 @@ final class Store: ObservableObject {
                     allDay: e.isAllDay, place: e.location ?? "", notes: e.notes ?? "", showAs: s,
                     geo: e.structuredLocation?.geoLocation.map { Geo(lat: $0.coordinate.latitude, lon: $0.coordinate.longitude) },
                     alerts: (e.alarms ?? []).filter { $0.proximity == .none && ($0.type == .display || $0.type == .audio) && !(e.hasRecurrenceRules && $0.absoluteDate != nil) }
-                        .map { $0.absoluteDate ?? e.startDate.addingTimeInterval($0.relativeOffset) })
+                        .map { $0.absoluteDate ?? e.startDate.addingTimeInterval($0.relativeOffset) },
+                    link: e.url?.absoluteString ?? "")
     }
 
     private func ekEvent(_ it: Item) -> EKEvent? {
@@ -328,7 +358,7 @@ final class Store: ObservableObject {
         var p = Parsed(start: it.start, end: it.end); p.title = it.title; p.allDay = it.allDay; p.place = it.place; p.geo = it.geo; p.showAs = it.showAs
         guard case .success(let added) = add(p, calendarID: isSub(it.calendarID) ? nil : it.calendarID) else { return nil }  // a copy of a subscribed event goes to your own calendar
         var back = added
-        back.notes = it.notes; back.emoji = it.emoji; back.color = it.color; back.tags = it.tags; back.rich = it.rich
+        back.notes = it.notes; back.link = it.link; back.emoji = it.emoji; back.color = it.color; back.tags = it.tags; back.rich = it.rich
         back.noTravel = it.noTravel; back.leave = it.leave; back.from = it.from
         if back != added { update(back) }
         if let alarms = ekEvent(it)?.alarms ?? deletedAlarms[it.id], !alarms.isEmpty, let e = ek.event(withIdentifier: back.id) {
@@ -353,6 +383,9 @@ final class Store: ObservableObject {
             } else { e.structuredLocation = nil; e.location = it.place.isEmpty ? nil : it.place }
         }
         e.notes = it.notes.isEmpty ? nil : it.notes
+        // A pasted "Join: https://…" keeps only the call's own address, so Apple Calendar can open it too.
+        let link = callLink(in: [it.link])?.url.absoluteString ?? it.link.trimmingCharacters(in: .whitespacesAndNewlines)
+        if e.url?.absoluteString ?? "" != link { e.url = URL(string: link) }
         let want: EKEventAvailability = it.showAs == .free ? .free : it.showAs == .maybe ? .tentative : .busy
         // Not every account takes every mark (many only know busy and free); keep what it allows.
         let ok = e.calendar.supportedEventAvailabilities
@@ -389,7 +422,7 @@ final class Store: ObservableObject {
         ev("personal", "Lunch with Sam", 0, 12, 30, 60, .maybe, place: "Café Playa")
         ev("family", "School pickup", 0, 15, 0, 30)
         ev("personal", "Gym", 0, 17, 30, 60, .free)
-        ev("work", "Client call", 1, 11, 0, 60, place: "Zoom")
+        ev("work", "Client call", 1, 11, 0, 60, place: "Zoom", notes: "Join: https://us02web.zoom.us/j/8123456789")
         ev("family", "Christian at the condo", 1, 13, 30, 60, place: "Condo", notes: "Fix before he leaves:\n[x] Kitchen tap drips\n[ ] Balcony door lock sticks\n- Gate code is in the group chat",
            emoji: "🏠", color: 3, tags: ["Condo", "Visitors"], geo: Geo(lat: 10.2930, lon: -85.8318))
         ev("family", "Dentist", 2, 8, 30, 60, place: "Clínica Dental Tamarindo", emoji: "🦷", geo: Geo(lat: 10.2995, lon: -85.8371))

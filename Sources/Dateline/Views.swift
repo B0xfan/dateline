@@ -608,6 +608,8 @@ struct SettingsView: View {
             AlertSettings(app: app, store: app.store).tabItem { Label("Alerts", systemImage: "bell") }
             ZoneSettings(app: app).tabItem { Label("Time zones", systemImage: "globe") }
             MenuBarSettings(app: app).tabItem { Label("Menu bar", systemImage: "menubar.rectangle") }
+            WeatherSettings(app: app).tabItem { Label("Weather", systemImage: "cloud.sun") }
+            UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }
         }
     }
 }

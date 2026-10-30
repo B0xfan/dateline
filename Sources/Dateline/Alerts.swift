@@ -136,6 +136,7 @@ struct FullAlertView: View {
     let close: () -> Void, snooze: () -> Void, open: (Item) -> Void
 
     var body: some View {
+        let call = items.lazy.compactMap(callLink).first  // any of the events alerting together
         ZStack {
             Color(red: 0.04, green: 0.05, blue: 0.08).opacity(0.62).contentShape(Rectangle()).onTapGesture(perform: close)
             VStack(alignment: .leading, spacing: 14) {
@@ -152,7 +153,8 @@ struct FullAlertView: View {
                     .contentShape(Rectangle()).onTapGesture { open(it) }
                 }
                 HStack(spacing: 8) {
-                    button("Close", "Esc", primary: true, .cancelAction, close)
+                    if let call { button("Join", "J", primary: true, KeyboardShortcut("j", modifiers: [])) { NSWorkspace.shared.open(call.url); close() } }
+                    button("Close", "Esc", primary: call == nil, .cancelAction, close)
                     button("Snooze 5 min", "S", KeyboardShortcut("s", modifiers: []), snooze)
                     button("Open event", "O", KeyboardShortcut("o", modifiers: [])) { open(items[0]) }
                 }
@@ -164,7 +166,7 @@ struct FullAlertView: View {
                 .font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.top, 10).overlay(alignment: .top) { Palette.line.frame(height: 1) }
             }
             .font(.ui(13))
-            .padding(.horizontal, 28).padding(.top, 26).padding(.bottom, 22).frame(width: 460, alignment: .leading)
+            .padding(.horizontal, 28).padding(.top, 26).padding(.bottom, 22).frame(width: call == nil ? 460 : 540, alignment: .leading)  // room for Join too
             .background(RoundedRectangle(cornerRadius: 18).fill(Palette.pop).shadow(color: .black.opacity(0.5), radius: 40, y: 30))
             .foregroundStyle(Palette.text)
             .onTapGesture {}  // a click on the card itself does not close it

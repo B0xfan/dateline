@@ -9,7 +9,8 @@ import AppKit
     let today = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 9, minute: 41))!  // the mockup's "today"
     sampleToday = today
     Here.shared.spot = tamarindo  // the mockups' sunrise and sunset; never the Mac's own location
-    Look.reset(); WorkWeek.reset(); Alerts.reset(); Zones.reset(); MenuIcon.reset()  // pictures always use the normal look and the mockup's week, and never change the saved ones
+    WeatherStore.sample = true  // made-up weather, never the network
+    Look.reset(); WorkWeek.reset(); Alerts.reset(); Zones.reset(); MenuIcon.reset(); WeatherPrefs.reset()  // pictures always use the normal look and the mockup's week, and never change the saved ones
     var ok = true
     for dark in [false, true] {
         let tag = dark ? "dark" : "light"
@@ -62,6 +63,9 @@ import AppKit
             ok = save(AlertSettings(app: a, store: a.store).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/alert-settings-\(tag).png") && ok
             ok = save(ZoneSettings(app: a).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/zone-settings-\(tag).png") && ok
             ok = save(MenuBarSettings(app: a).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/menubar-settings-\(tag).png") && ok
+            ok = save(WeatherSettings(app: a).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/weather-settings-\(tag).png") && ok
+            ok = save(WeatherSettings(app: a, town: "Tamar", found: [Town(label: "Tamarindo, Guanacaste, Costa Rica", geo: tamarindo), Town(label: "Tamarac, Florida, United States", geo: Geo(lat: 26.2, lon: -80.25))]).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/weather-town-search-\(tag).png") && ok
+            ok = save(UpdateSettings().background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/update-settings-\(tag).png") && ok
             let soon = a.store.soon.filter { cal.isDate($0.start, inSameDayAs: today) && !$0.allDay }.sorted { $0.start < $1.start }
             if let first = soon.first {
                 ok = save(FullAlertView(items: [first], store: a.store, now: first.start, next: soon.dropFirst().first, close: {}, snooze: {}, open: { _ in }).frame(width: 1380, height: 800), dark: dark, to: "\(dir)/full-alert-\(tag).png") && ok
@@ -72,6 +76,17 @@ import AppKit
             ok = save(SubscribeSheet(app: a, store: a.store, address: addr, name: "Grade 5 schedule", found: (sampleICS, parseICS(sampleICS)), checked: addr).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/subscribe-\(tag).png") && ok
             ok = save(SubscribeSheet(app: a, store: a.store, tab: 1).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/ready-made-\(tag).png") && ok
             ok = save(EmojiPicker(recent: ["🏠", "🦷"]) { _ in }.background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/emoji-\(tag).png") && ok
+        }
+        do {  // Phase 8: five minutes before the Zoom call, its Join button on the event, in the panel and on the full alert.
+            let t = cal.date(byAdding: .minute, value: 24 * 60 + 74, to: today)!
+            let a = AppState(store: Store(sample: true), today: t)
+            a.mode = .week; a.days = 7; a.sidebarOpen = true; a.openTaskLists = []
+            if let call = a.store.items.first(where: { $0.title == "Client call" }) {
+                a.selectedID = call.id; a.panelOpen = true
+                ok = save(MainView(app: a, store: a.store).frame(width: 1380, height: 800), dark: dark, width: 1380, to: "\(dir)/call-\(tag).png") && ok
+                ok = save(EventBlock(item: call, color: a.store.color(call), selected: false, height: 60, now: t).frame(width: 220, height: 58).padding(20).background(Palette.win), dark: dark, to: "\(dir)/call-block-\(tag).png") && ok
+                ok = save(FullAlertView(items: [call], store: a.store, now: t, next: nil, close: {}, snooze: {}, open: { _ in }).frame(width: 1380, height: 800), dark: dark, to: "\(dir)/call-alert-\(tag).png") && ok
+            } else { ok = false }
         }
         let app = AppState(store: Store(sample: true), today: today)
         app.quickText = "Lunch with Sam tomorrow 1pm /Personal -a15m -r1w"
