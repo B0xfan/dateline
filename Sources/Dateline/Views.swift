@@ -611,6 +611,7 @@ struct SettingsView: View {
             ZoneSettings(app: app).tabItem { Label("Time zones", systemImage: "globe") }.tag("zones")
             MenuBarSettings(app: app).tabItem { Label("Menu bar", systemImage: "menubar.rectangle") }.tag("menubar")
             WeatherSettings(app: app).tabItem { Label("Weather", systemImage: "cloud.sun") }.tag("weather")
+            AssistantSettings(app: app, a: Assistant.shared).tabItem { Label("Assistant", systemImage: "sparkles") }.tag("assistant")
             UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }.tag("updates")
         }
     }

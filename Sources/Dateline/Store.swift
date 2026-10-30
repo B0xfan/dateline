@@ -280,14 +280,16 @@ final class Store: ObservableObject {
                     link: e.url?.absoluteString ?? "")
     }
 
-    private func ekEvent(_ it: Item) -> EKEvent? {
+    private func ekEvent(_ it: Item, now: Item? = nil) -> EKEvent? {
         let parts = resolve(it.id).split(separator: "|")
         guard let id = parts.first.map(String.init) else { return nil }
         guard parts.count == 2, let t = Double(parts[1]) else { return ek.event(withIdentifier: id) }
         // One occurrence of a repeating event: search between its original date and where it is now (it may have been moved).
         // Never fall back to the series, or a change would land on the wrong occurrence.
         let at = Date(timeIntervalSince1970: t)
-        let pred = ek.predicateForEvents(withStart: min(at, it.start).addingTimeInterval(-86400), end: max(at, it.end).addingTimeInterval(86400), calendars: nil)
+        // `now`: where it sits before this change, so an undo that moves it back across days still finds it.
+        let lo = [at, it.start, now?.start ?? at].min()!, hi = [at, it.end, now?.end ?? at].max()!
+        let pred = ek.predicateForEvents(withStart: lo.addingTimeInterval(-86400), end: hi.addingTimeInterval(86400), calendars: nil)
         return ek.events(matching: pred).first { $0.eventIdentifier == id && $0.occurrenceDate == at }
     }
 
@@ -342,7 +344,7 @@ final class Store: ObservableObject {
             if let f = accUpdate(it, old: before) { fetch(); return f }
             setExtras(it); fetch(); return nil
         }
-        guard let e = ekEvent(it) else { return Failure("That event is gone.") }
+        guard let e = ekEvent(it, now: before) else { return Failure("That event is gone.") }
         if e.calendar.calendarIdentifier != it.calendarID, let c = ek.calendar(withIdentifier: it.calendarID) { e.calendar = c }
         apply(it, to: e)
         let oldKey = key(it.id)

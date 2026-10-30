@@ -65,6 +65,7 @@ final class AppState: ObservableObject {
         store.onError = { [weak self] in self?.error = $0 }
         now = today
         reload()
+        if store.access != .sample { Assistant.shared.attach(self) }  // here, not when the window opens: Dateline also runs with its window closed
     }
 
     // The days the day or week view shows. A 7 day week starts on the first day of the week, a 5 day week is that week's working days, a 3 day week starts on the day you are on.

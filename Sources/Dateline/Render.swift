@@ -104,6 +104,14 @@ import AppKit
                 ok = save(FullAlertView(items: [call], store: a.store, now: t, next: nil, close: {}, snooze: {}, open: { _ in }).frame(width: 1380, height: 800), dark: dark, to: "\(dir)/call-alert-\(tag).png") && ok
             } else { ok = false }
         }
+        do {  // Phase 9 (approved mockup section 4): Settings, Assistant, with two things Claude did, the newest one undoable.
+            let a = AppState(store: Store(sample: true), today: today), ai = Assistant.test(a)
+            ai.on = true
+            let moved = Assistant.Line(when: today.addingTimeInterval(-25 * 60), text: "Moved \"Dentist\" to Thu 4:00 PM")
+            ai.log = [moved, Assistant.Line(when: today.addingTimeInterval(-40 * 60), text: "Looked at Nov 2 to Nov 8")]
+            ai.undos[moved.id] = { nil }
+            ok = save(AssistantSettings(app: a, a: ai, claudeHere: true, connected: true).frame(width: 760, alignment: .top).background(Palette.win), dark: dark, width: 760, to: "\(dir)/assistant-\(tag).png") && ok
+        }
         let app = AppState(store: Store(sample: true), today: today)
         app.quickText = "Lunch with Sam tomorrow 1pm /Personal -a15m -r1w"
         ok = save(QuickAddView(app: app, store: app.store).padding(40).frame(width: 1380, height: 800, alignment: .top).background(Color(red: 0.45, green: 0.5, blue: 0.7)), dark: dark, to: "\(dir)/quick-add-\(tag).png") && ok
