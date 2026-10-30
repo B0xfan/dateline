@@ -603,6 +603,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             QuickSettings(app: app).tabItem { Label("Quick add", systemImage: "plus.square") }
+            AccountSettings(store: app.store).tabItem { Label("Accounts", systemImage: "person.crop.circle") }
             LookSettings(app: app).tabItem { Label("Look", systemImage: "paintpalette") }
             WeekSettings(app: app).tabItem { Label("Week", systemImage: "calendar") }
             AlertSettings(app: app, store: app.store).tabItem { Label("Alerts", systemImage: "bell") }

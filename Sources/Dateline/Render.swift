@@ -65,6 +65,11 @@ import AppKit
             ok = save(MenuBarSettings(app: a).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/menubar-settings-\(tag).png") && ok
             ok = save(WeatherSettings(app: a).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/weather-settings-\(tag).png") && ok
             ok = save(WeatherSettings(app: a, town: "Tamar", found: [Town(label: "Tamarindo, Guanacaste, Costa Rica", geo: tamarindo), Town(label: "Tamarac, Florida, United States", geo: Geo(lat: 26.2, lon: -80.25))]).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/weather-town-search-\(tag).png") && ok
+            ok = save(AccountSettings(store: a.store).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-\(tag).png") && ok
+            a.store.accounts = [Account(kind: "icloud", email: "john@icloud.com", cals: [AccCal(id: "acc-x-1", remote: "", title: "Home", color: "#FF2968", writable: true), AccCal(id: "acc-x-2", remote: "", title: "Family", color: "#34C759", writable: false)], synced: today)]
+            ok = save(AccountSettings(store: a.store, picked: a.store.accounts[0].id).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-icloud-\(tag).png") && ok
+            ok = save(AccountSettings(store: a.store, adding: "icloud").background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-add-\(tag).png") && ok
+            a.store.accounts = []
             ok = save(UpdateSettings().background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/update-settings-\(tag).png") && ok
             let soon = a.store.soon.filter { cal.isDate($0.start, inSameDayAs: today) && !$0.allDay }.sorted { $0.start < $1.start }
             if let first = soon.first {

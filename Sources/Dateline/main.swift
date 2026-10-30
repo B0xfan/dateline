@@ -1,12 +1,17 @@
 // Entry. No argument (or only arguments macOS adds) = the app on the Mac's real calendars.
 //   --sample            the app on made-up calendars, without asking for calendar access
 //   --selftest          pure logic checks, no calendar access
+//   --accounts-check <address>   the iCloud account code against scripts/caldav-standin.py (no settings, no passwords saved)
 //   --render <folder>   draws the window on sample calendars to PNG files off-screen (no window, no calendar access)
 import SwiftUI
 import AppKit
 
 let args = CommandLine.arguments
 if args.contains("--selftest") { exit(selftest()) }
+if let i = args.firstIndex(of: "--accounts-check"), i + 1 < args.count {
+    Task { @MainActor in exit(await accountsCheck(server: args[i + 1])) }
+    dispatchMain()
+}
 if args.contains("--sample") { MainActor.assumeIsolated { WeatherStore.sample = true } }  // made-up weather, no network
 if let i = args.firstIndex(of: "--render"), i + 1 < args.count {
     exit(MainActor.assumeIsolated { renderAll(to: args[i + 1]) } ? 0 : 1)

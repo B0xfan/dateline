@@ -124,7 +124,11 @@ final class Store: ObservableObject {
     @Published var subs: [Sub] = [] { didSet { save(subs, "subscriptions") } }
     var subParsed: [String: [ICalEvent]] = [:]
     var subTried: [String: Date] = [:]
-    private var extras: [String: Extra] = [:] { didSet { save(extras, "eventExtras") } }
+    var extras: [String: Extra] = [:] { didSet { save(extras, "eventExtras") } }
+    // Phase 8: accounts signed in inside Dateline (Accounts.swift).
+    @Published var accounts: [Account] = [] { didSet { save(accounts, "accounts") } }
+    let accData = AccData()
+    var onError: ((String) -> Void)?  // a change that failed on its way to an account
 
     init(sample: Bool) {
         if sample { loadSample(); return }
@@ -133,6 +137,7 @@ final class Store: ObservableObject {
         if let v: [String] = load("recentEmoji") { recentEmoji = v }
         if let v: [String: Extra] = load("eventExtras") { extras = v }
         loadSubs()
+        loadAccounts()
         requestAccess()
         requestReminders()
     }
@@ -198,16 +203,16 @@ final class Store: ObservableObject {
     }
 
     private var reopened = false
-    private func reloadCalendars() {
-        calendars = ek.calendars(for: .event)
+    func reloadCalendars() {
+        calendars = ek.calendars(for: .event).filter { !shownHere($0.source) }
             .sorted { ($0.source.title, $0.title) < ($1.source.title, $1.title) }
             .map { CalInfo(id: $0.calendarIdentifier, title: $0.title, account: $0.source.title, color: Color(nsColor: $0.color), writable: $0.allowsContentModifications) }
-            + subInfos
+            + accInfos + subInfos
         if !reopened {
             reopened = true
             if let id = UserDefaults.standard.string(forKey: "lastSet"), let s = sets.first(where: { $0.id == id }), activeSet?.id != id { use(s) }
         }
-        defaultCalendarID = ek.defaultCalendarForNewEvents?.calendarIdentifier
+        defaultCalendarID = ek.defaultCalendarForNewEvents.map { d in shownHere(d.source) ? accInfos.first { $0.title == d.title }?.id : d.calendarIdentifier } ?? nil
         pastCache = nil
         fetch()
     }
@@ -226,15 +231,23 @@ final class Store: ObservableObject {
         items = between(a, b)
         let subSoon = subEvents(from: now.addingTimeInterval(-86400), to: later).filter { sub($0.calendarID)?.kind == nil }  // not a sunrise line every day
         if access == .sample { soon = sample.filter { $0.end > now && $0.start < later } + subSoon; return }
-        guard access == .granted else { soon = subSoon; return }  // subscribed calendars need no calendar access
-        soon = ek.events(matching: ek.predicateForEvents(withStart: now.addingTimeInterval(-86400), end: later, calendars: nil)).map { decorated(Self.item($0)) } + subSoon
+        let accSoon = accEvents(from: now.addingTimeInterval(-86400), to: later)
+        guard access == .granted else { soon = subSoon + accSoon; return }  // subscribed calendars and accounts need no calendar access
+        soon = ekFind(now.addingTimeInterval(-86400), later).map { decorated(Self.item($0)) } + subSoon + accSoon
     }
 
     // Events between two dates, read without changing what the window shows (the map of places).
     func between(_ a: Date, _ b: Date) -> [Item] {
         if access == .sample { return (sample.filter { $0.end > a && $0.start < b } + subEvents(from: a, to: b)).sorted { $0.start < $1.start } }
-        guard access == .granted else { return subEvents(from: a, to: b).sorted { $0.start < $1.start } }
-        return (ek.events(matching: ek.predicateForEvents(withStart: a, end: b, calendars: nil)).map { decorated(Self.item($0)) } + subEvents(from: a, to: b)).sorted { $0.start < $1.start }
+        guard access == .granted else { return (subEvents(from: a, to: b) + accEvents(from: a, to: b)).sorted { $0.start < $1.start } }
+        return (ekFind(a, b).map { decorated(Self.item($0)) } + subEvents(from: a, to: b) + accEvents(from: a, to: b)).sorted { $0.start < $1.start }
+    }
+
+    // The Mac's events, without the calendars an account here already shows.
+    private func ekFind(_ a: Date, _ b: Date) -> [EKEvent] {
+        let all = ek.calendars(for: .event), keep = accounts.isEmpty ? all : all.filter { !shownHere($0.source) }
+        if keep.isEmpty { return [] }
+        return ek.events(matching: ek.predicateForEvents(withStart: a, end: b, calendars: keep.count == all.count ? nil : keep))
     }
 
     // The last year's events, one per title, newest first (quick add's "From your past events"). Kept until the calendars change.
@@ -243,7 +256,7 @@ final class Store: ObservableObject {
         if let pastCache { return pastCache }
         let now = sampleToday ?? Date()
         let list = access == .sample ? sample.filter { $0.start < now }
-            : access == .granted ? ek.events(matching: ek.predicateForEvents(withStart: now.addingTimeInterval(-365 * 86400), end: now, calendars: nil)).map(Self.item) : []
+            : (access == .granted ? ekFind(now.addingTimeInterval(-365 * 86400), now).map(Self.item) : []) + accEvents(from: now.addingTimeInterval(-365 * 86400), to: now)
         var seen = Set<String>()
         let out = list.sorted { $0.start > $1.start }.filter { seen.insert($0.title.lowercased()).inserted }
         pastCache = out
@@ -287,6 +300,10 @@ final class Store: ObservableObject {
     func add(_ p: Parsed, calendarID: String?) -> Result<Item, Failure> {
         let calID = calendarID ?? defaultCalendarID ?? calendars.first(where: \.writable)?.id
         guard let calID else { return .failure(Failure("No calendar on this Mac can take new events.")) }
+        if access != .sample, isAcc(calID) {
+            return accAdd(Item(id: "", calendarID: calID, title: p.title.isEmpty ? "New event" : p.title, start: p.start, end: p.end, allDay: p.allDay, place: p.place, notes: "", showAs: p.showAs, geo: p.geo),
+                          alertMinutes: p.alertMinutes, repeats: p.repeats.map { ($0.unit, $0.n) })
+        }
         var it = Item(id: UUID().uuidString, calendarID: calID, title: p.title.isEmpty ? "New event" : p.title, start: p.start, end: p.end,
                       allDay: p.allDay, place: p.place, notes: "", showAs: p.showAs, geo: p.geo)
         if access == .sample { sample.append(it); fetch(); return .success(it) }
@@ -316,6 +333,11 @@ final class Store: ObservableObject {
         // Only Dateline's extras changed (also on read-only calendars and invites): nothing goes to the calendar.
         if let old = items.first(where: { $0.id == it.id }), sameInCalendar(old, it) { setExtras(it); fetch(); return nil }
         if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be changed.") }
+        let before = items.first { $0.id == it.id }
+        if isAcc(it.calendarID) || before.map({ isAcc($0.calendarID) }) == true {
+            if let f = accUpdate(it, old: before) { fetch(); return f }
+            setExtras(it); fetch(); return nil
+        }
         guard let e = ekEvent(it) else { return Failure("That event is gone.") }
         if e.calendar.calendarIdentifier != it.calendarID, let c = ek.calendar(withIdentifier: it.calendarID) { e.calendar = c }
         apply(it, to: e)
@@ -335,6 +357,12 @@ final class Store: ObservableObject {
             sample.removeAll { $0.id == resolve(it.id) }; fetch(); return nil
         }
         if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be deleted. Remove the whole calendar from the sidebar instead.") }
+        if isAcc(it.calendarID) {
+            let oneTime = !accRepeats(it)
+            if let f = accDelete(it, series: series) { return f }
+            if oneTime || series { extras[key(it.id)] = nil }
+            fetch(); return nil
+        }
         guard let e = ekEvent(it) else { return Failure("That event is gone.") }
         let alarms = e.alarms ?? [], oneTime = !e.hasRecurrenceRules
         do { try ek.remove(e, span: series ? .futureEvents : .thisEvent, commit: true) } catch { return Failure(error.localizedDescription) }

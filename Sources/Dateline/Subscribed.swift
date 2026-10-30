@@ -28,6 +28,8 @@ struct ICalEvent: Equatable {
     var rule: [String: String]? = nil
     var exdates: Set<Date> = []
     var recurrenceID: Date? = nil  // set on a changed copy of one occurrence of a repeating event
+    var url = ""  // Phase 8 accounts: the event's web link, and its alerts as offsets from the start
+    var alarms: [TimeInterval] = []
 }
 
 // MARK: reading the file
@@ -37,15 +39,16 @@ func parseICS(_ text: String) -> [ICalEvent] {
     for raw in text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").split(separator: "\n") {
         if let f = raw.first, f == " " || f == "\t", !lines.isEmpty { lines[lines.count - 1] += raw.dropFirst() } else { lines.append(String(raw)) }
     }
-    var out: [ICalEvent] = [], props: [(String, [String: String], String)]? = nil, depth = 0
+    var out: [ICalEvent] = [], props: [(String, [String: String], String)]? = nil, depth = 0, alarms: [TimeInterval] = []
     for l in lines {
         guard let (name, params, value) = icsLine(l) else { continue }
-        if name == "BEGIN" { if props == nil { if value.uppercased() == "VEVENT" { props = []; depth = 0 } } else { depth += 1 }; continue }
+        if name == "BEGIN" { if props == nil { if value.uppercased() == "VEVENT" { props = []; depth = 0; alarms = [] } } else { depth += 1 }; continue }
         if name == "END", props != nil {
-            if depth > 0 { depth -= 1 } else { if let e = icsEvent(props!) { out.append(e) }; props = nil }
+            if depth > 0 { depth -= 1 } else { if var e = icsEvent(props!) { e.alarms = alarms; out.append(e) }; props = nil }
             continue
         }
         if depth == 0 { props?.append((name, params, value)) }  // never an alarm's own SUMMARY
+        else if depth == 1, props != nil, name == "TRIGGER", params["VALUE"]?.uppercased() != "DATE-TIME", params["RELATED"]?.uppercased() != "END" { alarms.append(icsDuration(value)) }
     }
     return out
 }
@@ -111,6 +114,7 @@ private func icsEvent(_ props: [(String, [String: String], String)]) -> ICalEven
                 let kv = p.split(separator: "=", maxSplits: 1).map(String.init); return kv.count == 2 ? (kv[0].uppercased(), kv[1].uppercased()) : nil }, uniquingKeysWith: { a, _ in a })
         case "EXDATE": for one in v.split(separator: ",") { if let d = icsDate(String(one), params)?.0 { e.exdates.insert(d) } }
         case "RECURRENCE-ID": e.recurrenceID = icsDate(v, params)?.0
+        case "URL": e.url = v
         default: break
         }
     }

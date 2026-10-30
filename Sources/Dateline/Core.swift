@@ -537,6 +537,7 @@ func selftest() -> Int32 {
            && updateStatus(version: "0.8", last: checked, newer: false, now: checked.addingTimeInterval(60)).hasSuffix("you're up to date")
            && updateStatus(version: "0.8", last: checked, newer: true, now: addDays(checked, 2)).hasPrefix("Last checked Oct 30"), "updates: the status line")
     subSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
+    accountsSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     print(fails == 0 ? "selftest: all passed" : "selftest: \(fails) failed")
     return fails == 0 ? 0 : 1
 }

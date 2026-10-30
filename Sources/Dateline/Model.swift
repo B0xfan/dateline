@@ -62,6 +62,7 @@ final class AppState: ObservableObject {
     init(store: Store, today: Date = Date()) {
         self.store = store
         anchor = cal.startOfDay(for: today)
+        store.onError = { [weak self] in self?.error = $0 }
         now = today
         reload()
     }
@@ -296,7 +297,7 @@ final class AppState: ObservableObject {
         registerQuick()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in self?.now = Date(); if let self { MenuBar.shared.update(self) } } }
         if store.access != .sample { Here.shared.start() }
-        travelTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in Task { @MainActor in Here.shared.refresh(); self?.planTravel(); self?.store.refreshSubs() } }
+        travelTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in Task { @MainActor in Here.shared.refresh(); self?.planTravel(); self?.store.refreshSubs(); self?.store.refreshAccounts() } }
         alertTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in Task { @MainActor in self?.checkAlerts() } }
         MenuBar.shared.update(self)
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
