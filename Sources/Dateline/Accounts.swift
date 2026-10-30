@@ -77,9 +77,15 @@ enum AccountSecrets {
 
 // MARK: talking to the servers
 
-// Stops a redirect, so a sign-in sent to one server is never carried on to another.
-final class NoRedirect: NSObject, URLSessionTaskDelegate {
-    func urlSession(_ s: URLSession, task: URLSessionTask, willPerformHTTPRedirection r: HTTPURLResponse, newRequest: URLRequest) async -> URLRequest? { nil }
+// Follows a redirect, but a sign-in sent to one server is never carried on to another.
+final class KeepSignInHome: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ s: URLSession, task: URLSessionTask, willPerformHTTPRedirection r: HTTPURLResponse, newRequest: URLRequest) async -> URLRequest? {
+        var n = newRequest
+        // Same site = same last two name parts (p12-caldav.icloud.com and caldav.icloud.com), so iCloud's own hops keep working.
+        func site(_ u: URL?) -> String { (u?.host ?? "").split(separator: ".").suffix(2).joined(separator: ".") }
+        if site(n.url) != site(task.originalRequest?.url) || n.url?.scheme != task.originalRequest?.url?.scheme { n.setValue(nil, forHTTPHeaderField: "Authorization") }
+        return n
+    }
 }
 
 enum AccNet {
@@ -91,14 +97,14 @@ enum AccNet {
     // Reuses Audrey Mail's Google key for now (John, Oct 30); a Dateline key goes in before it is ever sold.
     nonisolated(unsafe) static var googleClientFile = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Audrey Mail/google_client.json")
 
-    static func request(_ method: String, _ url: URL, auth: String, body: Data? = nil, headers: [String: String] = [:], redirects: Bool = true) async throws -> (Data, HTTPURLResponse) {
+    static func request(_ method: String, _ url: URL, auth: String, body: Data? = nil, headers: [String: String] = [:]) async throws -> (Data, HTTPURLResponse) {
         var r = URLRequest(url: url, timeoutInterval: 60)
         r.httpMethod = method
         r.setValue(auth, forHTTPHeaderField: "Authorization")
         for (k, v) in headers { r.setValue(v, forHTTPHeaderField: k) }
         r.httpBody = body
         let (d, resp): (Data, URLResponse)
-        do { (d, resp) = try await URLSession.shared.data(for: r, delegate: redirects ? nil : NoRedirect()) } catch { throw Failure("Couldn't reach the account: \(error.localizedDescription)") }
+        do { (d, resp) = try await URLSession.shared.data(for: r, delegate: KeepSignInHome()) } catch { throw Failure("Couldn't reach the account: \(error.localizedDescription)") }
         guard let h = resp as? HTTPURLResponse else { throw Failure("The account gave no answer.") }
         if h.statusCode == 401 || h.statusCode == 403 && auth.hasPrefix("Basic") { throw Failure("The account refused the sign-in. Remove it and add it again.") }
         return (d, h)
@@ -854,13 +860,14 @@ func driveUpload(token: String, name: String, type: String, data: Data) async th
         guard let loc = h.value(forHTTPHeaderField: "Location"), let up = URL(string: loc) else { throw Failure("Google Drive didn't start the upload.") }
         (d, h) = try await AccNet.request("PUT", up, auth: "Bearer " + token, body: data, headers: ["Content-Type": type])
     }
-    let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] ?? [:]
-    guard (200..<300).contains(h.statusCode), j["id"] is String, j["webViewLink"] is String else {
+    var j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] ?? [:]
+    guard (200..<300).contains(h.statusCode), let id = j["id"] as? String else {
         let err = (j["error"] as? [String: Any])?["message"] as? String ?? "error \(h.statusCode)"
         if err.lowercased().contains("insufficient") { throw Failure("Google needs a fresh sign-in to put files in your Drive: remove the Google account in Settings, Accounts, and add it again.") }
         if err.contains("has not been used") || err.contains("is disabled") { throw Failure("Google Drive isn't switched on for the Google key yet.") }
         throw Failure("Google Drive: " + err)
     }
+    if j["webViewLink"] == nil { j["webViewLink"] = "https://drive.google.com/file/d/\(id)/view" }  // in case the asked-for fields don't carry over to the upload step
     return j
 }
 
@@ -869,19 +876,21 @@ extension Store {
         guard let (a, c) = accCal(it.calendarID), c.writable else { return }
         let name = file.lastPathComponent
         let type = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-        // No size (an iCloud Drive file not yet on this Mac) counts as unreadable, so the cap can't be skipped.
+        // No size counts as unreadable, so the cap can't be skipped.
         guard let size = (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize else { onError?("\(name) couldn't be read."); return }
         guard size <= attachLimit else { onError?("\(name) is over 100 MB, more than Dateline attaches."); return }
-        guard let data = try? await Task.detached(operation: { try Data(contentsOf: file) }).value else { onError?("\(name) couldn't be read."); return }
+        // Read off the main thread, and only when its turn in the queue comes, so dropped files never sit in memory together.
+        let read: () async throws -> Data = {
+            do { return try await Task.detached { try Data(contentsOf: file) }.value } catch { throw Failure("\(name) couldn't be read.") }
+        }
         if a.kind == "google" {
             guard let ev = accData.google[c.id]?.first(where: { $0.item.id == it.id }) else { onError?("That event is gone."); return }
-            await gFiles(a, c, ev.iid) { t, list in
-                let f = try await driveUpload(token: t, name: name, type: type, data: data)
-                return list + [["fileUrl": f["webViewLink"] as? String ?? "", "title": name, "mimeType": type, "fileId": f["id"] as? String ?? ""]]
+            await gFiles(a, c, ev.master ?? ev.iid, upload: { t in try await driveUpload(token: t, name: name, type: type, data: try await read()) }) { f, list in
+                list + [["fileUrl": f?["webViewLink"] as? String ?? "", "title": name, "mimeType": type, "fileId": f?["id"] as? String ?? ""]]
             }.value
         } else {
             guard let ref = davRef(it) else { onError?("That event is gone."); return }
-            await davFiles(a, c, ref.href, "?action=attachment-add", data, ["Content-Type": type, "Content-Disposition": attachDisposition(name)]).value
+            await davFiles(a, c, ref.href, "?action=attachment-add", read, ["Content-Type": type, "Content-Disposition": attachDisposition(name)]).value
         }
     }
 
@@ -889,7 +898,8 @@ extension Store {
         guard let (a, c) = accCal(it.calendarID), c.writable else { return }
         if a.kind == "google" {
             guard let ev = accData.google[c.id]?.first(where: { $0.item.id == it.id }) else { return }
-            await gFiles(a, c, ev.iid) { _, list in list.filter { ($0["fileUrl"] as? String) != f.url } }.value  // the file stays in Drive, as with Google Calendar
+            // shortcut: a file attached to just one changed occurrence (an exception) isn't seen here; fix when someone hits it.
+            await gFiles(a, c, ev.master ?? ev.iid) { _, list in list.filter { ($0["fileUrl"] as? String) != f.url } }.value  // the file stays in Drive, as with Google Calendar
         } else {
             guard let ref = davRef(it), let res = accData.dav[c.id]?[ref.href] else { return }
             if let id = f.id {
@@ -908,18 +918,18 @@ extension Store {
         guard let (a, c) = accCal(it.calendarID), a.kind == "icloud", let u = URL(string: f.url), let host = u.host, let cal = URL(string: c.remote) else { return nil }
         // The password goes only to the account's own servers, never to a link someone else put in the event.
         guard (host == cal.host && u.scheme == cal.scheme) || (f.id != nil && u.scheme == "https" && host.hasSuffix(".icloud.com")), let pw = secret(a.id) else { return nil }
-        let (d, h) = try await AccNet.request("GET", u, auth: AccNet.basic(a.email, pw), redirects: false)
+        let (d, h) = try await AccNet.request("GET", u, auth: AccNet.basic(a.email, pw))
         guard h.statusCode == 200 else { throw Failure("\(f.name) didn't download (error \(h.statusCode)).") }
         return d
     }
 
-    private func davFiles(_ a: Account, _ c: AccCal, _ href: String, _ query: String, _ body: Data?, _ headers: [String: String]) -> Task<Void, Never> {
+    private func davFiles(_ a: Account, _ c: AccCal, _ href: String, _ query: String, _ body: (() async throws -> Data)?, _ headers: [String: String]) -> Task<Void, Never> {
         send(a, c) { s in
             guard let pw = s.secret(a.id), let u = URL(string: href + query), let file = URL(string: href) else { throw Failure("The iCloud password is missing.") }
             let auth = AccNet.basic(a.email, pw), before = s.accData.dav[c.id]?[href]
             var h = headers
             if let e = before?.etag { h["If-Match"] = e }
-            let (_, r) = try await AccNet.request("POST", u, auth: auth, body: body ?? Data(), headers: h)
+            let (_, r) = try await AccNet.request("POST", u, auth: auth, body: try await body?() ?? Data(), headers: h)
             if r.statusCode == 412 { throw Failure("it was changed somewhere else meanwhile, so it was reloaded.") }
             if r.statusCode == 413 { throw Failure("the file is too big for iCloud.") }
             guard (200..<300).contains(r.statusCode) else { throw Failure("the file didn't go through (error \(r.statusCode)).") }
@@ -933,12 +943,23 @@ extension Store {
         }
     }
 
-    private func gFiles(_ a: Account, _ c: AccCal, _ target: String, _ change: @escaping (String, [[String: Any]]) async throws -> [[String: Any]]) -> Task<Void, Never> {
+    // The upload goes first, so the event's list is read and written back right away, not around a long upload.
+    private func gFiles(_ a: Account, _ c: AccCal, _ target: String, upload: ((String) async throws -> [String: Any])? = nil,
+                        _ change: @escaping ([String: Any]?, [[String: Any]]) -> [[String: Any]]) -> Task<Void, Never> {
         send(a, c) { s in
             let t = try await s.googleToken(a)
+            let up = try await upload?(t)
             let path = "/calendars/\(pathPart(c.remote))/events/\(pathPart(target))"
-            let list = try await googleJSON("GET", path, token: t)["attachments"] as? [[String: Any]] ?? []
-            _ = try await googleJSON("PATCH", path + "?supportsAttachments=true", token: t, body: ["attachments": try await change(t, list)])
+            do {
+                let list = try await googleJSON("GET", path, token: t)["attachments"] as? [[String: Any]] ?? []
+                _ = try await googleJSON("PATCH", path + "?supportsAttachments=true", token: t, body: ["attachments": change(up, list)])
+            } catch {
+                // The event didn't take the file: it comes out of Drive again, so retries don't leave copies.
+                if let id = up?["id"] as? String, let u = URL(string: AccNet.driveUpload.replacingOccurrences(of: "/upload/", with: "/") + "/" + pathPart(id)) {
+                    _ = try? await AccNet.request("DELETE", u, auth: "Bearer " + t)
+                }
+                throw error
+            }
         }
     }
 }
@@ -1021,14 +1042,18 @@ struct AttachmentsBox: View {
                     if let u = URL(string: f.url), ["https", "http"].contains(u.scheme?.lowercased()) { NSWorkspace.shared.open(u) }
                     return
                 }
-                let root = FileManager.default.temporaryDirectory.appendingPathComponent("Dateline attachments")
-                // Copies opened over a day ago are cleared, so private files don't pile up.
-                for old in (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey])) ?? []
-                where ((try? old.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast) < Date().addingTimeInterval(-86_400) { try? FileManager.default.removeItem(at: old) }
-                let dir = root.appendingPathComponent(UUID().uuidString)
-                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                let u = dir.appendingPathComponent(safeName(f.name))
-                try d.write(to: u); try quarantine(u)
+                let name = safeName(f.name)
+                let u = try await Task.detached {  // off the main thread: the file can be large
+                    let root = FileManager.default.temporaryDirectory.appendingPathComponent("Dateline attachments")
+                    // Copies opened over a day ago are cleared, so private files don't pile up.
+                    for old in (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey])) ?? []
+                    where ((try? old.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast) < Date().addingTimeInterval(-86_400) { try? FileManager.default.removeItem(at: old) }
+                    let dir = root.appendingPathComponent(UUID().uuidString)
+                    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                    let u = dir.appendingPathComponent(name)
+                    try d.write(to: u); try quarantine(u)
+                    return u
+                }.value
                 NSWorkspace.shared.open(u)
             } catch { store.onError?((error as? Failure)?.message ?? error.localizedDescription) }
         }
@@ -1042,11 +1067,6 @@ struct AttachmentsBox: View {
         }
     }
 
-    // Marked as downloaded, so a program attached by someone else gets the Mac's usual "downloaded from the internet" check before it runs.
-    func quarantine(_ u: URL) throws {
-        var v = URLResourceValues(); v.quarantineProperties = [kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload as String]
-        var u = u; try u.setResourceValues(v)
-    }
 
     func pick() {
         let p = NSOpenPanel(); p.allowsMultipleSelection = true; p.canChooseDirectories = false
@@ -1273,7 +1293,8 @@ struct AccountSettings: View {
     if let s1 = seedNow(), let f = s1.files.first(where: { $0.name.hasSuffix(".pdf") }) {
         expect((try? await store.accFetch(s1, f)) == Data("pdf bytes".utf8), "an attached file opens with its own bytes")
         var stranger = f; stranger.url = "https://evil.example/steal"
-        expect((try? await store.accFetch(s1, stranger)) == .some(nil), "a link to another server never gets the password")
+        let sent: Data??; do { sent = .some(try await store.accFetch(s1, stranger)) } catch { sent = nil }  // a throw means a request went out
+        expect(sent == .some(nil), "a link to another server never gets the password")
         await store.accDetach(s1, f)
         await settle()
     }
@@ -1368,4 +1389,10 @@ func accountsSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int,
     let body = googleBody(base, link: "https://zoom.us/j/9")
     expect((body["description"] as? String)?.hasSuffix("Join: https://zoom.us/j/9") == true && (body["start"] as? [String: Any])?["timeZone"] as? String == cal.timeZone.identifier,
            "accounts: a Google event with a pasted link")
+}
+
+// Marked as downloaded, so a program attached by someone else gets the Mac's usual "downloaded from the internet" check before it runs.
+func quarantine(_ u: URL) throws {
+    var v = URLResourceValues(); v.quarantineProperties = [kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload as String]
+    var u = u; try u.setResourceValues(v)
 }
