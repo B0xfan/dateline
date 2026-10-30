@@ -30,6 +30,7 @@ struct ICalEvent: Equatable {
     var recurrenceID: Date? = nil  // set on a changed copy of one occurrence of a repeating event
     var url = ""  // Phase 8 accounts: the event's web link, and its alerts as offsets from the start
     var alarms: [TimeInterval] = []
+    var files: [Attach] = []
 }
 
 // MARK: reading the file
@@ -115,6 +116,9 @@ private func icsEvent(_ props: [(String, [String: String], String)]) -> ICalEven
         case "EXDATE": for one in v.split(separator: ",") { if let d = icsDate(String(one), params)?.0 { e.exdates.insert(d) } }
         case "RECURRENCE-ID": e.recurrenceID = icsDate(v, params)?.0
         case "URL": e.url = v
+        case "ATTACH" where params["VALUE"]?.uppercased() != "BINARY":  // shortcut: files packed inside the event itself are left out; none of iCloud's are
+            let name = params["FILENAME"] ?? params["X-APPLE-FILENAME"] ?? URL(string: v)?.lastPathComponent ?? v
+            e.files.append(Attach(name: name.isEmpty ? v : name, url: v, size: params["SIZE"].flatMap { Int($0) }, id: params["MANAGED-ID"], type: params["FMTTYPE"] ?? ""))
         default: break
         }
     }

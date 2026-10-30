@@ -600,17 +600,18 @@ struct QuickAddView: View {
 // Dateline, Settings (Command comma): the quick add shortcut, and the Look tab (Phase 3).
 struct SettingsView: View {
     @ObservedObject var app: AppState
+    @AppStorage("settingsTab") private var tab = "quick"  // the attachments hint opens Accounts
     var body: some View {
-        TabView {
-            QuickSettings(app: app).tabItem { Label("Quick add", systemImage: "plus.square") }
-            AccountSettings(store: app.store).tabItem { Label("Accounts", systemImage: "person.crop.circle") }
-            LookSettings(app: app).tabItem { Label("Look", systemImage: "paintpalette") }
-            WeekSettings(app: app).tabItem { Label("Week", systemImage: "calendar") }
-            AlertSettings(app: app, store: app.store).tabItem { Label("Alerts", systemImage: "bell") }
-            ZoneSettings(app: app).tabItem { Label("Time zones", systemImage: "globe") }
-            MenuBarSettings(app: app).tabItem { Label("Menu bar", systemImage: "menubar.rectangle") }
-            WeatherSettings(app: app).tabItem { Label("Weather", systemImage: "cloud.sun") }
-            UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }
+        TabView(selection: $tab) {
+            QuickSettings(app: app).tabItem { Label("Quick add", systemImage: "plus.square") }.tag("quick")
+            AccountSettings(store: app.store).tabItem { Label("Accounts", systemImage: "person.crop.circle") }.tag("accounts")
+            LookSettings(app: app).tabItem { Label("Look", systemImage: "paintpalette") }.tag("look")
+            WeekSettings(app: app).tabItem { Label("Week", systemImage: "calendar") }.tag("week")
+            AlertSettings(app: app, store: app.store).tabItem { Label("Alerts", systemImage: "bell") }.tag("alerts")
+            ZoneSettings(app: app).tabItem { Label("Time zones", systemImage: "globe") }.tag("zones")
+            MenuBarSettings(app: app).tabItem { Label("Menu bar", systemImage: "menubar.rectangle") }.tag("menubar")
+            WeatherSettings(app: app).tabItem { Label("Weather", systemImage: "cloud.sun") }.tag("weather")
+            UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }.tag("updates")
         }
     }
 }

@@ -70,7 +70,17 @@ import AppKit
             ok = save(AccountSettings(store: a.store, picked: a.store.accounts[0].id).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-icloud-\(tag).png") && ok
             ok = save(AccountSettings(store: a.store, picked: "mac").background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-mac-\(tag).png") && ok
             ok = save(AccountSettings(store: a.store, adding: "icloud").background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-add-\(tag).png") && ok
-            a.store.accounts = []
+            // Phase 8 attachments (approved mockup section 2): files on an iCloud event, and the hint on a calendar from the Mac's settings.
+            let macCals = a.store.calendars
+            a.store.calendars = a.store.accInfos + macCals
+            let rental = Item(id: "acc-x-1/r", calendarID: "acc-x-1", title: "Casa Luna", start: today, end: today, allDay: true, place: "", notes: "", showAs: .busy,
+                              files: [Attach(name: "Rental agreement.pdf", url: "https://p1.example/a/1", size: 240_000, id: "1", type: "application/pdf"),
+                                      Attach(name: "Casa Luna gate code.jpg", url: "https://p1.example/a/2", size: 1_100_000, id: "2", type: "image/jpeg")])
+            if let fam = a.store.items.first(where: { $0.calendarID == "family" }) {
+                ok = save(HStack(alignment: .top, spacing: 40) { AttachmentsBox(store: a.store, item: rental).frame(width: 288); AttachmentsBox(store: a.store, item: fam).frame(width: 288) }
+                    .font(.ui(13)).padding(24).frame(width: 1380, height: 800, alignment: .topLeading).background(Palette.win), dark: dark, to: "\(dir)/attachments-\(tag).png") && ok
+            } else { ok = false }
+            a.store.accounts = []; a.store.calendars = macCals
             ok = save(UpdateSettings().background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/update-settings-\(tag).png") && ok
             let soon = a.store.soon.filter { cal.isDate($0.start, inSameDayAs: today) && !$0.allDay }.sorted { $0.start < $1.start }
             if let first = soon.first {

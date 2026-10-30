@@ -33,8 +33,12 @@ struct Item: Identifiable, Equatable {
     var noTravel = false, leave: Bool? = nil, from: From = .here
     var alerts: [Date] = []  // when the calendar's own alerts go off (Phase 6 plays the picked sound with them)
     var link = ""  // the event's own web link (Phase 8: a pasted Zoom, Meet or Teams link goes here)
+    var files: [Attach] = []  // Phase 8 attachments, only on calendars of an account signed in through Dateline
     var shownTitle: String { emoji.isEmpty ? title : emoji + " " + title }
 }
+
+// One attached file. `id`: iCloud's managed id or the Google Drive file id (nil = a plain link someone else put in the event).
+struct Attach: Equatable { var name: String; var url: String; var size: Int? = nil; var id: String? = nil; var type = "" }
 
 // What Dateline adds to one event, saved on this Mac by the event's identifier.
 struct Extra: Codable, Equatable {

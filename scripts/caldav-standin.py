@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 # A pretend iCloud calendar server on 127.0.0.1 for `Dateline --accounts-check`: one user, a Home calendar
-# with one event, a Reminders list and an inbox (both must stay out of Dateline), and iCloud's version checks on changes.
+# with one event, a Reminders list and an inbox (both must stay out of Dateline), iCloud's version checks on changes,
+# and its managed attachments (RFC 8607: POST ?action=attachment-add / attachment-remove, the file at its own address).
 # Prints its address, then serves until killed. Holds everything in memory, writes nothing.
 import base64, http.server, uuid
+from urllib.parse import urlsplit, parse_qs, unquote
 from xml.sax.saxutils import escape
 
 AUTH = "Basic " + base64.b64encode(b"t@example.com:pw").decode()
 SEED = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:seed1\r\nDTSTART:20261030T150000Z\r\nDTEND:20261030T160000Z\r\nSUMMARY:Seed event\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
 files = {"/1/calendars/home/seed1.ics": (SEED, '"e0"')}
+blobs = {}  # managed id -> the attached file's bytes
 
 def ms(*responses):
     return ('<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:a="http://apple.com/ns/ical/">'
@@ -27,7 +30,8 @@ class H(http.server.BaseHTTPRequestHandler):
 
     def gate(self):
         n = int(self.headers.get("Content-Length") or 0)
-        self.body = self.rfile.read(n).decode() if n else ""
+        self.raw = self.rfile.read(n) if n else b""
+        self.body = self.raw.decode(errors="replace")
         if self.headers.get("Authorization") != AUTH:
             self.reply(401); return False
         return True
@@ -60,6 +64,40 @@ class H(http.server.BaseHTTPRequestHandler):
         etag = f'"{uuid.uuid4().hex[:8]}"'
         files[self.path] = (self.body, etag)
         self.reply(204 if have else 201, headers={"ETag": etag})
+
+    def do_GET(self):
+        if not self.gate(): return
+        if self.path.startswith("/attachments/"):
+            b = blobs.get(self.path.rsplit("/", 1)[1])
+            if b is None: return self.reply(404)
+            self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
+        have = files.get(self.path)
+        if not have: return self.reply(404)
+        self.reply(200, have[0], {"ETag": have[1], "Content-Type": "text/calendar"})
+
+    def do_POST(self):
+        if not self.gate(): return
+        u = urlsplit(self.path); q = parse_qs(u.query); have = files.get(u.path)
+        if not have: return self.reply(404)
+        if "If-Match" in self.headers and have[1] != self.headers["If-Match"]: return self.reply(412)
+        text, action = have[0].replace("\r\n ", "").replace("\r\n\t", ""), q.get("action", [""])[0]  # unfolded, so a long ATTACH line is one line
+        if action == "attachment-add":
+            mid = uuid.uuid4().hex[:6]; blobs[mid] = self.raw
+            d = self.headers.get("Content-Disposition", "")
+            name = unquote(d.split("filename*=UTF-8''", 1)[1]) if "filename*=" in d else d.split('filename="', 1)[1].split('"', 1)[0]
+            line = f'ATTACH;MANAGED-ID={mid};FMTTYPE={self.headers.get("Content-Type")};SIZE={len(self.raw)};FILENAME={name}:http://{self.headers["Host"]}/attachments/{mid}'
+            text = text.replace("END:VEVENT", line + "\r\nEND:VEVENT")  # every instance, as with no rid
+            code, extra = 201, {"Cal-Managed-ID": mid}
+        elif action == "attachment-remove":
+            mid = q.get("managed-id", [""])[0]
+            if mid not in blobs: return self.reply(409)
+            del blobs[mid]
+            text = "\r\n".join(l for l in text.split("\r\n") if f"MANAGED-ID={mid};" not in l)
+            code, extra = 204, {}
+        else: return self.reply(400)
+        etag = f'"{uuid.uuid4().hex[:8]}"'
+        files[u.path] = (text, etag)
+        self.reply(code, headers={"ETag": etag, **extra})
 
     def do_DELETE(self):
         if not self.gate(): return

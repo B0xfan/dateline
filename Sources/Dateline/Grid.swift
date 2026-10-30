@@ -349,6 +349,7 @@ struct DetailPanel: View {
     @State var item: Item
     @FocusState private var field: String?
     @State private var notesEditing = false
+    @AppStorage("attachHintOff") private var attachHintOff = false  // "Not now" on the attachments hint
 
     var body: some View {
         let c = store.calendar(item.calendarID)
@@ -417,6 +418,10 @@ struct DetailPanel: View {
                     SmallMap(geo: g, name: item.place, color: store.color(item), from: mapFrom).padding(.top, 8)
                     WxAtPlace(geo: g, start: item.start, allDay: item.allDay)
                     if !item.allDay { travel }
+                }
+                if isAcc(item.calendarID) || (!locked && !attachHintOff && macAccountKind(c?.account ?? "") != nil) {
+                    section("ATTACHMENTS")
+                    AttachmentsBox(store: store, item: item)
                 }
                 section("VIDEO CALL")
                 videoCall(callLink(item), locked)

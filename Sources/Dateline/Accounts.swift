@@ -9,6 +9,7 @@ import AppKit
 import EventKit
 import Network
 import CryptoKit
+import UniformTypeIdentifiers
 
 struct Account: Codable, Identifiable, Equatable {
     var id = "acc-" + UUID().uuidString
@@ -76,22 +77,28 @@ enum AccountSecrets {
 
 // MARK: talking to the servers
 
+// Stops a redirect, so a sign-in sent to one server is never carried on to another.
+final class NoRedirect: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ s: URLSession, task: URLSessionTask, willPerformHTTPRedirection r: HTTPURLResponse, newRequest: URLRequest) async -> URLRequest? { nil }
+}
+
 enum AccNet {
     nonisolated(unsafe) static var icloudRoot = URL(string: "https://caldav.icloud.com/")!
     nonisolated(unsafe) static var googleAPI = "https://www.googleapis.com/calendar/v3"
+    nonisolated(unsafe) static var driveUpload = "https://www.googleapis.com/upload/drive/v3/files"
     nonisolated(unsafe) static var googleToken = URL(string: "https://oauth2.googleapis.com/token")!
     static let googleAuth = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
     // Reuses Audrey Mail's Google key for now (John, Oct 30); a Dateline key goes in before it is ever sold.
     nonisolated(unsafe) static var googleClientFile = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Audrey Mail/google_client.json")
 
-    static func request(_ method: String, _ url: URL, auth: String, body: Data? = nil, headers: [String: String] = [:]) async throws -> (Data, HTTPURLResponse) {
+    static func request(_ method: String, _ url: URL, auth: String, body: Data? = nil, headers: [String: String] = [:], redirects: Bool = true) async throws -> (Data, HTTPURLResponse) {
         var r = URLRequest(url: url, timeoutInterval: 60)
         r.httpMethod = method
         r.setValue(auth, forHTTPHeaderField: "Authorization")
         for (k, v) in headers { r.setValue(v, forHTTPHeaderField: k) }
         r.httpBody = body
         let (d, resp): (Data, URLResponse)
-        do { (d, resp) = try await URLSession.shared.data(for: r) } catch { throw Failure("Couldn't reach the account: \(error.localizedDescription)") }
+        do { (d, resp) = try await URLSession.shared.data(for: r, delegate: redirects ? nil : NoRedirect()) } catch { throw Failure("Couldn't reach the account: \(error.localizedDescription)") }
         guard let h = resp as? HTTPURLResponse else { throw Failure("The account gave no answer.") }
         if h.statusCode == 401 || h.statusCode == 403 && auth.hasPrefix("Basic") { throw Failure("The account refused the sign-in. Remove it and add it again.") }
         return (d, h)
@@ -318,7 +325,7 @@ func davItems(_ c: AccCal, _ res: [String: DavRes], from a: Date, to b: Date) ->
                 let at = e.recurrenceID ?? d
                 out.append(Item(id: "\(c.id)/\(e.uid)" + (repeating ? "|\(Int(at.timeIntervalSince1970))" : ""), calendarID: c.id, title: e.title,
                                 start: d, end: d.addingTimeInterval(len), allDay: e.allDay, place: e.place, notes: e.notes, showAs: e.free ? .free : .busy,
-                                alerts: e.alarms.map { d.addingTimeInterval($0) }, link: e.url))
+                                alerts: e.alarms.map { d.addingTimeInterval($0) }, link: e.url, files: e.files))
             }
         }
     }
@@ -343,11 +350,15 @@ func googleItem(_ c: AccCal, _ j: [String: Any]) -> GEv? {
     let rem = j["reminders"] as? [String: Any]
     let mins = (rem?["useDefault"] as? Bool ?? true) ? c.defaultAlerts : ((rem?["overrides"] as? [[String: Any]]) ?? []).compactMap { $0["minutes"] as? Int }
     let link = (j["hangoutLink"] as? String) ?? ""
+    let files = (j["attachments"] as? [[String: Any]] ?? []).compactMap { f -> Attach? in
+        guard let u = f["fileUrl"] as? String else { return nil }
+        return Attach(name: f["title"] as? String ?? u, url: u, id: f["fileId"] as? String, type: f["mimeType"] as? String ?? "")
+    }
     let id = "\(c.id)/\(master ?? iid)" + (master != nil ? "|\(Int(orig.timeIntervalSince1970))" : "")
     return GEv(iid: iid, master: master, etag: j["etag"] as? String,
                item: Item(id: id, calendarID: c.id, title: j["summary"] as? String ?? "", start: a, end: b, allDay: allDay, place: j["location"] as? String ?? "",
                           notes: j["description"] as? String ?? "", showAs: (j["transparency"] as? String) == "transparent" ? .free : .busy,
-                          alerts: allDay ? [] : mins.map { a.addingTimeInterval(-Double($0 * 60)) }, link: link))
+                          alerts: allDay ? [] : mins.map { a.addingTimeInterval(-Double($0 * 60)) }, link: link, files: files))
 }
 
 // `known`: the link the event already had from Google (its Meet link), which is never copied into the notes.
@@ -401,7 +412,8 @@ func googleSignIn() async throws -> (refresh: String, access: String, expires: D
     let redirect = "http://127.0.0.1:\(port)"
     var c = URLComponents(url: AccNet.googleAuth, resolvingAgainstBaseURL: false)!
     c.queryItems = [.init(name: "client_id", value: id), .init(name: "redirect_uri", value: redirect), .init(name: "response_type", value: "code"),
-                    .init(name: "scope", value: "https://www.googleapis.com/auth/calendar"), .init(name: "state", value: state),
+                    .init(name: "scope", value: "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.file"),  // Drive: only the files Dateline attaches
+                    .init(name: "state", value: state),
                     .init(name: "code_challenge", value: challenge), .init(name: "code_challenge_method", value: "S256"),
                     .init(name: "access_type", value: "offline"), .init(name: "prompt", value: "consent")]
     _ = await MainActor.run { NSWorkspace.shared.open(c.url!) }
@@ -681,7 +693,7 @@ extension Store {
 
     // MARK: changes, shown at once and sent in the background
 
-    private func send(_ a: Account, _ c: AccCal, _ op: @escaping (Store) async throws -> Void) {
+    @discardableResult private func send(_ a: Account, _ c: AccCal, _ op: @escaping (Store) async throws -> Void) -> Task<Void, Never> {
         accData.pending[a.id, default: 0] += 1
         let prev = accData.chain[a.id]
         accData.chain[a.id] = Task { [weak self] in
@@ -693,9 +705,10 @@ extension Store {
             self.accData.pending[a.id] = max(0, self.accData.pending[a.id, default: 1] - 1)
             if self.accData.pending[a.id] == 0 { await self.sync(a.id) }
         }
+        return accData.chain[a.id]!
     }
 
-    private func davSend(_ a: Account, _ c: AccCal, href: String, new: Bool = false) {
+    @discardableResult private func davSend(_ a: Account, _ c: AccCal, href: String, new: Bool = false) -> Task<Void, Never> {
         send(a, c) { s in
             guard let pw = s.secret(a.id), let u = URL(string: href) else { throw Failure("The iCloud password is missing.") }
             let etag = s.accData.dav[c.id]?[href]?.etag
@@ -808,6 +821,258 @@ extension Store {
             let (_, r) = try await AccNet.request("DELETE", u, auth: AccNet.basic(a.email, pw), headers: tag.map { ["If-Match": $0] } ?? [:])
             if r.statusCode == 412 { throw Failure("it was changed somewhere else meanwhile, so it was reloaded.") }
             guard (200..<300).contains(r.statusCode) || r.statusCode == 404 else { throw Failure("the delete didn't go through (error \(r.statusCode)).") }
+        }
+    }
+}
+
+// MARK: attachments (Phase 8, approved mockup section 2)
+// iCloud keeps the files itself (managed attachments, RFC 8607); Google keeps them in the account's Drive and the event links to them.
+// A repeating event's file goes on the whole series, as Apple Calendar does.
+
+let attachLimit = 100_000_000  // Dateline's own cap, so a stray video never sits whole in memory
+
+func icsDropAttach(_ text: String, _ url: String) -> String {
+    icsJoin(icsUnfold(text).filter { !(propName($0) == "ATTACH" && $0.hasSuffix(":" + url)) })
+}
+
+// The file name for iCloud; a name with accents also goes in the standard's UTF-8 form.
+func attachDisposition(_ name: String) -> String {
+    let plain = String(String.UnicodeScalarView(name.unicodeScalars.map { $0.isASCII && $0.value >= 32 && $0 != "\"" && $0 != "\\" ? $0 : "_" }))
+    return "attachment;filename=\"\(plain)\"" + (plain == name ? "" : ";filename*=UTF-8''" + pathPart(name))
+}
+
+// The Mac account an attachments hint names, or nil when signing in here can't help (a calendar on the Mac only, Exchange and the like).
+// shortcut: any source named with an email reads as Google; check the source type if an Exchange user ever sees the wrong name.
+func macAccountKind(_ account: String) -> String? { account.hasPrefix("iCloud") ? "iCloud" : account.contains("@") || account.hasPrefix("Google") ? "Google" : nil }
+
+func driveUpload(token: String, name: String, type: String, data: Data) async throws -> [String: Any] {
+    // Resumable, sent in one go: Drive takes only 5 MB in a single multipart request.
+    guard let u = URL(string: AccNet.driveUpload + "?uploadType=resumable&fields=id,webViewLink") else { throw Failure("A Google address is broken.") }
+    let meta = try JSONSerialization.data(withJSONObject: ["name": name])
+    var (d, h) = try await AccNet.request("POST", u, auth: "Bearer " + token, body: meta, headers: ["Content-Type": "application/json; charset=UTF-8", "X-Upload-Content-Type": type])
+    if (200..<300).contains(h.statusCode) {
+        guard let loc = h.value(forHTTPHeaderField: "Location"), let up = URL(string: loc) else { throw Failure("Google Drive didn't start the upload.") }
+        (d, h) = try await AccNet.request("PUT", up, auth: "Bearer " + token, body: data, headers: ["Content-Type": type])
+    }
+    let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] ?? [:]
+    guard (200..<300).contains(h.statusCode), j["id"] is String, j["webViewLink"] is String else {
+        let err = (j["error"] as? [String: Any])?["message"] as? String ?? "error \(h.statusCode)"
+        if err.lowercased().contains("insufficient") { throw Failure("Google needs a fresh sign-in to put files in your Drive: remove the Google account in Settings, Accounts, and add it again.") }
+        if err.contains("has not been used") || err.contains("is disabled") { throw Failure("Google Drive isn't switched on for the Google key yet.") }
+        throw Failure("Google Drive: " + err)
+    }
+    return j
+}
+
+extension Store {
+    func accAttach(_ it: Item, _ file: URL) async {
+        guard let (a, c) = accCal(it.calendarID), c.writable else { return }
+        let name = file.lastPathComponent
+        let type = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        // No size (an iCloud Drive file not yet on this Mac) counts as unreadable, so the cap can't be skipped.
+        guard let size = (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize else { onError?("\(name) couldn't be read."); return }
+        guard size <= attachLimit else { onError?("\(name) is over 100 MB, more than Dateline attaches."); return }
+        guard let data = try? await Task.detached(operation: { try Data(contentsOf: file) }).value else { onError?("\(name) couldn't be read."); return }
+        if a.kind == "google" {
+            guard let ev = accData.google[c.id]?.first(where: { $0.item.id == it.id }) else { onError?("That event is gone."); return }
+            await gFiles(a, c, ev.iid) { t, list in
+                let f = try await driveUpload(token: t, name: name, type: type, data: data)
+                return list + [["fileUrl": f["webViewLink"] as? String ?? "", "title": name, "mimeType": type, "fileId": f["id"] as? String ?? ""]]
+            }.value
+        } else {
+            guard let ref = davRef(it) else { onError?("That event is gone."); return }
+            await davFiles(a, c, ref.href, "?action=attachment-add", data, ["Content-Type": type, "Content-Disposition": attachDisposition(name)]).value
+        }
+    }
+
+    func accDetach(_ it: Item, _ f: Attach) async {
+        guard let (a, c) = accCal(it.calendarID), c.writable else { return }
+        if a.kind == "google" {
+            guard let ev = accData.google[c.id]?.first(where: { $0.item.id == it.id }) else { return }
+            await gFiles(a, c, ev.iid) { _, list in list.filter { ($0["fileUrl"] as? String) != f.url } }.value  // the file stays in Drive, as with Google Calendar
+        } else {
+            guard let ref = davRef(it), let res = accData.dav[c.id]?[ref.href] else { return }
+            if let id = f.id {
+                await davFiles(a, c, ref.href, "?action=attachment-remove&managed-id=" + pathPart(id), nil, [:]).value
+            } else {  // a plain link someone else put in: taken out of the event file like any other change
+                let text = icsDropAttach(res.text, f.url)
+                accData.dav[c.id]?[ref.href] = DavRes(etag: res.etag, text: text, events: parseICS(text))
+                refetch()
+                await davSend(a, c, href: ref.href).value
+            }
+        }
+    }
+
+    // The file to open or save; nil = a link to open in the browser (Google Drive, or a server other than the account's own).
+    func accFetch(_ it: Item, _ f: Attach) async throws -> Data? {
+        guard let (a, c) = accCal(it.calendarID), a.kind == "icloud", let u = URL(string: f.url), let host = u.host, let cal = URL(string: c.remote) else { return nil }
+        // The password goes only to the account's own servers, never to a link someone else put in the event.
+        guard (host == cal.host && u.scheme == cal.scheme) || (f.id != nil && u.scheme == "https" && host.hasSuffix(".icloud.com")), let pw = secret(a.id) else { return nil }
+        let (d, h) = try await AccNet.request("GET", u, auth: AccNet.basic(a.email, pw), redirects: false)
+        guard h.statusCode == 200 else { throw Failure("\(f.name) didn't download (error \(h.statusCode)).") }
+        return d
+    }
+
+    private func davFiles(_ a: Account, _ c: AccCal, _ href: String, _ query: String, _ body: Data?, _ headers: [String: String]) -> Task<Void, Never> {
+        send(a, c) { s in
+            guard let pw = s.secret(a.id), let u = URL(string: href + query), let file = URL(string: href) else { throw Failure("The iCloud password is missing.") }
+            let auth = AccNet.basic(a.email, pw), before = s.accData.dav[c.id]?[href]
+            var h = headers
+            if let e = before?.etag { h["If-Match"] = e }
+            let (_, r) = try await AccNet.request("POST", u, auth: auth, body: body ?? Data(), headers: h)
+            if r.statusCode == 412 { throw Failure("it was changed somewhere else meanwhile, so it was reloaded.") }
+            if r.statusCode == 413 { throw Failure("the file is too big for iCloud.") }
+            guard (200..<300).contains(r.statusCode) else { throw Failure("the file didn't go through (error \(r.statusCode)).") }
+            // The server's new copy, so the next file goes on top of this one. Not when an edit was made meanwhile:
+            // that edit then goes out on the old version, is refused and reloads, instead of quietly dropping the file.
+            let (d, g) = try await AccNet.request("GET", file, auth: auth)
+            if g.statusCode == 200, let text = String(data: d, encoding: .utf8), s.accData.dav[c.id]?[href]?.text == before?.text {
+                s.accData.dav[c.id]?[href] = DavRes(etag: g.value(forHTTPHeaderField: "ETag"), text: text, events: parseICS(text))
+                s.refetch()
+            }
+        }
+    }
+
+    private func gFiles(_ a: Account, _ c: AccCal, _ target: String, _ change: @escaping (String, [[String: Any]]) async throws -> [[String: Any]]) -> Task<Void, Never> {
+        send(a, c) { s in
+            let t = try await s.googleToken(a)
+            let path = "/calendars/\(pathPart(c.remote))/events/\(pathPart(target))"
+            let list = try await googleJSON("GET", path, token: t)["attachments"] as? [[String: Any]] ?? []
+            _ = try await googleJSON("PATCH", path + "?supportsAttachments=true", token: t, body: ["attachments": try await change(t, list)])
+        }
+    }
+}
+
+// The Attachments part of the event panel: the files, a drop area and Add…, or on a calendar from the Mac's settings, why not and where to sign in.
+struct AttachmentsBox: View {
+    @ObservedObject var store: Store
+    let item: Item
+    @State private var adding: [String] = []
+    @State private var over = false
+    @AppStorage("attachHintOff") private var hintOff = false
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        if let (a, c) = store.accCal(item.calendarID) { files(a, c) } else { macHint }
+    }
+
+    func files(_ a: Account, _ c: AccCal) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(item.files.enumerated()), id: \.offset) { _, f in fileRow(a, f, c.writable) }
+            ForEach(Array(adding.enumerated()), id: \.offset) { _, n in
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Adding \(n)…").foregroundStyle(Palette.text3).lineLimit(1) }
+            }
+            if c.writable {
+                HStack(spacing: 4) {
+                    Text("Drop files here, or").foregroundStyle(Palette.text3)
+                    Button("Add…") { pick() }.buttonStyle(.plain).foregroundStyle(Palette.accent)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 7).strokeBorder(over ? Palette.accent : Palette.line, style: StrokeStyle(lineWidth: 1.2, dash: [4, 3])))
+                Text(a.kind == "google" ? "On Google events the file goes into your Google Drive and the event links to it, which is how Google Calendar itself does attachments." : "On iCloud events these open on your iPhone too.")
+                    .font(.ui(11)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
+            } else if item.files.isEmpty { Text("No attachments").foregroundStyle(Palette.text3) }
+        }
+        // shortcut: files dragged as files (Finder, the desktop, Photos' "drag out"); a picture dragged from inside a web page isn't taken.
+        .onDrop(of: [.fileURL], isTargeted: $over) { ps in
+            guard c.writable else { return false }
+            for p in ps { _ = p.loadObject(ofClass: URL.self) { u, _ in if let u { Task { @MainActor in add([u]) } } } }
+            return true
+        }
+    }
+
+    func fileRow(_ a: Account, _ f: Attach, _ writable: Bool) -> some View {
+        let (t, col) = thumb(f)
+        return HStack(spacing: 8) {
+            Button { open(f) } label: {
+                HStack(spacing: 8) {
+                    Text(t).font(.ui(9, weight: .bold)).foregroundStyle(.white).frame(width: 30, height: 30).background(col, in: RoundedRectangle(cornerRadius: 5))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(f.name).lineLimit(1).truncationMode(.middle).foregroundStyle(Palette.text)
+                        if let n = f.size { Text(ByteCountFormatter.string(fromByteCount: Int64(n), countStyle: .file)).font(.ui(11)).foregroundStyle(Palette.text3) }
+                    }
+                    Spacer(minLength: 0)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).contextMenu { actions(a, f, writable) }
+            Menu { actions(a, f, writable) } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(Palette.text3)
+        }
+    }
+
+    @ViewBuilder func actions(_ a: Account, _ f: Attach, _ writable: Bool) -> some View {
+        Button(a.kind == "google" ? "Open in Google Drive" : "Open") { open(f) }
+        if a.kind == "icloud" { Button("Save a Copy…") { save(f) } }
+        if writable { Button("Remove") { Task { await store.accDetach(item, f) } } }
+    }
+
+    func thumb(_ f: Attach) -> (String, Color) {
+        let ext = (f.name as NSString).pathExtension.lowercased(), t = UTType(mimeType: f.type) ?? UTType(filenameExtension: ext)
+        if t?.conforms(to: .image) == true { return ("IMG", Palette.tags[3]) }
+        if t?.conforms(to: .pdf) == true { return ("PDF", Palette.tags[0]) }
+        return (ext.isEmpty ? "FILE" : String(ext.prefix(4)).uppercased(), Palette.tags[7])
+    }
+
+    // Only the last part of the server's name, so a name like "../x" can't write outside the folder.
+    func safeName(_ n: String) -> String { let s = (n as NSString).lastPathComponent.replacingOccurrences(of: ":", with: "-"); return s.isEmpty || s == ".." ? "Attachment" : s }
+
+    func open(_ f: Attach) {
+        Task {
+            do {
+                guard let d = try await store.accFetch(item, f) else {
+                    if let u = URL(string: f.url), ["https", "http"].contains(u.scheme?.lowercased()) { NSWorkspace.shared.open(u) }
+                    return
+                }
+                let root = FileManager.default.temporaryDirectory.appendingPathComponent("Dateline attachments")
+                // Copies opened over a day ago are cleared, so private files don't pile up.
+                for old in (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey])) ?? []
+                where ((try? old.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast) < Date().addingTimeInterval(-86_400) { try? FileManager.default.removeItem(at: old) }
+                let dir = root.appendingPathComponent(UUID().uuidString)
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                let u = dir.appendingPathComponent(safeName(f.name))
+                try d.write(to: u); try quarantine(u)
+                NSWorkspace.shared.open(u)
+            } catch { store.onError?((error as? Failure)?.message ?? error.localizedDescription) }
+        }
+    }
+
+    func save(_ f: Attach) {
+        let p = NSSavePanel(); p.nameFieldStringValue = safeName(f.name)
+        guard p.runModal() == .OK, let to = p.url else { return }
+        Task {
+            do { if let d = try await store.accFetch(item, f) { try d.write(to: to); try quarantine(to) } } catch { store.onError?((error as? Failure)?.message ?? error.localizedDescription) }
+        }
+    }
+
+    // Marked as downloaded, so a program attached by someone else gets the Mac's usual "downloaded from the internet" check before it runs.
+    func quarantine(_ u: URL) throws {
+        var v = URLResourceValues(); v.quarantineProperties = [kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload as String]
+        var u = u; try u.setResourceValues(v)
+    }
+
+    func pick() {
+        let p = NSOpenPanel(); p.allowsMultipleSelection = true; p.canChooseDirectories = false
+        if p.runModal() == .OK { add(p.urls) }
+    }
+
+    func add(_ urls: [URL]) {
+        for u in urls where !u.hasDirectoryPath {
+            adding.append(u.lastPathComponent)
+            Task {
+                await store.accAttach(item, u)
+                if let i = adding.firstIndex(of: u.lastPathComponent) { adding.remove(at: i) }
+            }
+        }
+    }
+
+    @ViewBuilder var macHint: some View {
+        let c = store.calendar(item.calendarID), kind = macAccountKind(c?.account ?? "") ?? "iCloud"
+        VStack(alignment: .leading, spacing: 8) {
+            (Text("Not on this calendar yet. ").bold() + Text("\"\(c?.title ?? "")\" comes through the Mac's settings, which don't let other apps add files. Sign in to this \(kind) account in Dateline to attach files."))
+                .font(.ui(11.5)).foregroundStyle(Palette.text).fixedSize(horizontal: false, vertical: true).padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading).background(Palette.tags[1].opacity(0.13), in: RoundedRectangle(cornerRadius: 7))
+            HStack(spacing: 8) {
+                Button("Sign in to \(kind)…") { UserDefaults.standard.set("accounts", forKey: "settingsTab"); openSettings() }.buttonStyle(.borderedProminent)
+                Button("Not now") { hintOff = true }
+            }.controlSize(.small)
         }
     }
 }
@@ -988,6 +1253,33 @@ struct AccountSettings: View {
     await settle()
     expect(shown().map(\.title) == ["Seed event"] && errors.isEmpty, "the delete behind an edit reached the server (\(errors))")
 
+    // Attachments: two files at once on the seed event, an edit after that keeps them, one opened, one removed.
+    guard let seed0 = shown().first(where: { $0.title == "Seed event" }) else { return 1 }
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dateline-check-" + UUID().uuidString)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let pdf = dir.appendingPathComponent("Rental agreement.pdf"), jpg = dir.appendingPathComponent("Casa Luna código.jpg")
+    try? Data("pdf bytes".utf8).write(to: pdf); try? Data(repeating: 7, count: 2048).write(to: jpg)
+    async let one: Void = store.accAttach(seed0, pdf)
+    async let two: Void = store.accAttach(seed0, jpg)
+    _ = await (one, two)
+    await settle()
+    func seedNow() -> Item? { shown().first { $0.id == seed0.id } }
+    let got = seedNow()?.files ?? []
+    expect(Set(got.map(\.name)) == ["Rental agreement.pdf", "Casa Luna código.jpg"] && got.allSatisfy { $0.id != nil } && got.first { $0.name.hasSuffix(".jpg") }?.size == 2048 && errors.isEmpty,
+           "two files dropped at once are both on the event, with their names and sizes (\(got.map(\.name)), \(errors))")
+    if let s0 = seedNow() { var renamed = s0; renamed.title = "Seed with files"; expect(store.accUpdate(renamed, old: s0) == nil, "an edit on an event with files"); await settle() }
+    expect(seedNow()?.title == "Seed with files" && seedNow()?.files.count == 2, "an edit keeps the files (\(seedNow()?.files.map(\.name) ?? []))")
+    if let s1 = seedNow(), let f = s1.files.first(where: { $0.name.hasSuffix(".pdf") }) {
+        expect((try? await store.accFetch(s1, f)) == Data("pdf bytes".utf8), "an attached file opens with its own bytes")
+        var stranger = f; stranger.url = "https://evil.example/steal"
+        expect((try? await store.accFetch(s1, stranger)) == .some(nil), "a link to another server never gets the password")
+        await store.accDetach(s1, f)
+        await settle()
+    }
+    expect(seedNow()?.files.map(\.name) == ["Casa Luna código.jpg"] && errors.isEmpty, "a removed file is gone, the other stays (\(seedNow()?.files.map(\.name) ?? []), \(errors))")
+    if let s2 = seedNow() { var back = s2; back.title = "Seed event"; _ = store.accUpdate(back, old: s2); await settle() }
+
     // A change the server refuses must not take a later change down with it.
     guard let seed = shown().first, let href = store.accData.dav[c.id]?.first(where: { $0.value.events.first?.uid == "seed1" })?.key else { return 1 }
     store.accData.dav[c.id]?[href]?.etag = "\"stale\""
@@ -1035,6 +1327,17 @@ func accountsSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int,
     let long = icsNew(uid: "l", Item(id: "", calendarID: "", title: String(repeating: "é", count: 60), start: base.start, end: base.end, allDay: false, place: "", notes: "", showAs: .busy), link: "", alertMinutes: nil, rule: nil)
     expect(long.components(separatedBy: "\r\n").allSatisfy { $0.utf8.count <= 75 } && parseICS(long).first?.title == String(repeating: "é", count: 60), "accounts: long lines fold and read back")
 
+    let att = icsNew(uid: "a1", base, link: "", alertMinutes: nil, rule: nil).replacingOccurrences(of: "END:VEVENT", with:
+        "ATTACH;MANAGED-ID=97S;FMTTYPE=application/pdf;SIZE=240000;FILENAME=Rental agreement.pdf:https://p1.example/att/97S\r\nATTACH:https://example.com/menu.pdf\r\nEND:VEVENT")
+    let af = parseICS(att).first?.files ?? []
+    expect(af == [Attach(name: "Rental agreement.pdf", url: "https://p1.example/att/97S", size: 240000, id: "97S", type: "application/pdf"), Attach(name: "menu.pdf", url: "https://example.com/menu.pdf")],
+           "accounts: attached files read from the event file")
+    expect(icsPatch(att, occurrence: nil, moved, link: "").contains("MANAGED-ID=97S") && parseICS(icsDropAttach(att, "https://example.com/menu.pdf")).first?.files.count == 1,
+           "accounts: an edit keeps the files; a plain link can be taken out")
+    expect(attachDisposition("a.pdf") == "attachment;filename=\"a.pdf\"" && attachDisposition("código.jpg") == "attachment;filename=\"c_digo.jpg\";filename*=UTF-8''c%C3%B3digo.jpg",
+           "accounts: file names for iCloud, accents in the UTF-8 form")
+    expect(macAccountKind("iCloud") == "iCloud" && macAccountKind("john@gmail.com") == "Google" && macAccountKind("On My Mac") == nil, "accounts: which sign-in the attachments hint names")
+
     let xml = """
     <?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:a="http://apple.com/ns/ical/">
     <d:response><d:href>/123/calendars/home/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>Home</d:displayname>
@@ -1053,11 +1356,12 @@ func accountsSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int,
     let g: [String: Any] = ["id": "abc_20261030T160000Z", "recurringEventId": "abc", "status": "confirmed", "summary": "Standup", "etag": "\"9\"",
                             "start": ["dateTime": "2026-10-30T10:00:00-06:00"], "end": ["dateTime": "2026-10-30T10:30:00-06:00"],
                             "originalStartTime": ["dateTime": "2026-10-30T10:00:00-06:00"], "hangoutLink": "https://meet.google.com/abc-defg-hij",
-                            "reminders": ["useDefault": true]]
+                            "reminders": ["useDefault": true], "attachments": [["fileUrl": "https://drive.google.com/file/d/f1/view", "title": "Plan.pdf", "mimeType": "application/pdf", "fileId": "f1"]]]
     var gc = c; gc.defaultAlerts = [10]
     let ge = googleItem(gc, g)
     expect(ge?.item.id == "\(c.id)/abc|\(Int(at(2026, 10, 30, 10, 0).timeIntervalSince1970))" && ge?.master == "abc" && ge?.item.start == at(2026, 10, 30, 10, 0), "accounts: a Google occurrence")
     expect(ge?.item.alerts == [at(2026, 10, 30, 9, 50)] && ge.flatMap { callLink($0.item) }?.service == "Google Meet", "accounts: Google's own alerts and Meet link")
+    expect(ge?.item.files == [Attach(name: "Plan.pdf", url: "https://drive.google.com/file/d/f1/view", id: "f1", type: "application/pdf")], "accounts: a Google event's Drive files")
     let allDay = googleItem(c, ["id": "x", "start": ["date": "2026-11-02"], "end": ["date": "2026-11-03"]])
     expect(allDay?.item.allDay == true && allDay?.item.start == at(2026, 11, 2, 0, 0) && allDay?.item.end == at(2026, 11, 3, 0, 0), "accounts: a Google all-day event")
     expect(googleItem(c, ["id": "y", "status": "cancelled", "start": ["date": "2026-11-02"], "end": ["date": "2026-11-03"]]) == nil, "accounts: a cancelled Google occurrence is left out")
