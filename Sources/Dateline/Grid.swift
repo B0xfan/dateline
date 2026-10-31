@@ -20,6 +20,13 @@ func lanes(_ items: [Item]) -> [String: (Int, Int)] {
     return out
 }
 
+// Days between two columns of a week view: the 5 day week can skip days off, so one column can be several days. Past either end, each further column = one day.
+func dayShift(columns n: Int, from day: Date, in days: [Date]) -> Int {
+    guard let i = days.firstIndex(of: day) else { return n }
+    let edge = min(max(i + n, 0), days.count - 1)
+    return cal.dateComponents([.day], from: day, to: days[edge]).day! + (i + n - edge)
+}
+
 struct TimeGrid: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
@@ -37,18 +44,18 @@ struct TimeGrid: View {
                     let today = cal.isDate(d, inSameDayAs: app.now)
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 4) {
-                            Text(dateText(d, "EEE")).font(.ui(12)).foregroundStyle(Palette.text2)
-                            if today {
-                                Text(dateText(d, "d")).font(.ui(14, weight: .medium)).foregroundStyle(.white)
-                                    .frame(width: 28, height: 28).background(Circle().fill(Palette.now))
-                            } else { Text(dateText(d, "d")).font(.ui(18, weight: .medium)) }
+                            // A narrow column stacks the day's name over its number.
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 4) { dayName(d); dayNumber(d, today: today) }
+                                VStack(alignment: .leading, spacing: 0) { dayName(d); dayNumber(d, today: today) }
+                            }.layoutPriority(1)
                             // Phase 8: the weather, only when the column has room for it
                             if WeatherPrefs.on, let g = headerSpot() { ViewThatFits(in: .horizontal) { HStack { WxChip(day: d, at: g); Spacer(minLength: 0) }; Spacer(minLength: 0) } }
                             else { Spacer(minLength: 0) }
                         }
                         if let sun { SunRow(day: d, at: sun) }
                     }
-                    .padding(.horizontal, 10).frame(height: headH).frame(maxWidth: .infinity)
+                    .padding(.horizontal, 10).frame(height: headH).frame(minWidth: 0, maxWidth: .infinity)
                     .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
                     .contentShape(Rectangle()).onTapGesture { if app.mode == .week { app.open(day: d) } }
                 }
@@ -70,7 +77,7 @@ struct TimeGrid: View {
                                 .onTapGesture { app.selectedID = it.id; app.panelOpen = true }
                         }
                     }
-                    .padding(.vertical, 2).frame(maxWidth: .infinity, minHeight: 34, alignment: .top)
+                    .padding(.vertical, 2).frame(minWidth: 0, maxWidth: .infinity, minHeight: 34, alignment: .topLeading).clipped()
                     .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
                 }
             }
@@ -100,6 +107,13 @@ struct TimeGrid: View {
         .background(Palette.win)
     }
 
+    func dayName(_ d: Date) -> some View { Text(dateText(d, "EEE")).font(.ui(12)).foregroundStyle(Palette.text2) }
+    @ViewBuilder func dayNumber(_ d: Date, today: Bool) -> some View {
+        if today {
+            Text(dateText(d, "d")).font(.ui(14, weight: .medium)).foregroundStyle(.white)
+                .frame(width: 28, height: 28).background(Circle().fill(Palette.now))
+        } else { Text(dateText(d, "d")).font(.ui(18, weight: .medium)) }
+    }
     func hourText(_ h: Int) -> String { h == 12 ? "Noon" : "\(h % 12 == 0 ? 12 : h % 12) \(h < 12 ? "AM" : "PM")" }
 }
 
@@ -116,7 +130,7 @@ struct DayColumn: View {
             let lane = lanes(items)
             ZStack(alignment: .topLeading) {
                 OffHours(day: day)
-                if WorkWeek.sun, let g = here.spot { SunHours(day: day, at: g, labels: day == days.first) }
+                if WorkWeek.sun, let g = here.spot { SunHours(day: day, at: g, labels: day == days.first && w >= 70) }
                 VStack(spacing: 0) { ForEach(0..<24, id: \.self) { _ in Palette.lineSoft.frame(height: 1).frame(maxHeight: hourH, alignment: .top) } }
                 Color.clear.contentShape(Rectangle())
                     .gesture(SpatialTapGesture(count: 2).onEnded { v in
@@ -200,9 +214,9 @@ struct DayColumn: View {
                 if stretch {
                     new.end = max(it.start.addingTimeInterval(15 * 60), it.end.addingTimeInterval(Double(mins) * 60))
                 } else {
-                    let dayShift = days.count > 1 ? Int((v.translation.width / colWidth).rounded()) : 0
-                    new.start = addDays(it.start, dayShift).addingTimeInterval(Double(mins) * 60)
-                    new.end = addDays(it.end, dayShift).addingTimeInterval(Double(mins) * 60)
+                    let shift = days.count > 1 ? dayShift(columns: Int((v.translation.width / colWidth).rounded()), from: day, in: days) : 0
+                    new.start = addDays(it.start, shift).addingTimeInterval(Double(mins) * 60)
+                    new.end = addDays(it.end, shift).addingTimeInterval(Double(mins) * 60)
                 }
                 if new == it { return }
                 if !stretch && NSEvent.modifierFlags.contains(.option) { app.copy(new) } else { app.save(new) }

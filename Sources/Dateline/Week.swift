@@ -54,10 +54,10 @@ struct WeekSettings: View {
         let order = (0..<7).map { (WorkWeek.firstWeekday - 1 + $0) % 7 + 1 }
         HStack(alignment: .top, spacing: 20) {
             VStack(alignment: .leading, spacing: 16) {
-                row("Week starts on", "Changes the week view, the month, quarter and year grids. Week numbers follow it too.") {
+                row("Week starts on", "Changes the month, quarter and year grids and the map's week. Week numbers follow it too.") {
                     Seg(options: WorkWeek.starts, selected: WorkWeek.start, small: true) { WorkWeek.start = $0; changed() }
                 }
-                row("Working days", "The 5-day view shows these days. Days off get a light grey background in the week view.") {
+                row("Working days", "The 5-day view shows today, then these days. Days off get a light grey background in the week view.") {
                     HStack(spacing: 5) {
                         ForEach(order, id: \.self) { wd in
                             let on = WorkWeek.days.contains(wd)

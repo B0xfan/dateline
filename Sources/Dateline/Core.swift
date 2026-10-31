@@ -460,15 +460,39 @@ func selftest() -> Int32 {
     MainActor.assumeIsolated {
         let a = AppState(store: Store(sample: true), today: now)
         a.mode = .week; a.days = 5
-        expect(a.visibleDays == (0..<5).map { at(10, 26 + $0, 0) }, "5 days = Mon to Fri")
+        expect(a.visibleDays == (0..<5).map { at(10, 26 + $0, 0) }, "5 days from Monday = Mon to Fri")
+        a.days = 3
+        expect(a.visibleDays == (0..<3).map { at(10, 26 + $0, 0) }, "3 days start on today")
+        a.days = 7; a.anchor = at(10, 28, 0)
+        expect(a.visibleDays == (0..<7).map { at(10, 28 + $0, 0) }, "7 days start on today, not the week's first day")
+        a.step(1); expect(a.anchor == at(11, 4, 0), "7 days: next page is 7 days on")
+        a.days = 5; a.anchor = at(10, 28, 0)
+        expect(a.visibleDays == [at(10, 28, 0), at(10, 29, 0), at(10, 30, 0), at(11, 2, 0), at(11, 3, 0)], "5 days from Wednesday skip the weekend")
+        a.step(1); expect(a.anchor == at(11, 4, 0), "5 days: next page starts after the last one shown")
+        a.step(-1); expect(a.anchor == at(10, 28, 0), "5 days: back returns to the same page")
+        a.anchor = at(10, 31, 0)
+        expect(a.visibleDays == [at(10, 31, 0), at(11, 2, 0), at(11, 3, 0), at(11, 4, 0), at(11, 5, 0)], "5 days from Saturday: today first, even as a day off, then working days")
+        a.step(1); expect(a.anchor == at(11, 6, 0), "5 days from Saturday: next page starts on the working day not yet shown")
+        a.anchor = at(10, 28, 0)
+        let picked = (0..<30).compactMap { _ -> Item? in a.selectNext(1); return a.selected }
+        expect(!picked.isEmpty && !picked.contains { $0.start >= at(10, 31, 0) && $0.end <= at(11, 2, 0) }, "up and down skip events on days the 5 day week leaves out")
+        a.selectedID = nil
+        let gap = [at(10, 29, 0), at(10, 30, 0), at(11, 2, 0)]
+        expect(dayShift(columns: 1, from: gap[1], in: gap) == 3 && dayShift(columns: -1, from: gap[2], in: gap) == -3 && dayShift(columns: 2, from: gap[2], in: gap) == 2 && dayShift(columns: 2, from: gap[1], in: gap) == 4, "dragging over the weekend gap moves by the days between columns")
+        a.days = 3; a.anchor = at(10, 26, 0); a.now = at(10, 26, 23)
+        a.tick(at(10, 28, 8)); expect(a.anchor == at(10, 28, 0) && a.now == at(10, 28, 8), "a new day: the view showing today moves on")
+        a.anchor = at(10, 26, 0); a.now = at(10, 28, 8); a.tick(at(10, 29, 8)); expect(a.anchor == at(10, 26, 0), "a new day: a view paged elsewhere stays, even with today on screen")
+        a.anchor = at(10, 26, 0); a.days = 5; a.now = now
         WorkWeek.days = [1, 3, 5]
-        expect(a.visibleDays == [at(10, 27, 0), at(10, 29, 0), at(11, 1, 0)], "5 days = only the working days of this week (Tue, Thu, Sun)")
+        expect(a.visibleDays == [at(10, 26, 0), at(10, 27, 0), at(10, 29, 0)], "5 days = today, then the working days (Tue, Thu), as many as are ticked")
         WorkWeek.start = "Sunday"
         expect(startOfWeek(at(10, 31, 12)) == at(10, 25, 0) && monthGrid(now).first == at(9, 27, 0), "week starts Sunday")
-        expect(a.visibleDays == [at(10, 25, 0), at(10, 27, 0), at(10, 29, 0)], "Sunday first: Sun, Tue, Thu")
+        expect(a.visibleDays == [at(10, 26, 0), at(10, 27, 0), at(10, 29, 0)], "week start does not move the week view")
         expect(weekNumber(at(1, 4, 12)) == 2 && weekNumber(at(1, 3, 12)) == 1, "Sunday weeks count from January 1st")
         WorkWeek.days = [3]
+        a.anchor = at(10, 27, 0)
         expect(a.visibleDays == [at(10, 27, 0)] && a.title == "Tuesday, October 27, 2026", "one working day: one column, one-day title")
+        a.anchor = at(10, 26, 0)
         WorkWeek.days = []
         expect(a.visibleDays.count == 7, "no working days: the 5-day view shows the whole week")
         WorkWeek.start = "Saturday"

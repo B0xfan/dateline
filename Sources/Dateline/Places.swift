@@ -137,6 +137,7 @@ struct SunRow: View {
                 line(timeText(s.rise, short: false) + " · " + timeText(s.set, short: false), moon, words: true)
                 line(timeText(s.rise, short: false) + " · " + timeText(s.set, short: false), moon, words: false)
                 line(clock(s.rise) + " · " + clock(s.set), moon, words: false)
+                Color.clear.frame(height: 0)  // no room: left out
             }
             .font(.ui(10.5)).foregroundStyle(Palette.text3)
         }

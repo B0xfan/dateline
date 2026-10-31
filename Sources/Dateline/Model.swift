@@ -71,14 +71,14 @@ final class AppState: ObservableObject {
         if store.access != .sample { Assistant.shared.attach(self) }  // here, not when the window opens: Dateline also runs with its window closed
     }
 
-    // The days the day or week view shows. A 7 day week starts on the first day of the week, a 5 day week is that week's working days, a 3 day week starts on the day you are on.
+    // The days the day or week view shows. Week views start on the day you are on, today unless you moved (John 2026-10-30). A 5 day week then skips days off.
     var visibleDays: [Date] {
         switch mode {
         case .day: return [anchor]
         case .week:
-            if days == 3 { return (0..<3).map { addDays(anchor, $0) } }
-            let s = startOfWeek(anchor), week = (0..<7).map { addDays(s, $0) }, work = week.filter(WorkWeek.isWorkDay)
-            return days == 5 && !work.isEmpty ? work : week  // no working days ticked: the whole week
+            let work = workDaysFromAnchor(1)
+            if days == 5 && !work.isEmpty { return [anchor] + work.dropLast() }
+            return (0..<(days == 3 ? 3 : 7)).map { addDays(anchor, $0) }  // no working days ticked: the 5 day week shows all 7
         case .month: return monthGrid(anchor)
         case .quarter:
             let q = quarterStart(anchor), a = startOfWeek(q), b = monthGrid(cal.date(byAdding: .month, value: 2, to: q)!).last!
@@ -86,6 +86,9 @@ final class AppState: ObservableObject {
         case .year: let y = cal.dateInterval(of: .year, for: anchor)!; return (0..<cal.range(of: .day, in: .year, for: anchor)!.count).map { addDays(y.start, $0) }
         }
     }
+
+    // The working days in the 7 days after (or, going back, before) the anchor, nearest first, so one of each.
+    private func workDaysFromAnchor(_ direction: Int) -> [Date] { (1...7).map { addDays(anchor, direction * $0) }.filter(WorkWeek.isWorkDay) }
 
     var title: String {
         switch mode {
@@ -134,7 +137,9 @@ final class AppState: ObservableObject {
     func step(_ n: Int) {
         switch mode {
         case .day: anchor = addDays(anchor, n)
-        case .week: anchor = addDays(anchor, n * (days == 3 ? 3 : 7))
+        case .week:
+            if days == 5, let next = workDaysFromAnchor(n).last { anchor = next }  // a whole page of working days, none skipped
+            else { anchor = addDays(anchor, n * (days == 3 ? 3 : 7)) }
         case .month: anchor = cal.date(byAdding: .month, value: n, to: cal.date(from: cal.dateComponents([.year, .month], from: anchor))!)!
         case .quarter: anchor = cal.date(byAdding: .month, value: 3 * n, to: quarterStart(anchor))!
         case .year: anchor = cal.date(byAdding: .year, value: n, to: cal.dateInterval(of: .year, for: anchor)!.start)!
@@ -147,6 +152,12 @@ final class AppState: ObservableObject {
     }
 
     func goToday() { anchor = cal.startOfDay(for: Date()) }
+
+    // Past midnight, a view on today moves on with it, even if the app stayed open or the Mac slept for days. A view you paged elsewhere stays.
+    func tick(_ date: Date) {
+        if !cal.isDate(date, inSameDayAs: now), anchor == cal.startOfDay(for: now) { anchor = cal.startOfDay(for: date) }
+        now = date
+    }
 
     func open(day: Date) { anchor = cal.startOfDay(for: day); mode = .day }
 
@@ -294,7 +305,7 @@ final class AppState: ObservableObject {
     // Up / Down: the previous or next event on screen, by start time.
     func selectNext(_ dir: Int) {
         let d = visibleDays
-        let list = shownItems.filter { $0.end > d.first! && $0.start < addDays(d.last!, 1) }
+        let list = shownItems.filter { it in d.contains { it.end > $0 && it.start < addDays($0, 1) } }  // a 5 day week can skip days off
         guard !list.isEmpty else { return }
         if let i = list.firstIndex(where: { $0.id == selectedID }) {
             selectedID = list[max(0, min(list.count - 1, i + dir))].id
@@ -308,7 +319,7 @@ final class AppState: ObservableObject {
     func startKeys() {
         guard monitor == nil else { return }  // the window can appear again after being closed
         registerQuick()
-        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in self?.now = Date(); if let self { MenuBar.shared.update(self) } } }
+        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in if let self { self.tick(Date()); MenuBar.shared.update(self) } } }
         if store.access != .sample { Here.shared.start() }
         travelTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in Task { @MainActor in Here.shared.refresh(); self?.planTravel(); self?.store.refreshSubs(); self?.store.refreshAccounts() } }
         alertTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in Task { @MainActor in self?.checkAlerts() } }

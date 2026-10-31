@@ -356,8 +356,8 @@ struct Toolbar: View {
     @State private var width: CGFloat = 1000
     @State private var fullScreen = false
     var body: some View {
-        // A tight bar first drops the set's name and the Days word; the smallest window's compact bar drops the rest, so the add box and every button stay on screen.
-        bar(compact: width < 800, roomy: width >= 1200)
+        // A tight bar first drops the set's name and the Days word; narrower bars drop the rest (see bar), so the add box stays on screen.
+        bar(compact: width < 800, roomy: width >= 1200, tight: width < 700, tiny: width < 560)
         // With the sidebar gone, the window's close/minimize/zoom buttons sit over the bar's start (not in full screen, where they are not drawn).
         .padding(.leading, app.sidebarOpen || fullScreen ? 14 : 80).padding(.trailing, 14).frame(height: 52)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in fullScreen = true }
@@ -369,8 +369,9 @@ struct Toolbar: View {
         .overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
     }
 
-    func bar(compact: Bool, roomy: Bool) -> some View {
-        HStack(spacing: compact ? 6 : 10) {  // tighter at the smallest window, so the sidebar button still leaves room for the add box
+    // Only a side panel gets the bar this narrow. tight: the week's title is just its month, and no tasks button (the panel has its own X, R still works). tiny (the sidebar open too): also no map (P still works) and no 3, 5, 7.
+    func bar(compact: Bool, roomy: Bool, tight: Bool, tiny: Bool) -> some View {
+        HStack(spacing: tiny ? 3 : compact ? 6 : 10) {  // tighter at the smallest window, so the sidebar button still leaves room for the add box
             Button { app.sidebarOpen.toggle() } label: { Image(systemName: "sidebar.left") }
                 .buttonStyle(TButton(icon: true)).fixedSize().help(app.sidebarOpen ? "Hide calendars (S)" : "Show calendars (S)")
             Button("Today") { app.goToday() }.buttonStyle(TButton()).fixedSize()
@@ -378,9 +379,14 @@ struct Toolbar: View {
                 Button { app.step(-1) } label: { Image(systemName: "chevron.left") }.buttonStyle(TButton(icon: true))
                 Button { app.step(1) } label: { Image(systemName: "chevron.right") }.buttonStyle(TButton(icon: true))
             }
-            ViewThatFits(in: .horizontal) {
-                Text(app.title).fixedSize()
-                Text(app.shortTitle).fixedSize()
+            Group {
+                if tight && app.mode == .week { Text(dateText(app.anchor, "MMM")).fixedSize() }
+                else {
+                    ViewThatFits(in: .horizontal) {
+                        Text(app.title).fixedSize()
+                        Text(app.shortTitle).fixedSize()
+                    }
+                }
             }.font(.ui(15, weight: .semibold)).padding(.leading, 4).layoutPriority(2)
             if app.mode != .year && !app.sideOpen && !compact {
                 Text(app.weekLabel).font(.ui(11, weight: .medium)).foregroundStyle(Palette.text2)
@@ -390,7 +396,7 @@ struct Toolbar: View {
                 Text("· \(s.name) set").font(.ui(12)).foregroundStyle(Palette.text3).lineLimit(1)
             }
             Spacer(minLength: 8)
-            if app.mode == .week {
+            if app.mode == .week && !tiny {
                 HStack(spacing: 6) {
                     if !app.sideOpen && roomy { Text("Days").font(.ui(12)).foregroundStyle(Palette.text2) }
                     Seg(options: ["3", "5", "7"], selected: String(app.days), small: true) { app.days = Int($0)! }
@@ -404,11 +410,15 @@ struct Toolbar: View {
                 }.fixedSize()
             }.layoutPriority(1)
             // Icons in every view (John 2026-10-28); the hover tip names each one and its key.
-            Button { app.tasksOpen.toggle() } label: { Image(systemName: "checklist") }
-                .buttonStyle(TButton(icon: true)).fixedSize().help("Tasks: Reminders (R)")
-            Button { app.mapOpen = true } label: { Image(systemName: "map") }
-                .buttonStyle(TButton(icon: true)).fixedSize().help("Map: Events (P)")
-            AddBox(app: app).frame(minWidth: compact ? 100 : 130, maxWidth: 300)
+            if !tight {
+                Button { app.tasksOpen.toggle() } label: { Image(systemName: "checklist") }
+                    .buttonStyle(TButton(icon: true)).fixedSize().help("Tasks: Reminders (R)")
+            }
+            if !tiny {
+                Button { app.mapOpen = true } label: { Image(systemName: "map") }
+                    .buttonStyle(TButton(icon: true)).fixedSize().help("Map: Events (P)")
+            }
+            AddBox(app: app).frame(minWidth: tiny ? 30 : tight ? 80 : compact ? 100 : 130, maxWidth: 300)
             // With a panel open there is no room for it; the ? key still opens the list.
             if !app.sideOpen && !compact { Button("?") { app.showShortcuts = true }.buttonStyle(TButton(icon: true)).help("Keyboard shortcuts") }
         }
@@ -668,19 +678,24 @@ func whenText(_ p: Parsed) -> String {
 
 struct StatusBar: View {
     var body: some View {
-        HStack(spacing: 16) {
-            HStack(spacing: 5) { Key("N"); Text("new") }
-            HStack(spacing: 5) { Key("T"); Text("today") }
-            HStack(spacing: 5) { Key("1"); Text("to"); Key("5"); Text("day to year") }
-            HStack(spacing: 5) { Key("?"); Text("all shortcuts") }
-            Spacer()
-            ForEach(ShowAs.allCases, id: \.self) { s in HStack(spacing: 5) { Mark(showAs: s, color: Palette.text3); Text(s.rawValue) } }
+        // Too narrow for the key hints: only the Busy, Free, Maybe legend.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                HStack(spacing: 5) { Key("N"); Text("new") }
+                HStack(spacing: 5) { Key("T"); Text("today") }
+                HStack(spacing: 5) { Key("1"); Text("to"); Key("5"); Text("day to year") }
+                HStack(spacing: 5) { Key("?"); Text("all shortcuts") }
+                Spacer()
+                legend
+            }
+            HStack(spacing: 16) { Spacer(); legend }
         }
         .font(.ui(11.5)).foregroundStyle(Palette.text3)
         .padding(.horizontal, 14).frame(height: 30)
         .background(Palette.bar)
         .overlay(alignment: .top) { Palette.line.frame(height: 1) }
     }
+    var legend: some View { ForEach(ShowAs.allCases, id: \.self) { s in HStack(spacing: 5) { Mark(showAs: s, color: Palette.text3); Text(s.rawValue) } } }
 }
 
 struct ShortcutList: View {

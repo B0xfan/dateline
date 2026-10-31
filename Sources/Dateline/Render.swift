@@ -45,6 +45,14 @@ import AppKit
         // The calendars sidebar hidden with the toolbar's first button (John 2026-10-28), at full and smallest width.
         shot("no-sidebar") { a in a.mode = .week; a.days = 7; a.sidebarOpen = false }
         shot("no-sidebar-narrow", width: 980) { a in a.mode = .week; a.days = 7; a.sidebarOpen = false; a.tasksOpen = true }
+        // The 7-day week at the smallest window with a side panel open: its left edge must stay in the window (John's 2026-10-28 bug).
+        shot("week-narrow-tasks", width: 980) { a in a.mode = .week; a.days = 7; a.tasksOpen = true }
+        shot("week-narrow-details", width: 980) { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Write proposal" }?.id; a.panelOpen = true }
+        for m in [Mode.day, .month, .quarter, .year] { shot("narrow-\(m.rawValue.lowercased())", width: 980) { a in a.mode = m; a.tasksOpen = true } }
+        // Week views start on the day you are on: from a Wednesday, the 5-day view skips the weekend.
+        shot("week3-midweek") { a in a.mode = .week; a.days = 3; a.anchor = addDays(a.anchor, 2) }
+        shot("week5-midweek") { a in a.mode = .week; a.days = 5; a.anchor = addDays(a.anchor, 2) }
+        shot("week7-midweek") { a in a.mode = .week; a.days = 7; a.anchor = addDays(a.anchor, 2) }
         // Phase 9 email to event (approved mockup section 1): the waiting emails in the sidebar, and the review window.
         shot("from-email") { $0.mode = .week; $0.days = 7 }
         shot("email-review") { $0.reviewing = "s1" }

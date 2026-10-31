@@ -234,7 +234,7 @@ struct TaskRow: View {
                 VStack(alignment: .leading, spacing: 1) {
                     ForEach(list.filter { taskRowDay($0, now: app.now) == d }) { t in TaskChip(app: app, store: store, task: t) }
                 }
-                .padding(.horizontal, 6).padding(.vertical, 4).frame(maxWidth: .infinity, minHeight: 28, alignment: .topLeading)
+                .padding(.horizontal, 6).padding(.vertical, 4).frame(minWidth: 0, maxWidth: .infinity, minHeight: 28, alignment: .topLeading).clipped()
                 .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
             }
         }
