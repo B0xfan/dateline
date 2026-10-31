@@ -284,7 +284,7 @@ final class AppState: ObservableObject {
     // A task dropped on the day grid takes that day and time.
     func drop(taskID: String, at time: Date) {
         guard var t = store.todos.first(where: { $0.id == taskID }) else { return }
-        t.due = time; t.timed = true
+        if t.a4 != nil { t.due = cal.startOfDay(for: time) } else { t.due = time; t.timed = true }  // A4's Due property holds a day, no time
         saveTask(t)
     }
 

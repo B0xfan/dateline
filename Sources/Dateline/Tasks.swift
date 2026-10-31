@@ -15,6 +15,7 @@ struct ToDo: Identifiable, Equatable {
     var notes = ""
     var remind = Remind.time
     var place: Spot? = nil
+    var a4: A4Task? = nil  // set on a task that lives in the A4 vault, not Reminders
 }
 
 enum Remind: String, CaseIterable { case time = "At a time", arriving = "Arriving", leaving = "Leaving" }

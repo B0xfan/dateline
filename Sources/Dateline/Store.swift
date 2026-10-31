@@ -466,6 +466,7 @@ final class Store: ObservableObject {
         ev("personal", "Dinner with Ana", 4, 19, 0, 120, place: "Casa Luna, Tamarindo", notes: "Table on the terrace", geo: Geo(lat: 10.3046, lon: -85.8405))
         ev("family", "Beach day", 5, 9, 0, 240, .free, place: "Playa Grande", geo: Geo(lat: 10.3329, lon: -85.8586))
         loadSampleTasks(mon)
+        loadSampleA4(mon)
         subs = [Sub(id: "sub-sample", url: "https://calendar.example-school.cr/grade5/schedule.ics", name: "Grade 5 schedule", color: 3, updated: sampleToday)]
         subParsed["sub-sample"] = parseICS(sampleICS)
         calendars += subInfos

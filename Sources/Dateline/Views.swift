@@ -86,7 +86,7 @@ struct MainView: View {
             }
             if let t = app.openTask {
                 Divider().overlay(Palette.line)
-                TaskDetail(app: app, store: store, task: t).id(t.id).frame(width: 320)
+                if t.a4 != nil { A4TaskDetail(app: app, store: store, task: t).id(t.id).frame(width: 320) } else { TaskDetail(app: app, store: store, task: t).id(t.id).frame(width: 320) }
             } else if app.panelOpen, let it = app.selected {
                 Divider().overlay(Palette.line)
                 DetailPanel(app: app, store: store, item: it).id(it.id).frame(width: 320)
