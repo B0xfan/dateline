@@ -551,6 +551,7 @@ func selftest() -> Int32 {
     expect(keySymbols("Control Option Space") == "⌃⌥Space", "quick add keys")
     // Phase 7: subscribed calendars
     weatherSelftest(expect)
+    a4Selftest(expect)
     MainActor.assumeIsolated {
         let d = UserDefaults.standard, before = (d.object(forKey: "hiddenCalendars") as? [String], d.string(forKey: "mode"))
         let a = AppState(store: Store(sample: true), today: now)

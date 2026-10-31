@@ -145,9 +145,9 @@ struct Sidebar: View {
                         ForEach(groups[acct]!) { c in row(c) }
                     }
                     SubscribedList(app: app, store: store) { AnyView(row($0, trailing: $1)) }
-                    if !store.lists.isEmpty {
+                    if store.lists.contains(where: { $0.account != a4Account }) {
                         Text("Reminders lists").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).textCase(.uppercase).padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 4)
-                        ForEach(store.lists) { l in listRow(l) }
+                        ForEach(store.lists.filter { $0.account != a4Account }) { l in listRow(l) }  // A4 has one list per project; its switch is in Settings
                         Text("Untick a list to hide its tasks. Sets remember lists too.").font(.ui(11)).foregroundStyle(Palette.text3)
                             .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 8).padding(.top, 4)
                     }
@@ -624,6 +624,7 @@ struct SettingsView: View {
             WeekSettings(app: app).tabItem { Label("Week", systemImage: "calendar") }.tag("week")
             AlertSettings(app: app, store: app.store).tabItem { Label("Alerts", systemImage: "bell") }.tag("alerts")
             ZoneSettings(app: app).tabItem { Label("Time zones", systemImage: "globe") }.tag("zones")
+            A4Settings(store: app.store).tabItem { Label("A4 tasks", systemImage: "checklist") }.tag("a4")
             MenuBarSettings(app: app).tabItem { Label("Menu bar", systemImage: "menubar.rectangle") }.tag("menubar")
             WeatherSettings(app: app).tabItem { Label("Weather", systemImage: "cloud.sun") }.tag("weather")
             AssistantSettings(app: app, a: Assistant.shared).tabItem { Label("Assistant", systemImage: "sparkles") }.tag("assistant")

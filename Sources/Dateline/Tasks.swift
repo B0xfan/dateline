@@ -80,8 +80,11 @@ extension Store {
     // Every unfinished reminder, plus the ones finished in the last week (for "Show done tasks" and ticked ones on the calendar).
     func reloadReminders() {
         guard taskAccess == .granted else { return }
-        lists = ek.calendars(for: .reminder).sorted { $0.title < $1.title }
+        // A4's reminders job copies timed tasks into a Reminders list; with A4 tasks showing, that list would show each one twice.
+        let mirrored = a4On && FileManager.default.fileExists(atPath: a4Folder) ? Set(ek.calendars(for: .reminder).filter { $0.title == "A4 Tasks" }.map(\.calendarIdentifier)) : []
+        lists = ek.calendars(for: .reminder).filter { !mirrored.contains($0.calendarIdentifier) }.sorted { $0.title < $1.title }
             .map { CalInfo(id: $0.calendarIdentifier, title: $0.title, account: $0.source.title, color: Color(nsColor: $0.color), writable: $0.allowsContentModifications) }
+            + lists.filter { $0.account == a4Account }
         taskFetch += 1
         let n = taskFetch, ek = ek
         let open = ek.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)
@@ -90,7 +93,7 @@ extension Store {
             let first = (a ?? []).map(Store.todo)
             ek.fetchReminders(matching: done) { b in
                 let all = first + (b ?? []).map(Store.todo)
-                DispatchQueue.main.async { MainActor.assumeIsolated { if n == self.taskFetch { self.todos = all } } }
+                DispatchQueue.main.async { MainActor.assumeIsolated { if n == self.taskFetch { self.todos = all.filter { !mirrored.contains($0.listID) } + self.todos.filter { $0.a4 != nil } } } }
             }
         }
     }
@@ -112,6 +115,7 @@ extension Store {
     @discardableResult
     func addTask(_ t: ToDo, listID: String?) -> Result<ToDo, Failure> {
         var t = t
+        if taskList(listID ?? "")?.account == a4Account { return .failure(Failure("New A4 tasks are added in Obsidian.")) }
         if access == .sample || taskAccess == .sample {
             t.id = UUID().uuidString; t.listID = listID ?? lists.first?.id ?? ""
             todos.append(t); return .success(t)
@@ -135,6 +139,7 @@ extension Store {
             guard let i = todos.firstIndex(where: { $0.id == t.id }) else { return Failure("That task is gone.") }
             todos[i] = t; return nil
         }
+        if t.a4 != nil { return updateA4(t, old: old) }
         guard let r = ek.calendarItem(withIdentifier: t.id) as? EKReminder else { return Failure("That task is gone.") }
         if r.calendar.calendarIdentifier != t.listID, let c = ek.calendar(withIdentifier: t.listID) { r.calendar = c }
         apply(t, old: old, to: r)
@@ -321,7 +326,7 @@ struct TaskList: View {
                 } label: { Text(filter?.title ?? "All lists") }.menuStyle(.borderlessButton).fixedSize()
                 Button { app.tasksOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.buttonStyle(.plain).foregroundStyle(Palette.text3)
             }.padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
-            if store.taskAccess == .denied {
+            if store.taskAccess == .denied && !store.todos.contains(where: { $0.a4 != nil }) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Dateline can't see Reminders yet").font(.ui(13, weight: .semibold))
                     Text("Turn on Dateline under Privacy & Security, Reminders, in System Settings, then reopen it.").foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)

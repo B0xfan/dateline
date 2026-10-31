@@ -4,6 +4,8 @@
 //   --email-check <file.eml>  reads one email with Apple's on-device AI and prints the event it found
 //   --assistant         started by Claude: passes its messages to the running app (Settings, Assistant)
 //   --accounts-check <address>   the iCloud account code against scripts/caldav-standin.py (no settings, no passwords saved)
+//   --a4-check <folder>  reads and edits every A4 task note in a COPY of the tasks folder (it changes the files it is given)
+//   --a4-code <vault> <path> <day>  prints what is sent to A4's engine, for the sandbox test
 //   --render <folder>   draws the window on sample calendars to PNG files off-screen (no window, no calendar access)
 import SwiftUI
 import AppKit
@@ -11,6 +13,8 @@ import UniformTypeIdentifiers
 
 let args = CommandLine.arguments
 if args.contains("--selftest") { exit(selftest()) }
+if let i = args.firstIndex(of: "--a4-code"), i + 3 < args.count { print(a4EngineCode(vault: args[i + 1], path: args[i + 2], day: args[i + 3].isEmpty ? nil : args[i + 3])); exit(0) }  // what the engine is sent, for the sandbox test
+if let i = args.firstIndex(of: "--a4-check"), i + 1 < args.count { exit(a4Check(args[i + 1])) }
 if args.contains("--assistant") { exit(assistantRelay()) }
 if let i = args.firstIndex(of: "--email-check"), i + 1 < args.count {  // reads one email file with the on-device AI and prints the draft; saves nothing
     Task { @MainActor in

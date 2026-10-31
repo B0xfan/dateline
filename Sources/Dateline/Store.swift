@@ -122,6 +122,11 @@ final class Store: ObservableObject {
     @Published var taskAccess: Access = .unknown
     var taskObserver: Any?
     var taskFetch = 0  // only the newest Reminders read is kept
+    @Published var a4On = UserDefaults.standard.object(forKey: "a4On") as? Bool ?? true
+    @Published var a4Folder = UserDefaults.standard.string(forKey: "a4Folder") ?? a4DefaultFolder
+    var a4Fetch = 0  // only the newest read of the A4 folder is kept
+    var a4Busy = 0  // a change on its way through Obsidian: a read now would undo what's on screen
+    var a4Observer: Any?
 
     private var deletedAlarms: [String: [EKAlarm]] = [:]
     // Phase 7: subscribed and ready-made calendars (Subscribed.swift).
@@ -144,6 +149,10 @@ final class Store: ObservableObject {
         loadAccounts()
         requestAccess()
         requestReminders()
+        reloadA4()
+        a4Observer = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in self.reloadA4() }
+        }
     }
 
     // Dateline's own saved data. Sample mode (every test and picture) keeps it in memory only.
@@ -160,7 +169,7 @@ final class Store: ObservableObject {
     // Shows only that set's calendars; nil = all calendars.
     func use(_ s: CalSet?) {
         hidden = s.map { Set(calendars.map(\.id)).subtracting($0.calendars) } ?? []
-        if s == nil { hiddenLists = [] } else if let l = s?.lists, !lists.isEmpty { hiddenLists = Set(lists.map(\.id)).subtracting(l) }
+        if s == nil { hiddenLists = [] } else if let l = s?.lists, !lists.isEmpty { hiddenLists = Set(lists.filter { $0.account != a4Account }.map(\.id)).subtracting(l) }  // A4 has its own switch in Settings; a set never hides its projects
     }
 
     // Every tag in use and how many events have it, most used first.

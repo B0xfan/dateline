@@ -258,6 +258,11 @@ final class AppState: ObservableObject {
 
     func saveTask(_ new: ToDo) {
         guard let old = store.todos.first(where: { $0.id == new.id }), old != new else { return }
+        if new.a4?.repeating == true, new.done != old.done {
+            // The engine's tick is a toggle, and undo is offered only once it worked.
+            if let f = store.a4Tick(old, then: { [weak self] in self?.undoStack.append { [weak self] in self?.store.a4Tick(old) } }) { error = f.message }
+            return
+        }
         if let f = store.updateTask(new) { error = f.message; return }
         undoStack.append { [weak self] in self?.store.updateTask(old) }
     }
@@ -319,7 +324,7 @@ final class AppState: ObservableObject {
     func startKeys() {
         guard monitor == nil else { return }  // the window can appear again after being closed
         registerQuick()
-        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in if let self { self.tick(Date()); MenuBar.shared.update(self) } } }
+        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in if let self { self.tick(Date()); MenuBar.shared.update(self); self.store.reloadA4() } } }
         if store.access != .sample { Here.shared.start() }
         travelTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in Task { @MainActor in Here.shared.refresh(); self?.planTravel(); self?.store.refreshSubs(); self?.store.refreshAccounts() } }
         alertTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in Task { @MainActor in self?.checkAlerts() } }
