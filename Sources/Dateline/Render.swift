@@ -19,7 +19,8 @@ import AppKit
             app.openTaskLists = []; app.sidebarOpen = true  // never the folds or sidebar saved on this Mac
             setup(app)
             // A sheet (the places map) does not draw off-screen, so it is drawn on its own.
-            let view = app.mapOpen ? AnyView(PlacesMap(app: app, store: app.store)) : AnyView(MainView(app: app, store: app.store))
+            let p = app.emails.items.first { $0.id == app.reviewing }
+            let view = app.mapOpen ? AnyView(PlacesMap(app: app, store: app.store)) : p.map { AnyView(EmailReview(app: app, p: $0).frame(maxWidth: .infinity, maxHeight: .infinity).background(Palette.side)) } ?? AnyView(MainView(app: app, store: app.store))
             ok = save(view.frame(width: width, height: 800), dark: dark, wait: wait, width: width, to: "\(dir)/\(name)-\(tag).png") && ok
         }
         shot("day") { $0.mode = .day }
@@ -44,6 +45,10 @@ import AppKit
         // The calendars sidebar hidden with the toolbar's first button (John 2026-10-28), at full and smallest width.
         shot("no-sidebar") { a in a.mode = .week; a.days = 7; a.sidebarOpen = false }
         shot("no-sidebar-narrow", width: 980) { a in a.mode = .week; a.days = 7; a.sidebarOpen = false; a.tasksOpen = true }
+        // Phase 9 email to event (approved mockup section 1): the waiting emails in the sidebar, and the review window.
+        shot("from-email") { $0.mode = .week; $0.days = 7 }
+        shot("email-review") { $0.reviewing = "s1" }
+        shot("email-review-nodate") { $0.reviewing = "s3" }
         shot("places-map", wait: 4) { $0.mode = .week; $0.days = 7; $0.mapOpen = true }
         shot("task-list") { $0.mode = .week; $0.days = 5; $0.tasksOpen = true }
         // Folded no-date lists (approved mockup): Groceries open past 20 tasks, so "Show all" shows; the others folded.

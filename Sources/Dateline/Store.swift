@@ -307,11 +307,11 @@ final class Store: ObservableObject {
         let calID = calendarID ?? defaultCalendarID ?? calendars.first(where: \.writable)?.id
         guard let calID else { return .failure(Failure("No calendar on this Mac can take new events.")) }
         if access != .sample, isAcc(calID) {
-            return accAdd(Item(id: "", calendarID: calID, title: p.title.isEmpty ? "New event" : p.title, start: p.start, end: p.end, allDay: p.allDay, place: p.place, notes: "", showAs: p.showAs, geo: p.geo),
+            return accAdd(Item(id: "", calendarID: calID, title: p.title.isEmpty ? "New event" : p.title, start: p.start, end: p.end, allDay: p.allDay, place: p.place, notes: p.notes, showAs: p.showAs, geo: p.geo),
                           alertMinutes: p.alertMinutes, repeats: p.repeats.map { ($0.unit, $0.n) })
         }
         var it = Item(id: UUID().uuidString, calendarID: calID, title: p.title.isEmpty ? "New event" : p.title, start: p.start, end: p.end,
-                      allDay: p.allDay, place: p.place, notes: "", showAs: p.showAs, geo: p.geo)
+                      allDay: p.allDay, place: p.place, notes: p.notes, showAs: p.showAs, geo: p.geo)
         if access == .sample { sample.append(it); fetch(); return .success(it) }
         guard let c = ek.calendar(withIdentifier: calID) else { return .failure(Failure("That calendar is gone.")) }
         let e = EKEvent(eventStore: ek)

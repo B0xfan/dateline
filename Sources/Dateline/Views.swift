@@ -103,9 +103,13 @@ struct MainView: View {
         .sheet(isPresented: $app.mapOpen) { PlacesMap(app: app, store: store) }
         .onAppear { app.planTravel(); app.openMain = { [openWindow] in openWindow(id: "main") } }
         .onChange(of: store.soon) { _, _ in app.planTravel() }
+        .onReceive(app.emails.$items) { items in if let r = app.reviewing, !items.contains(where: { $0.id == r }) { app.reviewing = nil } }  // the email left the folder
         .sheet(item: $app.confirmDelete) { it in ConfirmDelete(app: app, store: store, item: it) }
         .sheet(item: $app.editingSet) { s in SetEditor(app: app, store: store, draft: s) }
         .sheet(isPresented: $app.subscribing) { SubscribeSheet(app: app, store: store) }
+        .sheet(isPresented: Binding(get: { app.reviewing != nil }, set: { if !$0 { app.reviewing = nil } })) {
+            if let p = app.emails.items.first(where: { $0.id == app.reviewing }) { EmailReview(app: app, p: p) }
+        }
         .alert("Couldn't save", isPresented: Binding(get: { app.error != nil }, set: { if !$0 { app.error = nil } })) {
             Button("OK") { app.error = nil }
         } message: { Text(app.error ?? "") }
@@ -132,6 +136,7 @@ struct Sidebar: View {
             Color.clear.frame(height: 40)  // room for the window's buttons
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
+                    FromEmailList(app: app, inbox: app.emails)
                     SetList(app: app, store: store)
                     Text("Calendars on this Mac").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 4)
                     let groups = Dictionary(grouping: store.calendars.filter { !isSub($0.id) }, by: \.account)

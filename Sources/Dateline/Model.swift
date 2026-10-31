@@ -36,6 +36,8 @@ final class AppState: ObservableObject {
     private var alertTimer: Timer?
     var openMain: (() -> Void)?  // brings the main window back, also after it was closed
     @Published var subscribing = false  // Phase 7: the Subscribe window
+    let emails: EmailInbox  // Phase 9: forwarded emails waiting to become events
+    @Published var reviewing: String?  // the email open in the review window
     @Published var editingSet: CalSet?  // the set editor is open on this (a new one when it is not in the list yet)
     @Published var look = 0  // bumped when a Look setting changes, to redraw everything
     @Published var confirmDelete: Item?
@@ -61,6 +63,7 @@ final class AppState: ObservableObject {
 
     init(store: Store, today: Date = Date()) {
         self.store = store
+        emails = EmailInbox(sample: store.access == .sample)
         anchor = cal.startOfDay(for: today)
         store.onError = { [weak self] in self?.error = $0 }
         now = today
@@ -166,6 +169,15 @@ final class AppState: ObservableObject {
         if addCalendarID == nil, let s = store.activeSet, let c = writable.first(where: { $0.id == s.defaultCalendar }) { return (c, "(\(s.name) set)") }
         let c = store.calendar(addCalendarID ?? store.defaultCalendarID ?? "") ?? writable.first
         return (c, c?.id == store.defaultCalendarID ? "(your default)" : "")
+    }
+
+    // Undo for something that isn't a calendar change (an email thrown away).
+    func onUndo(_ f: @escaping () -> Void) { undoStack.append { f(); return nil } }
+
+    // Something more for the last Undo to put back, once its own undo worked.
+    func alsoOnUndo(_ f: @escaping () -> Void) {
+        guard let u = undoStack.popLast() else { return }
+        undoStack.append { let r = u(); if r == nil { f() }; return r }
     }
 
     // Saves a new event and shows it selected. Nil when it could not be saved (the error is shown).

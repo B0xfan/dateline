@@ -1,15 +1,25 @@
 // Entry. No argument (or only arguments macOS adds) = the app on the Mac's real calendars.
 //   --sample            the app on made-up calendars, without asking for calendar access
 //   --selftest          pure logic checks, no calendar access
+//   --email-check <file.eml>  reads one email with Apple's on-device AI and prints the event it found
 //   --assistant         started by Claude: passes its messages to the running app (Settings, Assistant)
 //   --accounts-check <address>   the iCloud account code against scripts/caldav-standin.py (no settings, no passwords saved)
 //   --render <folder>   draws the window on sample calendars to PNG files off-screen (no window, no calendar access)
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 let args = CommandLine.arguments
 if args.contains("--selftest") { exit(selftest()) }
 if args.contains("--assistant") { exit(assistantRelay()) }
+if let i = args.firstIndex(of: "--email-check"), i + 1 < args.count {  // reads one email file with the on-device AI and prints the draft; saves nothing
+    Task { @MainActor in
+        let m = readMail((try? Data(contentsOf: URL(fileURLWithPath: args[i + 1]))) ?? Data()), d = await readEvent(m, now: Date())
+        print(m.subject, "|", d.title, "|", d.start.map { dateText($0, "EEE MMM d h:mm a") } ?? "no date", "to", d.end.map { dateText($0, "EEE MMM d h:mm a") } ?? "-", "|", d.place, "|", d.notes, "| unsure:", d.unsure, d.whenNote, d.problem, "| quotes:", d.quotes)
+        exit(0)
+    }
+    dispatchMain()
+}
 if let i = args.firstIndex(of: "--accounts-check"), i + 1 < args.count {
     Task { @MainActor in exit(await accountsCheck(server: args[i + 1])) }
     dispatchMain()
@@ -41,7 +51,14 @@ struct DatelineApp: App {
         .defaultSize(width: 1380, height: 800)
         .windowStyle(.hiddenTitleBar)
         .commands {
-            CommandGroup(replacing: .newItem) { Button("Subscribe to Calendar…") { app.openMain?(); app.subscribing = true } }
+            CommandGroup(replacing: .newItem) {
+                Button("Subscribe to Calendar…") { app.openMain?(); app.subscribing = true }
+                Button("Make Event from Email File…") {
+                    let o = NSOpenPanel(); o.allowedContentTypes = [UTType(filenameExtension: "eml") ?? .data]; o.allowsMultipleSelection = true
+                    guard o.runModal() == .OK else { return }
+                    o.urls.forEach(app.emails.importFile); app.openMain?()
+                }
+            }
             CommandGroup(after: .appInfo) { CheckForUpdatesItem() }
         }
         Settings { SettingsView(app: app) }
