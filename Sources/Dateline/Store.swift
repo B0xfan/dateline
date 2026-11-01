@@ -127,6 +127,7 @@ final class Store: ObservableObject {
     private var range: (Date, Date) = (Date(), Date())
     private var sample: [Item] = []
     private var observer: Any?
+    private var changeReload: Task<Void, Never>?
     // Phase 4: Apple Reminders (Tasks.swift).
     @Published var lists: [CalInfo] = []
     @Published var hiddenLists: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "hiddenLists") ?? []) {
@@ -134,7 +135,6 @@ final class Store: ObservableObject {
     }
     @Published var todos: [ToDo] = []
     @Published var taskAccess: Access = .unknown
-    var taskObserver: Any?
     var taskFetch = 0  // only the newest Reminders read is kept
     @Published var a4On = UserDefaults.standard.object(forKey: "a4On") as? Bool ?? true
     @Published var a4Folder = UserDefaults.standard.string(forKey: "a4Folder") ?? a4DefaultFolder
@@ -159,9 +159,9 @@ final class Store: ObservableObject {
         if let v: [CalSet] = load("calendarSets") { sets = v }
         if let v: [String] = load("recentEmoji") { recentEmoji = v }
         if let v: [String: Extra] = load("eventExtras") { extras = v }
-        loadSubs()
         loadAccounts()
-        requestAccess()
+        listenForChanges()
+        loadSubs { self.requestAccess() }
         requestReminders()
         reloadA4()
         a4Observer = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
@@ -221,9 +221,20 @@ final class Store: ObservableObject {
                 guard ok else { self.fetch(); return }  // subscribed calendars and accounts still fill "coming up"
                 self.reloadCalendars()
                 self.refreshSubs()
-                // Changes made in Apple Calendar or on another device show up here straight away.
-                self.observer = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: self.ek, queue: .main) { _ in
-                    Task { @MainActor in self.reloadCalendars() }
+            }
+        }
+    }
+
+    // Changes made in Apple Calendar, Reminders or on another device. One sync sends a burst of these: at most one reload every 0.3 seconds, even while the burst lasts.
+    private func listenForChanges() {
+        observer = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: ek, queue: .main) { _ in
+            Task { @MainActor in
+                guard self.changeReload == nil else { return }
+                self.changeReload = Task {
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    self.changeReload = nil
+                    if self.access == .granted { self.reloadCalendars() }
+                    self.reloadReminders()
                 }
             }
         }

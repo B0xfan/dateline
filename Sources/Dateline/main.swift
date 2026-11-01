@@ -7,6 +7,7 @@
 //   --a4-check <folder>  reads and edits every A4 task note in a COPY of the tasks folder (it changes the files it is given)
 //   --a4-code <vault> <path> <day>  prints what is sent to A4's engine, for the sandbox test
 //   --timing <file>   times the calendar reads on the real calendars, read only; run through `open` so the app's own permission applies
+//   --timing-file <file.ics>  times reading and showing a subscribed calendar's file
 //   --timing-ui       times window redraws on made-up calendars, in a hidden window
 //   --render <folder> [names]  draws the window on sample calendars to PNG files off-screen (no calendar access); names picks some of the main window pictures
 import SwiftUI
@@ -17,6 +18,7 @@ if args.contains("--selftest") { exit(selftest()) }
 if let i = args.firstIndex(of: "--a4-code"), i + 3 < args.count { print(a4EngineCode(vault: args[i + 1], path: args[i + 2], day: args[i + 3].isEmpty ? nil : args[i + 3])); exit(0) }  // what the engine is sent, for the sandbox test
 if let i = args.firstIndex(of: "--a4-check"), i + 1 < args.count { exit(a4Check(args[i + 1])) }
 if let i = args.firstIndex(of: "--timing"), i + 1 < args.count { exit(timingCheck(args[i + 1])) }
+if let i = args.firstIndex(of: "--timing-file"), i + 1 < args.count { exit(timingFile(args[i + 1])) }
 if args.contains("--assistant") { exit(assistantRelay()) }
 if let i = args.firstIndex(of: "--email-check"), i + 1 < args.count {  // reads one email file with the on-device AI and prints the draft; saves nothing
     Task { @MainActor in

@@ -70,9 +70,6 @@ extension Store {
                 self.taskAccess = ok ? .granted : .denied
                 guard ok else { return }
                 self.reloadReminders()
-                self.taskObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: self.ek, queue: .main) { _ in
-                    Task { @MainActor in self.reloadReminders() }
-                }
             }
         }
     }

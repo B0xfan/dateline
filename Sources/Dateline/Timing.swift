@@ -29,6 +29,22 @@ func timingCheck(_ path: String) -> Int32 {
     return (try? out.write(toFile: path, atomically: true, encoding: .utf8)) == nil ? 1 : 0
 }
 
+// --timing-file <file.ics>: how long a subscribed calendar's file takes to read and to show. Saves nothing.
+func timingFile(_ path: String) -> Int32 {
+    guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { print("Can't read \(path)"); return 1 }
+    func ms(_ work: () -> Int) -> String {
+        var runs: [Double] = [], n = 0
+        for _ in 0..<5 { let t = Date(); n = work(); runs.append(Date().timeIntervalSince(t) * 1000) }
+        return "\(Int(runs.sorted()[2])) ms (\(n))"
+    }
+    let events = parseICS(text), s = Sub(url: "", name: "timing", color: 0), today = cal.startOfDay(for: Date())
+    print("Read the file:", ms { parseICS(text).count })
+    print("Show a week:", ms { subItems(s, events, from: today, to: addDays(today, 9)).count })
+    print("Show 120 days:", ms { subItems(s, events, from: today, to: addDays(today, 120)).count })
+    print("Show a year:", ms { subItems(s, events, from: today, to: addDays(today, 365)).count })
+    return 0
+}
+
 // --timing-ui: how long a window redraw takes on made-up calendars with 600 extra events, in a hidden window behind the desktop. Never touches real calendars or settings.
 @MainActor func timingUI() -> Int32 {
     NSApplication.shared.setActivationPolicy(.accessory)
