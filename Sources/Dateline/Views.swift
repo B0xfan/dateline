@@ -52,6 +52,7 @@ struct Key: View {
 struct MainView: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
+    @ObservedObject var panels: Panels
     @Environment(\.openWindow) private var openWindow
 
     @State private var width: CGFloat = 1000  // the calendar's width: narrow toolbars use short words
@@ -76,7 +77,7 @@ struct MainView: View {
                             }
                         }
                     }
-                    if let t = app.toast { ToastView(app: app, toast: t).padding(.bottom, 16) }
+                    if let t = panels.toast { ToastView(app: app, toast: t).padding(.bottom, 16) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay(alignment: .topTrailing) { PreviewSpot(app: app, store: store, box: app.addBox) }
@@ -87,14 +88,14 @@ struct MainView: View {
             .navigationSubtitle(width < 700 && app.mode != .year ? app.weekLabel : app.subtitle)
             .toolbar { toolbar }
         }
-        .inspector(isPresented: Binding(get: { app.openTask != nil || (app.panelOpen && app.selected != nil) || app.tasksOpen }, set: { if !$0 { app.closeSide() } })) {
+        .inspector(isPresented: Binding(get: { app.openTask != nil || (panels.panelOpen && app.selected != nil) || panels.tasksOpen }, set: { if !$0 { app.closeSide() } })) {
             Group {
                 if let t = app.openTask {
                     if t.a4 != nil { A4TaskDetail(app: app, store: store, task: t).id(t.id) } else { TaskDetail(app: app, store: store, task: t).id(t.id) }
-                } else if app.panelOpen, let it = app.selected {
+                } else if panels.panelOpen, let it = app.selected {
                     DetailPanel(app: app, store: store, item: it).id(it.id)
-                } else if app.tasksOpen {
-                    TaskList(app: app, store: store)
+                } else if panels.tasksOpen {
+                    TaskList(app: app, store: store, panel: app.taskPanel)
                 }
             }
             .inspectorColumnWidth(min: 320, ideal: 320, max: 320)
@@ -103,16 +104,16 @@ struct MainView: View {
         .foregroundStyle(Palette.text)
         .font(.ui(13))
         .id(app.look)  // shortcut: rebuilds the whole window (scroll resets); make Look observable if changing it while working gets annoying. Look settings are read while drawing, so a change redraws the whole window
-        .sheet(isPresented: $app.showShortcuts) { ShortcutList(app: app) }
-        .sheet(isPresented: $app.mapOpen) { PlacesMap(app: app, store: store) }
+        .sheet(isPresented: $panels.showShortcuts) { ShortcutList(app: app) }
+        .sheet(isPresented: $panels.mapOpen) { PlacesMap(app: app, store: store) }
         .onAppear { app.planTravel(); app.openMain = { [openWindow] in openWindow(id: "main") } }
         .onChange(of: store.soon) { _, _ in app.planTravel() }
-        .onReceive(app.emails.$items) { items in if let r = app.reviewing, !items.contains(where: { $0.id == r }) { app.reviewing = nil } }  // the email left the folder
-        .sheet(item: $app.confirmDelete) { it in ConfirmDelete(app: app, store: store, item: it) }
-        .sheet(item: $app.editingSet) { s in SetEditor(app: app, store: store, draft: s) }
-        .sheet(isPresented: $app.subscribing) { SubscribeSheet(app: app, store: store) }
-        .sheet(isPresented: Binding(get: { app.reviewing != nil }, set: { if !$0 { app.reviewing = nil } })) {
-            if let p = app.emails.items.first(where: { $0.id == app.reviewing }) { EmailReview(app: app, p: p) }
+        .onReceive(app.emails.$items) { items in if let r = panels.reviewing, !items.contains(where: { $0.id == r }) { panels.reviewing = nil } }  // the email left the folder
+        .sheet(item: $panels.confirmDelete) { it in ConfirmDelete(app: app, store: store, item: it) }
+        .sheet(item: $panels.editingSet) { s in SetEditor(app: app, store: store, draft: s) }
+        .sheet(isPresented: $panels.subscribing) { SubscribeSheet(app: app, store: store) }
+        .sheet(isPresented: Binding(get: { panels.reviewing != nil }, set: { if !$0 { panels.reviewing = nil } })) {
+            if let p = app.emails.items.first(where: { $0.id == panels.reviewing }) { EmailReview(app: app, p: p) }
         }
         .alert("Couldn't save", isPresented: Binding(get: { app.error != nil }, set: { if !$0 { app.error = nil } })) {
             Button("OK") { app.error = nil }
@@ -138,8 +139,8 @@ struct MainView: View {
         }
         ToolbarItemGroup(placement: .primaryAction) {
             if width >= 700 {
-                Button("Tasks", systemImage: "checklist") { app.tasksOpen.toggle() }.help("Show or hide tasks (R)")
-                Button("Map", systemImage: "map") { app.mapOpen = true }.help("Show this view's places on a map (P)")
+                Button("Tasks", systemImage: "checklist") { panels.tasksOpen.toggle() }.help("Show or hide tasks (R)")
+                Button("Map", systemImage: "map") { panels.mapOpen = true }.help("Show this view's places on a map (P)")
                 AddBox(app: app, box: app.addBox).frame(width: width < 800 ? 160 : 260)
             }
         }
@@ -263,7 +264,7 @@ struct SetList: View {
                 row(s, s.name, i + 2, on: !all && active?.id == s.id)
                     .contextMenu {
                         Button("New Set…") { app.newSet() }
-                        Button("Edit set") { app.editingSet = s }
+                        Button("Edit set") { app.panels.editingSet = s }
                         Button("Delete set", role: .destructive) { store.sets.removeAll { $0.id == s.id } }
                     }
             }
@@ -336,10 +337,10 @@ struct SetEditor: View {
             Divider().overlay(Palette.line).padding(.vertical, 12)
             HStack {
                 if !isNew {
-                    Button("Delete set") { store.sets.removeAll { $0.id == draft.id }; app.editingSet = nil }.buttonStyle(.plain).foregroundStyle(Palette.now)
+                    Button("Delete set") { store.sets.removeAll { $0.id == draft.id }; app.panels.editingSet = nil }.buttonStyle(.plain).foregroundStyle(Palette.now)
                 }
                 Spacer()
-                Button("Cancel") { app.editingSet = nil }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { app.panels.editingSet = nil }.keyboardShortcut(.cancelAction)
                 Button("Save") { save() }.keyboardShortcut(.defaultAction)
                     .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || draft.calendars.isEmpty)
             }
@@ -355,7 +356,7 @@ struct SetEditor: View {
         if !store.lists.isEmpty, s.lists == nil || store.activeSet?.id == s.id { s.lists = store.lists.map(\.id).filter { !store.hiddenLists.contains($0) } }
         if let i = store.sets.firstIndex(where: { $0.id == s.id }) { store.sets[i] = s } else { store.sets.append(s) }
         store.use(s)
-        app.editingSet = nil
+        app.panels.editingSet = nil
     }
 
     func row<V: View>(_ k: String, @ViewBuilder _ v: () -> V) -> some View {
@@ -398,10 +399,10 @@ struct AddBox: View {
         }
         .padding(.horizontal, 8)
         .accessibilityLabel("Add an event")
-        .onChange(of: focused) { _, f in app.addFocused = f }
-        .onDisappear { app.addFocused = false }  // it moves under the toolbar in a narrow window; a stale "focused" would turn the next Tab into a new event
-        .onChange(of: app.addFocused) { _, f in if !f { focused = false } }
-        .onChange(of: app.focusAdd) { _, _ in focused = true }
+        .onChange(of: focused) { _, f in box.focused = f }
+        .onDisappear { box.focused = false }  // it moves under the toolbar in a narrow window; a stale "focused" would turn the next Tab into a new event
+        .onChange(of: box.focused) { _, f in if !f { focused = false } }
+        .onChange(of: box.focusAsks) { _, _ in focused = true }
     }
 }
 
@@ -411,7 +412,7 @@ struct PreviewSpot: View {
     @ObservedObject var store: Store
     @ObservedObject var box: AddText
     var body: some View {
-        if app.addFocused && !box.text.isEmpty { PreviewCard(app: app, store: store, p: app.preview).padding(.trailing, 16).padding(.top, 8) }
+        if box.focused && !box.text.isEmpty { PreviewCard(app: app, store: store, p: app.preview).padding(.trailing, 16).padding(.top, 8) }
     }
 }
 
@@ -423,7 +424,7 @@ struct PreviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("WHAT I UNDERSTOOD").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.bottom, 8)
-            Understood(app: app, store: store, p: p, pick: nil, menu: true)
+            Understood(app: app, store: store, box: app.addBox, p: p, pick: nil, menu: true)
             Divider().overlay(Palette.line).padding(.top, 8)
             HStack(spacing: 8) {
                 Key("Return"); Text("add"); Key("Esc"); Text("cancel"); Key("Tab"); Text("edit details")
@@ -444,6 +445,7 @@ struct PreviewCard: View {
 struct Understood: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
+    @ObservedObject var box: AddText  // the calendar picked from its menu
     let p: Parsed, pick: Item?
     var menu = false  // the calendar can be changed from a menu (main add box)
     var body: some View {
@@ -460,7 +462,7 @@ struct Understood: View {
                 }
                 if menu {
                     Menu {
-                        ForEach(store.calendars.filter(\.writable)) { cal in Button(cal.title + "  (" + cal.account + ")") { app.addCalendarID = cal.id } }
+                        ForEach(store.calendars.filter(\.writable)) { cal in Button(cal.title + "  (" + cal.account + ")") { box.calendarID = cal.id } }
                     } label: { label }.menuStyle(.borderlessButton).fixedSize()
                 } else { label }
             }
@@ -486,13 +488,14 @@ struct Understood: View {
 struct QuickAddView: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
+    @ObservedObject var quick: QuickBox
     @FocusState private var focused: Bool
     var body: some View {
         let list = app.quickSuggestions
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
                 Image(systemName: "plus").font(.ui(16, weight: .semibold)).foregroundStyle(Palette.accent)
-                TextField("Lunch with Sam tomorrow 1pm /Personal -a15m", text: $app.quickText)
+                TextField("Lunch with Sam tomorrow 1pm /Personal -a15m", text: $quick.text)
                     .textFieldStyle(.plain).font(.ui(18)).focused($focused)
                     .onSubmit { app.commitQuick() }
             }
@@ -508,16 +511,16 @@ struct QuickAddView: View {
                         Text(([it.place, c?.title ?? ""].filter { !$0.isEmpty } + ["last on " + dateText(it.start, "MMM d")]).joined(separator: " · "))
                             .font(.ui(12)).foregroundStyle(Palette.text2).lineLimit(1)
                         Spacer(minLength: 0)
-                        if i == app.quickSel { Key("Tab") }
+                        if i == quick.sel { Key("Tab") }
                     }
                     .padding(.horizontal, 16).padding(.vertical, 8)
-                    .background(i == app.quickSel ? Palette.accentSoft : .clear)
-                    .contentShape(Rectangle()).onTapGesture { app.quickPick = it }
+                    .background(i == quick.sel ? Palette.accentSoft : .clear)
+                    .contentShape(Rectangle()).onTapGesture { quick.pick = it }
                 }
             }
-            if !app.quickText.trimmingCharacters(in: .whitespaces).isEmpty {
+            if !quick.text.trimmingCharacters(in: .whitespaces).isEmpty {
                 section("WHAT I UNDERSTOOD")
-                Understood(app: app, store: store, p: app.quickPreview, pick: app.quickPick).padding(.horizontal, 16).padding(.bottom, 8)
+                Understood(app: app, store: store, box: app.addBox, p: app.quickPreview, pick: quick.pick).padding(.horizontal, 16).padding(.bottom, 8)
             }
             HStack(spacing: 16) {
                 code(["/name"], "calendar"); code(["-a15m", "-a1h", "-a1d"], "alert before"); code(["-r1d", "-r1w", "-r1m"], "repeat")
@@ -527,8 +530,8 @@ struct QuickAddView: View {
             HStack(spacing: 8) {
                 Key("Return"); Text("add"); Key("Tab"); Text("use past event"); Key("Esc"); Text("close")
                 Spacer()
-                if let err = app.quickError { Text(err).foregroundStyle(Palette.now) }
-                else { Text(app.quickTaken ? "Another app uses \(app.quickName). Change it in Settings" : "Shortcut can be changed in Settings") }
+                if let err = quick.error { Text(err).foregroundStyle(Palette.now) }
+                else { Text(quick.taken ? "Another app uses \(quick.name). Change it in Settings" : "Shortcut can be changed in Settings") }
             }
             .font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 8)
             .background(Palette.bar).overlay(alignment: .top) { Palette.line.frame(height: 1) }
@@ -541,7 +544,7 @@ struct QuickAddView: View {
         .shadow(color: .black.opacity(0.38), radius: 40, y: 30)
         .padding(.top, 8)
         .onAppear { focused = true }
-        .onChange(of: app.quickFocus) { _, _ in focused = true }
+        .onChange(of: quick.focus) { _, _ in focused = true }
     }
 
     func section(_ t: String) -> some View {
@@ -559,7 +562,7 @@ struct SettingsView: View {
     @AppStorage("settingsTab") private var tab = "quick"  // the attachments hint opens Accounts
     var body: some View {
         TabView(selection: $tab) {
-            QuickSettings(app: app).tabItem { Label("Quick add", systemImage: "plus.square") }.tag("quick")
+            QuickSettings(app: app, quick: app.quick).tabItem { Label("Quick add", systemImage: "plus.square") }.tag("quick")
             AccountSettings(store: app.store).tabItem { Label("Accounts", systemImage: "person.crop.circle") }.tag("accounts")
             LookSettings(app: app).tabItem { Label("Look", systemImage: "paintpalette") }.tag("look")
             WeekSettings(app: app).tabItem { Label("Week", systemImage: "calendar") }.tag("week")
@@ -576,16 +579,17 @@ struct SettingsView: View {
 
 struct QuickSettings: View {
     @ObservedObject var app: AppState
+    @ObservedObject var quick: QuickBox
     @State private var monitor: Any?
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Quick add from any app")
                 Spacer()
-                Button(app.recordingKey ? "Press the new shortcut" : app.quickName) { record() }
+                Button(quick.recordingKey ? "Press the new shortcut" : quick.name) { record() }
             }
-            Text(app.quickTaken || app.keyRefused ? "Another app already uses this shortcut. Pick a different one." : "Opens the add box on top of whatever app is in front. Use Control, Option or Command with a key; Esc cancels.")
-                .font(.ui(12)).foregroundStyle(app.quickTaken || app.keyRefused ? Palette.now : Palette.text3).fixedSize(horizontal: false, vertical: true)
+            Text(quick.taken || quick.keyRefused ? "Another app already uses this shortcut. Pick a different one." : "Opens the add box on top of whatever app is in front. Use Control, Option or Command with a key; Esc cancels.")
+                .font(.ui(12)).foregroundStyle(quick.taken || quick.keyRefused ? Palette.now : Palette.text3).fixedSize(horizontal: false, vertical: true)
         }
         .padding(20).frame(width: 440)
         .onDisappear { stop() }
@@ -594,7 +598,7 @@ struct QuickSettings: View {
 
     func record() {
         guard monitor == nil else { return }
-        app.recordingKey = true
+        quick.recordingKey = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
             if e.keyCode != 53, !e.modifierFlags.intersection([.command, .option, .control]).isEmpty { app.setQuickKey(e) }
             stop()
@@ -605,7 +609,7 @@ struct QuickSettings: View {
     func stop() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
-        app.recordingKey = false
+        quick.recordingKey = false
     }
 }
 
@@ -646,7 +650,7 @@ struct ShortcutList: View {
         ("New event", "N"), ("Go to today", "T"), ("Day view", "1"), ("Previous", "Left"), ("Week view", "2"), ("Next", "Right"),
         ("Month view", "3"), ("Next or previous event", "Up / Down"), ("Quarter view", "4"), ("Open event", "Return"), ("Year view", "5"),
         ("Delete event", "Delete"), ("Move event 15 min", "Option Up / Down"), ("Copy event", "Option drag"), ("Undo", "Command Z"), ("This list", "?"),
-        ("Quick add from any app", app.quickName), ("All calendars", "Command 1"), ("Calendar sets", "Command 2 to 9"), ("Tasks", "R"), ("Map of places", "P"), ("Hide or show calendars", "S"),
+        ("Quick add from any app", app.quick.name), ("All calendars", "Command 1"), ("Calendar sets", "Command 2 to 9"), ("Tasks", "R"), ("Map of places", "P"), ("Hide or show calendars", "S"),
     ] }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -659,7 +663,7 @@ struct ShortcutList: View {
                     }
                 }
             }
-            HStack { Spacer(); Button("Done") { app.showShortcuts = false }.keyboardShortcut(.defaultAction) }.padding(.top, 12)
+            HStack { Spacer(); Button("Done") { app.panels.showShortcuts = false }.keyboardShortcut(.defaultAction) }.padding(.top, 12)
         }.padding(20).frame(width: 560).background(Palette.pop)
     }
 }
@@ -691,8 +695,8 @@ struct ConfirmDelete: View {
                 .foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
-                Button("Cancel") { app.confirmDelete = nil }.keyboardShortcut(.cancelAction)
-                Button("Delete", role: .destructive) { app.confirmDelete = nil; app.delete(item) }.keyboardShortcut(.defaultAction)
+                Button("Cancel") { app.panels.confirmDelete = nil }.keyboardShortcut(.cancelAction)
+                Button("Delete", role: .destructive) { app.panels.confirmDelete = nil; app.delete(item) }.keyboardShortcut(.defaultAction)
             }.padding(.top, 4)
         }.padding(20).frame(width: 360).background(Palette.pop)
     }

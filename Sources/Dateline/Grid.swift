@@ -79,7 +79,7 @@ struct TimeGrid: View {
                                 .background(RoundedRectangle(cornerRadius: 4).fill(c.opacity(0.16)))
                                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(c, lineWidth: app.selectedID == it.id ? 2 : 0))
                                 .padding(.horizontal, 8).padding(.vertical, 4)
-                                .onTapGesture { app.selectedID = it.id; app.panelOpen = true }
+                                .onTapGesture { app.selectedID = it.id; app.panels.panelOpen = true }
                         }
                     }
                     .padding(.vertical, 2).frame(minWidth: 0, maxWidth: .infinity, minHeight: 36, alignment: .topLeading).clipped()
@@ -151,7 +151,7 @@ struct DayColumn: View {
                     .gesture(SpatialTapGesture(count: 2).onEnded { v in
                         let mins = Int(v.location.y / hourH * 60) / 30 * 30
                         app.newEvent(at: cal.date(byAdding: .minute, value: mins, to: day)!)
-                    }.exclusively(before: TapGesture().onEnded { app.selectedID = nil; app.panelOpen = false }))
+                    }.exclusively(before: TapGesture().onEnded { app.selectedID = nil; app.panels.panelOpen = false }))
                 // Phase 5: the drive there, as a striped block just before the event.
                 ForEach(items.filter { app.drive[$0.id] != nil && !$0.noTravel && $0.start >= day }) { it in
                     let (l, n) = lane[it.id] ?? (0, 1), colW = (w - 4) / CGFloat(max(n, 1))
@@ -168,7 +168,7 @@ struct DayColumn: View {
                     let stretchDY = d?.stretch == true ? d!.dy : 0
                     OnClock(clock: app.clock) { EventBlock(item: it, color: store.color(it), selected: app.selectedID == it.id, height: f.h + stretchDY, now: $0) }
                         .frame(width: colW - 2, height: max(18, f.h + stretchDY - 2))
-                        .onTapGesture(count: 2) { app.selectedID = it.id; app.panelOpen = true }
+                        .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true }
                         .onTapGesture { app.selectedID = it.id }
                         .gesture(dragGesture(it, colWidth: w, stretch: false))
                         .overlay(alignment: .bottom) {
@@ -355,7 +355,7 @@ struct MonthView: View {
                     .font(.ui(11)).lineLimit(1).padding(.vertical, 1).frame(height: 16)
                     .background(app.selectedID == it.id ? c.opacity(0.16) : .clear)
                     .contentShape(Rectangle())
-                    .onTapGesture(count: 2) { app.selectedID = it.id; app.panelOpen = true }
+                    .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true }
                     .onTapGesture { app.selectedID = it.id }
                 }
                 if list.count > shown.count {
@@ -388,7 +388,7 @@ struct DetailPanel: View {
                 HStack {
                     Text("EVENT").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                     Spacer()
-                    Button { commit(); app.panelOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
+                    Button { commit(); app.panels.panelOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
                 }.padding(.bottom, 8)
                 TextField("Title", text: $item.title, axis: .vertical).textFieldStyle(.plain).font(.ui(17, weight: .semibold))
                     .focused($field, equals: "title").onSubmit { commit() }
@@ -459,7 +459,7 @@ struct DetailPanel: View {
                 Text(locked ? "This calendar is read only." : "Changes save when you leave a field. Command Z undoes.")
                     .font(.ui(12)).foregroundStyle(Palette.text3).padding(.top, 12)
                 if !locked {
-                    Button("Delete event") { commit(); app.confirmDelete = app.selected }
+                    Button("Delete event") { commit(); app.panels.confirmDelete = app.selected }
                         .buttonStyle(.plain).foregroundStyle(Palette.now).padding(.top, 12)
                 }
             }
@@ -613,7 +613,7 @@ struct QuarterView: View {
                         .font(.ui(10)).lineLimit(1).frame(height: 16)
                         .background(app.selectedID == it.id ? c.opacity(0.16) : .clear)
                         .contentShape(Rectangle())
-                        .onTapGesture(count: 2) { app.selectedID = it.id; app.panelOpen = true }
+                        .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true }
                         .onTapGesture { app.selectedID = it.id }
                 }
                 if list.count > shown.count {

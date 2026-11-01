@@ -487,7 +487,7 @@ struct PlacesMap: View {
                 Text("Places · " + dateText(span.start, "MMM d") + " to " + dateText(span.end.addingTimeInterval(-1), "MMM d")).font(.ui(15, weight: .semibold))
                 Seg(options: ["This week", "This month"], selected: month ? "This month" : "This week", small: true) { month = $0 == "This month"; selected = nil; position = .automatic }
                 Spacer()
-                Button("Done") { app.mapOpen = false }.keyboardShortcut(.cancelAction)
+                Button("Done") { app.panels.mapOpen = false }.keyboardShortcut(.cancelAction)
             }
             .padding(.horizontal, 16).frame(height: 52).background(Palette.bar).overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
             HStack(spacing: 0) {
@@ -551,9 +551,9 @@ struct PlacesMap: View {
 
     // Double-click: close the map and open the event's details on its day.
     func open(_ it: Item) {
-        app.mapOpen = false
+        app.panels.mapOpen = false
         if !app.visibleDays.contains(cal.startOfDay(for: it.start)) { app.anchor = cal.startOfDay(for: it.start) }
         app.selectedID = it.id
-        app.panelOpen = true
+        app.panels.panelOpen = true
     }
 }

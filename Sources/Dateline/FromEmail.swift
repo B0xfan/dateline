@@ -368,7 +368,7 @@ struct FromEmailList: View {
                 Text("\(inbox.items.count)").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
             }.padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 4)
             ForEach(inbox.items) { p in
-                Button { app.reviewing = p.id } label: {
+                Button { app.panels.reviewing = p.id } label: {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "envelope").font(.ui(11)).foregroundStyle(Palette.text3).padding(.top, 2)
                         VStack(alignment: .leading, spacing: 1) {
@@ -453,7 +453,7 @@ struct EmailReview: View {
                 }
                 Spacer(minLength: 0)
                 HStack {
-                    Button("Throw away") { app.onUndo(app.emails.remove(p.id)); app.reviewing = nil }
+                    Button("Throw away") { app.onUndo(app.emails.remove(p.id)); app.panels.reviewing = nil }
                     Spacer()
                     Button("Open the email") { if let f = p.file { NSWorkspace.shared.open(f) } }.disabled(p.file == nil)
                     Button("Add event") { addEvent() }.keyboardShortcut(.defaultAction).disabled(d.title.trimmingCharacters(in: .whitespaces).isEmpty || calID.isEmpty)
@@ -465,7 +465,7 @@ struct EmailReview: View {
         .background(Palette.win)
         .foregroundStyle(Palette.text)
         .onAppear { app.emails.set(p.id) { $0.seen = true } }
-        .onExitCommand { app.reviewing = nil }
+        .onExitCommand { app.panels.reviewing = nil }
     }
 
     // The words the AI used, highlighted in the email.
@@ -494,8 +494,8 @@ struct EmailReview: View {
         p.notes = d.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? email : d.notes + "\n\n" + email
         guard app.add(p, calendar: app.store.calendar(calID)) != nil else { return }
         app.alsoOnUndo(app.emails.remove(self.p.id))
-        app.reviewing = nil
-        app.panelOpen = true
+        app.panels.reviewing = nil
+        app.panels.panelOpen = true
     }
 }
 
@@ -568,6 +568,6 @@ func emailSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int, In
         v.addEvent()
         let added = a.store.items.first { $0.title == "Dinner at Pangas" }
         expect(added?.place == "Pangas Beach Club, Tamarindo" && added?.notes.contains("Bring Ana") == true && added?.notes.hasPrefix("Table for 4") == true, "email: Add event saves place, notes and the email")
-        expect(a.emails.items.count == 2 && a.reviewing == nil, "email: an added email leaves the list")
+        expect(a.emails.items.count == 2 && a.panels.reviewing == nil, "email: an added email leaves the list")
     }
 }

@@ -73,7 +73,7 @@ extension AppState {
         NSApp.activate(ignoringOtherApps: true)
         if !visibleDays.contains(cal.startOfDay(for: it.start)) { anchor = cal.startOfDay(for: it.start) }
         selectedID = it.id
-        panelOpen = true
+        panels.panelOpen = true
     }
 }
 

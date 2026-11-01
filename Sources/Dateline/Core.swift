@@ -503,7 +503,7 @@ func selftest() -> Int32 {
     MainActor.assumeIsolated {
         let a = AppState(store: Store(sample: true), today: now)
         for (typed, saved) in [("Pick up keys at the condo", "Pick up keys at the condo"), ("Buy rice for free", "Buy rice for free"), ("Call the bank Friday 3pm", "Call the bank")] {
-            a.taskText = typed; a.commitTask()
+            a.taskPanel.text = typed; a.commitTask()
             expect(a.store.todos.last?.title == saved, "task title kept: \(typed)")
         }
     }
@@ -558,6 +558,12 @@ func selftest() -> Int32 {
         let watching = a.objectWillChange.sink { redraws += 1 }
         a.addText = "Lunch"; a.now = now.addingTimeInterval(60)
         expect(redraws == 0, "a typed letter or a clock tick doesn't redraw the whole window")
+        a.quick.text = "Lunch"; a.taskPanel.showDone = true; a.addBox.focused = true; a.panels.panelOpen = true
+        expect(a.panels.panelOpen && redraws == 0, "quick add, the task list, the add box and panels don't touch the screens watching AppState")
+        a.panels.tasksOpen = true
+        expect(a.panels.tasksOpen && !a.panels.panelOpen, "the task list and event details share one side")
+        a.panels.openTaskID = "t1"; a.panels.panelOpen = true
+        expect(a.panels.openTaskID == nil, "event details close a task's details")
         a.now = addDays(now, 1)
         expect(redraws == 1, "a new day does")
         watching.cancel()
@@ -585,6 +591,7 @@ func selftest() -> Int32 {
            && updateStatus(version: "0.8", last: checked, newer: false, now: checked.addingTimeInterval(60)).hasSuffix("you're up to date")
            && updateStatus(version: "0.8", last: checked, newer: true, now: addDays(checked, 2)).hasPrefix("Last checked Oct 30"), "updates: the status line")
     MainActor.assumeIsolated { assistantSelftest(expect) }
+    MainActor.assumeIsolated { calendarSourceSelftest(expect) }
     subSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     emailSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     accountsSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }

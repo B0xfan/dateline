@@ -278,7 +278,7 @@ struct SubscribeSheet: View {
             HStack {
                 Text("You can't change these events; they come from the address.").font(.ui(12)).foregroundStyle(Palette.text3)
                 Spacer()
-                Button("Cancel") { app.subscribing = false }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { app.panels.subscribing = false }.keyboardShortcut(.cancelAction)
                 Button("Subscribe") { add() }.keyboardShortcut(.defaultAction).disabled(found == nil || checking)
             }
         }
@@ -338,7 +338,7 @@ struct SubscribeSheet: View {
                 let n = readyMade.filter(added).count
                 Text(n == 0 ? "None added" : "\(n) added").font(.ui(12)).foregroundStyle(Palette.text3)
                 Spacer()
-                Button("Done") { app.subscribing = false }.keyboardShortcut(.defaultAction)
+                Button("Done") { app.panels.subscribing = false }.keyboardShortcut(.defaultAction)
             }
         }
     }
@@ -362,7 +362,7 @@ struct SubscribeSheet: View {
         let n = name.trimmingCharacters(in: .whitespaces)
         store.subscribe(Sub(url: address.trimmingCharacters(in: .whitespacesAndNewlines), name: n.isEmpty ? "Subscribed" : n, color: color, hours: hours, alerts: alerts),
                         text: text, events: events)
-        app.subscribing = false
+        app.panels.subscribing = false
     }
 }
 

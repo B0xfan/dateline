@@ -6,7 +6,6 @@
 import Foundation
 import SwiftUI
 import AppKit
-import EventKit
 import Network
 import CryptoKit
 import UniformTypeIdentifiers
@@ -548,8 +547,8 @@ extension Store {
 
     // A calendar on the Mac that an account here already shows: hidden, so nothing shows twice.
     // shortcut: one iCloud account is assumed (the Mac's is called "iCloud"); match by Apple ID if two ever sign in.
-    func shownHere(_ s: EKSource) -> Bool {
-        accounts.contains { a in accData.loaded.contains(a.id) && (a.kind == "google" ? s.title.caseInsensitiveCompare(a.email) == .orderedSame : s.title == "iCloud" && s.sourceType == .calDAV) }
+    func shownHere(_ account: String, calDAV: Bool) -> Bool {
+        accounts.contains { a in accData.loaded.contains(a.id) && (a.kind == "google" ? account.caseInsensitiveCompare(a.email) == .orderedSame : account == "iCloud" && calDAV) }
     }
 
     func accEvents(from a: Date, to b: Date) -> [Item] {
@@ -582,7 +581,7 @@ extension Store {
     }
 
     func accountsChanged() {
-        if access == .granted { reloadCalendars() } else { calendars = accInfos + subInfos; refetch() }
+        if canRead { reloadCalendars() } else { calendars = accInfos + subInfos; refetch() }
     }
 
     private func googleToken(_ a: Account) async throws -> String {
@@ -632,16 +631,17 @@ extension Store {
     // The Mac's ids stay too, so the choices still hold if the account can't be reached at a later launch.
     private func carryOver(_ id: String) {
         guard let a = accounts.first(where: { $0.id == id }) else { return }
-        let mac = ek.calendars(for: .event).filter { s in a.kind == "google" ? s.source.title.caseInsensitiveCompare(a.email) == .orderedSame : s.source.title == "iCloud" }
+        let mac = source.allCalendars().filter { s in a.kind == "google" ? s.account.caseInsensitiveCompare(a.email) == .orderedSame : s.account == "iCloud" }
         var map: [String: String] = [:]
-        for m in mac { if let c = a.cals.first(where: { $0.title.caseInsensitiveCompare(m.title) == .orderedSame }) { map[m.calendarIdentifier] = c.id } }
+        for m in mac { if let c = a.cals.first(where: { $0.title.caseInsensitiveCompare(m.title) == .orderedSame }) { map[m.id] = c.id } }
         guard !map.isEmpty else { return }
         // Dateline's own extras (emoji, tags, notes formatting, travel) follow each event; the account's id is the event's UID.
         let (from, to) = Self.accWindow()
         var ex = extras  // saved once at the end, not once per event
         defer { if ex != extras { extras = ex } }
-        for e in ek.events(matching: ek.predicateForEvents(withStart: from, end: to, calendars: mac.filter { map[$0.calendarIdentifier] != nil })) {
-            guard let old = e.eventIdentifier, let x = ex[old], let c = map[e.calendar.calendarIdentifier], var uid = e.calendarItemExternalIdentifier else { continue }
+        for e in source.eventIDs(from: from, to: to, calendars: Array(map.keys)) {
+            guard let x = ex[e.id], let c = map[e.calendarID] else { continue }
+            var uid = e.uid
             if a.kind == "google", uid.hasSuffix("@google.com") { uid = String(uid.dropLast(11)) }
             if ex[c + "/" + uid] == nil { ex[c + "/" + uid] = x }
         }

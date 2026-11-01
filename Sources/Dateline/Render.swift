@@ -10,7 +10,8 @@ private final class ShotWindow: NSWindow {
     override func constrainFrameRect(_ r: NSRect, to s: NSScreen?) -> NSRect { r }
 }
 
-@MainActor private func saveWindow<V: View>(_ view: V, dark: Bool, wait: Double, width: CGFloat, to path: String) -> Bool {
+// `change`: done once the window has drawn, to prove the window follows it (--late).
+@MainActor private func saveWindow<V: View>(_ view: V, dark: Bool, wait: Double, width: CGFloat, to path: String, change: (() -> Void)? = nil) -> Bool {
     let vc = NSHostingController(rootView: view)
     vc.sceneBridgingOptions = [.toolbars, .title]
     let w = ShotWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 800), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
@@ -22,6 +23,7 @@ private final class ShotWindow: NSWindow {
     w.setFrame(NSRect(x: 0, y: 0, width: width, height: 800), display: true)
     w.orderFrontRegardless()
     RunLoop.main.run(until: Date().addingTimeInterval(max(wait, 1)))
+    if let change { change(); RunLoop.main.run(until: Date().addingTimeInterval(4)) }  // side panels slide in slowly in a hidden window
     defer { w.close() }
     var picture: CGImage?, done = false
     Task {
@@ -53,18 +55,20 @@ private final class ShotWindow: NSWindow {
     var ok = true
     for dark in [false, true] {
         let tag = dark ? "dark" : "light"
-        func shot(_ name: String, wait: Double = 0.2, width: CGFloat = 1380, _ setup: (AppState) -> Void) {
+        func shot(_ name: String, wait: Double = 0.2, width: CGFloat = 1380, _ setup: @escaping (AppState) -> Void) {
             if !only.isEmpty && !only.contains(name) { return }
             let app = AppState(store: Store(sample: true), today: today)
-            app.openTaskLists = []; app.sidebarOpen = true  // never the folds or sidebar saved on this Mac
-            setup(app)
+            app.taskPanel.openLists = []; app.sidebarOpen = true  // never the folds or sidebar saved on this Mac
+            // shortcut: --late can't check the map and email pictures, sheets don't draw off-screen; they come out as the plain calendar.
+            let late = CommandLine.arguments.contains("--late")
+            if !late { setup(app) }
             // A sheet (the places map) does not draw off-screen, so it is drawn on its own.
-            let p = app.emails.items.first { $0.id == app.reviewing }
-            if app.mapOpen || p != nil {
-                let view = app.mapOpen ? AnyView(PlacesMap(app: app, store: app.store)) : AnyView(EmailReview(app: app, p: p!).frame(maxWidth: .infinity, maxHeight: .infinity).background(Palette.side))
+            let p = app.emails.items.first { $0.id == app.panels.reviewing }
+            if app.panels.mapOpen || p != nil {
+                let view = app.panels.mapOpen ? AnyView(PlacesMap(app: app, store: app.store)) : AnyView(EmailReview(app: app, p: p!).frame(maxWidth: .infinity, maxHeight: .infinity).background(Palette.side))
                 ok = save(view.frame(width: width, height: 800), dark: dark, wait: wait, width: width, to: "\(dir)/\(name)-\(tag).png") && ok
             } else {
-                ok = saveWindow(MainView(app: app, store: app.store), dark: dark, wait: wait, width: width, to: "\(dir)/\(name)-\(tag).png") && ok
+                ok = saveWindow(MainView(app: app, store: app.store, panels: app.panels), dark: dark, wait: wait, width: width, to: "\(dir)/\(name)-\(tag).png", change: late ? { setup(app) } : nil) && ok
             }
         }
         shot("day") { $0.mode = .day }
@@ -73,48 +77,48 @@ private final class ShotWindow: NSWindow {
         shot("month") { $0.mode = .month }
         shot("year") { $0.mode = .year }
         shot("quarter") { $0.mode = .quarter }
-        shot("add-preview") { $0.mode = .week; $0.days = 7; $0.addText = "Dinner with Ana Friday 7pm at Casa Luna"; $0.addFocused = true }
-        shot("details") { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Write proposal" }?.id; a.panelOpen = true }
-        shot("details-extras") { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Christian at the condo" }?.id; a.panelOpen = true }
+        shot("add-preview") { $0.mode = .week; $0.days = 7; $0.addText = "Dinner with Ana Friday 7pm at Casa Luna"; $0.addBox.focused = true }
+        shot("details") { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Write proposal" }?.id; a.panels.panelOpen = true }
+        shot("details-extras") { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Christian at the condo" }?.id; a.panels.panelOpen = true }
         shot("set-family") { a in a.pickSet(3) }
         shot("tasks-week") { $0.mode = .week; $0.days = 5 }
         // Moved into the working day, to check the dashed block.
         shot("task-timed") { a in a.mode = .week; a.days = 5
             if let i = a.store.todos.firstIndex(where: { $0.title == "Electrician" }) { a.store.todos[i].due = cal.date(byAdding: .hour, value: 7, to: addDays(cal.startOfDay(for: today), 1)) } }
         // Phase 5 (approved mockups): the event map, drive time block, sun and moon. The map picture loads from Apple Maps, so it waits longer.
-        shot("place-details", wait: 4) { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Dinner with Ana" }?.id; a.panelOpen = true }
+        shot("place-details", wait: 4) { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Dinner with Ana" }?.id; a.panels.panelOpen = true }
         shot("sun-week5") { $0.mode = .week; $0.days = 5 }
         // A set's name in the toolbar at the smallest window: nothing may spill past the window's edges (John's 2026-10-28 bug).
         shot("set-narrow", width: 980) { a in a.mode = .week; a.days = 7; a.pickSet(3) }
         // The calendars sidebar hidden with the toolbar's first button (John 2026-10-28), at full and smallest width.
         shot("no-sidebar") { a in a.mode = .week; a.days = 7; a.sidebarOpen = false }
-        shot("no-sidebar-narrow", width: 980) { a in a.mode = .week; a.days = 7; a.sidebarOpen = false; a.tasksOpen = true }
+        shot("no-sidebar-narrow", width: 980) { a in a.mode = .week; a.days = 7; a.sidebarOpen = false; a.panels.tasksOpen = true }
         // The 7-day week at the smallest window with a side panel open: its left edge must stay in the window (John's 2026-10-28 bug).
-        shot("week-narrow-tasks", width: 980) { a in a.mode = .week; a.days = 7; a.tasksOpen = true }
-        shot("week-narrow-details", width: 980) { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Write proposal" }?.id; a.panelOpen = true }
-        for m in [Mode.day, .month, .quarter, .year] { shot("narrow-\(m.rawValue.lowercased())", width: 980) { a in a.mode = m; a.tasksOpen = true } }
+        shot("week-narrow-tasks", width: 980) { a in a.mode = .week; a.days = 7; a.panels.tasksOpen = true }
+        shot("week-narrow-details", width: 980) { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Write proposal" }?.id; a.panels.panelOpen = true }
+        for m in [Mode.day, .month, .quarter, .year] { shot("narrow-\(m.rawValue.lowercased())", width: 980) { a in a.mode = m; a.panels.tasksOpen = true } }
         // Week views start on the day you are on: from a Wednesday, the 5-day view skips the weekend.
         shot("week3-midweek") { a in a.mode = .week; a.days = 3; a.anchor = addDays(a.anchor, 2) }
         shot("week5-midweek") { a in a.mode = .week; a.days = 5; a.anchor = addDays(a.anchor, 2) }
         shot("week7-midweek") { a in a.mode = .week; a.days = 7; a.anchor = addDays(a.anchor, 2) }
         // Phase 9 email to event (approved mockup section 1): the waiting emails in the sidebar, and the review window.
         shot("from-email") { $0.mode = .week; $0.days = 7 }
-        shot("email-review") { $0.reviewing = "s1" }
-        shot("email-review-nodate") { $0.reviewing = "s3" }
-        shot("places-map", wait: 4) { $0.mode = .week; $0.days = 7; $0.mapOpen = true }
-        shot("task-list") { $0.mode = .week; $0.days = 5; $0.tasksOpen = true }
-        shot("a4-list") { $0.mode = .week; $0.days = 5; $0.tasksOpen = true; $0.openTaskLists = ["a4-launch"] }
-        shot("a4-details") { a in a.mode = .week; a.days = 5; a.openTaskID = "a4-Choose a license for Dateline" }
+        shot("email-review") { $0.panels.reviewing = "s1" }
+        shot("email-review-nodate") { $0.panels.reviewing = "s3" }
+        shot("places-map", wait: 4) { $0.mode = .week; $0.days = 7; $0.panels.mapOpen = true }
+        shot("task-list") { $0.mode = .week; $0.days = 5; $0.panels.tasksOpen = true }
+        shot("a4-list") { $0.mode = .week; $0.days = 5; $0.panels.tasksOpen = true; $0.taskPanel.openLists = ["a4-launch"] }
+        shot("a4-details") { a in a.mode = .week; a.days = 5; a.panels.openTaskID = "a4-Choose a license for Dateline" }
         ok = save(A4Settings(store: Store(sample: true)).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/a4-settings-\(tag).png") && ok
         // Folded no-date lists (approved mockup): Groceries open past 20 tasks, so "Show all" shows; the others folded.
-        shot("task-folded") { a in a.mode = .week; a.days = 5; a.tasksOpen = true; a.openTaskLists = ["r-groc"]
+        shot("task-folded") { a in a.mode = .week; a.days = 5; a.panels.tasksOpen = true; a.taskPanel.openLists = ["r-groc"]
             for i in 1...22 { a.store.todos.append(ToDo(id: "g\(i)", listID: "r-groc", title: "Grocery item \(i)")) }
             for t in ["Fix the gate", "Paint the balcony"] { a.store.todos.append(ToDo(id: t, listID: "r-condo", title: t)) } }
-        shot("task-one-list") { a in a.mode = .week; a.days = 5; a.tasksOpen = true; a.taskListFilter = "r-condo"
+        shot("task-one-list") { a in a.mode = .week; a.days = 5; a.panels.tasksOpen = true; a.taskPanel.filter = "r-condo"
             for t in ["Fix the gate", "Paint the balcony"] { a.store.todos.append(ToDo(id: t, listID: "r-condo", title: t)) } }
-        shot("task-details") { a in a.mode = .week; a.days = 5; a.openTaskID = a.store.todos.first { $0.title == "Buy AC filter" }?.id }
+        shot("task-details") { a in a.mode = .week; a.days = 5; a.panels.openTaskID = a.store.todos.first { $0.title == "Buy AC filter" }?.id }
         // A task with a time: no "no time" link next to the time (John 2026-10-28), and the notes box with its resize grip.
-        shot("task-details-timed") { a in a.mode = .week; a.days = 5; a.openTaskID = a.store.todos.first { $0.title == "Electrician" }?.id }
+        shot("task-details-timed") { a in a.mode = .week; a.days = 5; a.panels.openTaskID = a.store.todos.first { $0.title == "Electrician" }?.id }
         do {
             let a = AppState(store: Store(sample: true), today: today)
             ok = save(SetEditor(app: a, store: a.store, draft: a.store.sets[1]).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/set-editor-\(tag).png") && ok
@@ -142,7 +146,7 @@ private final class ShotWindow: NSWindow {
             } else { ok = false }
             a.store.accounts = []; a.store.calendars = macCals
             ok = save(UpdateSettings().background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/update-settings-\(tag).png") && ok
-            let soon = a.store.soon.filter { cal.isDate($0.start, inSameDayAs: today) && !$0.allDay }.sorted { $0.start < $1.start }
+            let soon = a.store.soon.filter { $0.end > today && cal.isDate($0.start, inSameDayAs: today) && !$0.allDay }  // what's still ahead, as in the mockups.sorted { $0.start < $1.start }
             if let first = soon.first {
                 ok = save(FullAlertView(items: [first], store: a.store, now: first.start, next: soon.dropFirst().first, close: {}, snooze: {}, open: { _ in }).frame(width: 1380, height: 800), dark: dark, to: "\(dir)/full-alert-\(tag).png") && ok
             }
@@ -156,10 +160,10 @@ private final class ShotWindow: NSWindow {
         do {  // Phase 8: five minutes before the Zoom call, its Join button on the event, in the panel and on the full alert.
             let t = cal.date(byAdding: .minute, value: 24 * 60 + 74, to: today)!
             let a = AppState(store: Store(sample: true), today: t)
-            a.mode = .week; a.days = 7; a.sidebarOpen = true; a.openTaskLists = []
+            a.mode = .week; a.days = 7; a.sidebarOpen = true; a.taskPanel.openLists = []
             if let call = a.store.items.first(where: { $0.title == "Client call" }) {
-                a.selectedID = call.id; a.panelOpen = true
-                ok = saveWindow(MainView(app: a, store: a.store), dark: dark, wait: 1, width: 1380, to: "\(dir)/call-\(tag).png") && ok
+                a.selectedID = call.id; a.panels.panelOpen = true
+                ok = saveWindow(MainView(app: a, store: a.store, panels: a.panels), dark: dark, wait: 1, width: 1380, to: "\(dir)/call-\(tag).png") && ok
                 ok = save(EventBlock(item: call, color: a.store.color(call), selected: false, height: 60, now: t).frame(width: 220, height: 58).padding(20).background(Palette.win), dark: dark, to: "\(dir)/call-block-\(tag).png") && ok
                 ok = save(FullAlertView(items: [call], store: a.store, now: t, next: nil, close: {}, snooze: {}, open: { _ in }).frame(width: 1380, height: 800), dark: dark, to: "\(dir)/call-alert-\(tag).png") && ok
             } else { ok = false }
@@ -173,10 +177,10 @@ private final class ShotWindow: NSWindow {
             ok = save(AssistantSettings(app: a, a: ai, claudeHere: true, connected: true).frame(width: 760, alignment: .top).background(Palette.win), dark: dark, width: 760, to: "\(dir)/assistant-\(tag).png") && ok
         }
         let app = AppState(store: Store(sample: true), today: today)
-        app.quickText = "Lunch with Sam tomorrow 1pm /Personal -a15m -r1w"
-        ok = save(QuickAddView(app: app, store: app.store).padding(40).frame(width: 1380, height: 800, alignment: .top).background(Color(red: 0.45, green: 0.5, blue: 0.7)), dark: dark, to: "\(dir)/quick-add-\(tag).png") && ok
-        app.quickPick = app.quickSuggestions.first
-        ok = save(QuickAddView(app: app, store: app.store).padding(40).frame(width: 1380, height: 800, alignment: .top).background(Color(red: 0.45, green: 0.5, blue: 0.7)), dark: dark, to: "\(dir)/quick-add-picked-\(tag).png") && ok
+        app.quick.text = "Lunch with Sam tomorrow 1pm /Personal -a15m -r1w"
+        ok = save(QuickAddView(app: app, store: app.store, quick: app.quick).padding(40).frame(width: 1380, height: 800, alignment: .top).background(Color(red: 0.45, green: 0.5, blue: 0.7)), dark: dark, to: "\(dir)/quick-add-\(tag).png") && ok
+        app.quick.pick = app.quickSuggestions.first
+        ok = save(QuickAddView(app: app, store: app.store, quick: app.quick).padding(40).frame(width: 1380, height: 800, alignment: .top).background(Color(red: 0.45, green: 0.5, blue: 0.7)), dark: dark, to: "\(dir)/quick-add-picked-\(tag).png") && ok
     }
     return ok
 }

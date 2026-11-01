@@ -1,7 +1,5 @@
 // Phase 4: Apple Reminders on the calendar (approved Phase 4 mockups). Everything is saved in Reminders, so the phone sees each change.
-// Sample mode keeps made-up tasks in memory and never asks for Reminders access.
 import SwiftUI
-import EventKit
 import CoreLocation
 import Contacts
 
@@ -64,46 +62,27 @@ func shortDay(_ d: Date, now: Date) -> String {
 }
 
 extension Store {
+    var canReadTasks: Bool { taskAccess == .granted || taskAccess == .sample }
+
     func requestReminders() {
-        ek.requestFullAccessToReminders { ok, _ in
-            Task { @MainActor in
-                self.taskAccess = ok ? .granted : .denied
-                guard ok else { return }
-                self.reloadReminders()
-            }
+        source.askForReminders { ok in
+            self.taskAccess = ok ? .granted : .denied
+            guard ok else { return }
+            self.reloadReminders()
         }
     }
 
-    // Every unfinished reminder, plus the ones finished in the last week (for "Show done tasks" and ticked ones on the calendar).
     func reloadReminders() {
-        guard taskAccess == .granted else { return }
+        guard canReadTasks else { return }
+        let known = source.reminderLists()
         // A4's reminders job copies timed tasks into a Reminders list; with A4 tasks showing, that list would show each one twice.
-        let mirrored = a4On && FileManager.default.fileExists(atPath: a4Folder) ? Set(ek.calendars(for: .reminder).filter { $0.title == "A4 Tasks" }.map(\.calendarIdentifier)) : []
-        lists = ek.calendars(for: .reminder).filter { !mirrored.contains($0.calendarIdentifier) }.sorted { $0.title < $1.title }
-            .map { CalInfo(id: $0.calendarIdentifier, title: $0.title, account: $0.source.title, color: Color(nsColor: $0.color), writable: $0.allowsContentModifications) }
-            + lists.filter { $0.account == a4Account }
+        let mirrored = a4On && FileManager.default.fileExists(atPath: a4Folder) ? Set(known.filter { $0.title == "A4 Tasks" }.map(\.id)) : []
+        lists = known.filter { !mirrored.contains($0.id) } + lists.filter { $0.account == a4Account }
         taskFetch += 1
-        let n = taskFetch, ek = ek
-        let open = ek.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)
-        let done = ek.predicateForCompletedReminders(withCompletionDateStarting: Date().addingTimeInterval(-7 * 86400), ending: nil, calendars: nil)
-        ek.fetchReminders(matching: open) { a in
-            let first = (a ?? []).map(Store.todo)
-            ek.fetchReminders(matching: done) { b in
-                let all = first + (b ?? []).map(Store.todo)
-                DispatchQueue.main.async { MainActor.assumeIsolated { if n == self.taskFetch { self.todos = all.filter { !mirrored.contains($0.listID) } + self.todos.filter { $0.a4 != nil } } } }
-            }
+        let n = taskFetch
+        source.readReminders { all in
+            if n == self.taskFetch { self.todos = all.filter { !mirrored.contains($0.listID) } + self.todos.filter { $0.a4 != nil } }
         }
-    }
-
-    nonisolated static func todo(_ r: EKReminder) -> ToDo {
-        let c = r.dueDateComponents
-        var t = ToDo(id: r.calendarItemIdentifier, listID: r.calendar.calendarIdentifier, title: r.title ?? "",
-                     due: c.flatMap { cal.date(from: $0) }, timed: c?.hour != nil, done: r.isCompleted, notes: r.notes ?? "")
-        if let a = r.alarms?.first(where: { $0.proximity != .none }), let l = a.structuredLocation, let g = l.geoLocation {
-            t.remind = a.proximity == .enter ? .arriving : .leaving
-            t.place = Spot(name: l.title ?? "", lat: g.coordinate.latitude, lon: g.coordinate.longitude, radius: l.radius == 0 ? 150 : l.radius)
-        }
-        return t
     }
 
     func taskList(_ id: String) -> CalInfo? { lists.first { $0.id == id } }
@@ -111,36 +90,19 @@ extension Store {
     // Adds a task to `listID` (nil = the Mac's default Reminders list).
     @discardableResult
     func addTask(_ t: ToDo, listID: String?) -> Result<ToDo, Failure> {
-        var t = t
         if taskList(listID ?? "")?.account == a4Account { return .failure(Failure("New A4 tasks are added in Obsidian.")) }
-        if access == .sample || taskAccess == .sample {
-            t.id = UUID().uuidString; t.listID = listID ?? lists.first?.id ?? ""
-            todos.append(t); return .success(t)
-        }
-        guard taskAccess == .granted else { return .failure(Failure("Dateline can't see Reminders. Turn it on in System Settings, Privacy & Security, Reminders.")) }
-        guard let c = listID.flatMap(ek.calendar(withIdentifier:)) ?? ek.defaultCalendarForNewReminders() else { return .failure(Failure("No Reminders list on this Mac can take new tasks.")) }
-        let r = EKReminder(eventStore: ek)
-        r.calendar = c
-        apply(t, old: nil, to: r)
-        do { try ek.save(r, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
-        t = Store.todo(r)
-        todos.append(t)  // shows at once; the change notification reloads
-        return .success(t)
+        guard canReadTasks else { return .failure(Failure("Dateline can't see Reminders. Turn it on in System Settings, Privacy & Security, Reminders.")) }
+        let saved = source.addReminder(t, listID: listID)
+        if case .success(let t) = saved { todos.append(t) }  // shows at once; the change notification reloads
+        return saved
     }
 
     // Saves a changed task (tick, edits in the task details, a drop on the calendar).
     @discardableResult
     func updateTask(_ t: ToDo) -> Failure? {
         let old = todos.first { $0.id == t.id }
-        if taskAccess == .sample {
-            guard let i = todos.firstIndex(where: { $0.id == t.id }) else { return Failure("That task is gone.") }
-            todos[i] = t; return nil
-        }
         if t.a4 != nil { return updateA4(t, old: old) }
-        guard let r = ek.calendarItem(withIdentifier: t.id) as? EKReminder else { return Failure("That task is gone.") }
-        if r.calendar.calendarIdentifier != t.listID, let c = ek.calendar(withIdentifier: t.listID) { r.calendar = c }
-        apply(t, old: old, to: r)
-        do { try ek.save(r, commit: true) } catch { reloadReminders(); return Failure(error.localizedDescription) }
+        if let f = source.updateReminder(t, old: old) { reloadReminders(); return f }
         taskFetch += 1  // a read already running has the old copy; the change notification reads again
         if let i = todos.firstIndex(where: { $0.id == t.id }) { todos[i] = t }  // shows at once; the reload that follows confirms it
         return nil
@@ -149,32 +111,9 @@ extension Store {
     // The task for undo of an add.
     @discardableResult
     func deleteTask(_ t: ToDo) -> Failure? {
-        if taskAccess == .sample { todos.removeAll { $0.id == t.id }; return nil }
-        guard let r = ek.calendarItem(withIdentifier: t.id) as? EKReminder else { return Failure("That task is gone.") }
-        do { try ek.remove(r, commit: true) } catch { return Failure(error.localizedDescription) }
+        if let f = source.deleteReminder(t) { return f }
         todos.removeAll { $0.id == t.id }
         return nil
-    }
-
-    private func apply(_ t: ToDo, old: ToDo?, to r: EKReminder) {
-        r.title = t.title
-        r.notes = t.notes.isEmpty ? nil : t.notes
-        if r.isCompleted != t.done { r.isCompleted = t.done }
-        r.dueDateComponents = t.due.map { cal.dateComponents(t.timed ? [.year, .month, .day, .hour, .minute] : [.year, .month, .day], from: $0) }
-        // Alerts are rewritten only when what they hang on changed, so alerts set on the phone (e.g. "1 day before") are kept otherwise.
-        guard old.map({ ($0.due, $0.timed, $0.remind, $0.place) != (t.due, t.timed, t.remind, t.place) }) ?? true,
-              t.remind == .time || t.place != nil else { return }  // Arriving/Leaving with no place yet: wait for the place
-        (r.alarms ?? []).filter { ($0.proximity != .none && $0.structuredLocation?.geoLocation != nil) || $0.absoluteDate != nil }.forEach(r.removeAlarm)
-        if t.remind == .time, t.timed, let d = t.due { r.addAlarm(EKAlarm(absoluteDate: d)) }
-        if t.remind != .time, let p = t.place {
-            let l = EKStructuredLocation(title: p.name)
-            l.geoLocation = CLLocation(latitude: p.lat, longitude: p.lon)
-            l.radius = p.radius
-            let a = EKAlarm()
-            a.structuredLocation = l
-            a.proximity = t.remind == .arriving ? .enter : .leave
-            r.addAlarm(a)
-        }
     }
 
     // A typed place, found on the map (no location permission needed for this).
@@ -197,30 +136,6 @@ extension Store {
         guard var s = await locate(text) else { return .failure(Failure("Couldn't find your \(work ? "work" : "home") address on the map.")) }
         s.name = work ? "Work" : "Home"
         return .success(s)
-    }
-
-    // Made-up lists and tasks for the mockup's week (Monday `mon`).
-    func loadSampleTasks(_ mon: Date) {
-        taskAccess = .sample
-        lists = [CalInfo(id: "r-main", title: "Reminders", account: "iCloud (sample)", color: Palette.work, writable: true),
-                 CalInfo(id: "r-condo", title: "Condo", account: "iCloud (sample)", color: Palette.family, writable: true),
-                 CalInfo(id: "r-groc", title: "Groceries", account: "iCloud (sample)", color: Palette.personal, writable: true)]
-        func on(_ d: Int, _ h: Int? = nil) -> Date { h.map { cal.date(byAdding: .hour, value: $0, to: addDays(mon, d))! } ?? addDays(mon, d) }
-        var n = 0
-        func t(_ list: String, _ title: String, _ due: Date?, timed: Bool = false, done: Bool = false, remind: Remind = .time, place: Spot? = nil, notes: String = "") {
-            n += 1
-            todos.append(ToDo(id: "t\(n)", listID: list, title: title, due: due, timed: timed, done: done, notes: notes, remind: remind, place: place))
-        }
-        t("r-condo", "Pay condo fee", on(-3))
-        t("r-main", "Renew car marchamo", on(-4))
-        t("r-main", "Call the plumber", on(0))
-        t("r-main", "Take out recycling", on(0, 11), timed: true)
-        t("r-main", "Send invoice", on(0), done: true)
-        t("r-condo", "Buy AC filter", on(1), remind: .arriving, place: Spot(name: "Ferretería Brenes, Tamarindo", lat: 10.299, lon: -85.839), notes: "Size 16 x 25 x 1, two of them")
-        t("r-main", "Electrician", on(1, 10), timed: true)
-        t("r-main", "Book dentist follow-up", on(2))
-        t("r-condo", "Water plants at the condo", on(4))
-        for g in ["Eggs", "Coffee", "Rice", "Limes"] { t("r-groc", g, nil) }
     }
 }
 
@@ -260,9 +175,9 @@ struct TaskChip: View {
         }
         .font(.ui(12))
         .padding(.horizontal, 4).padding(.vertical, 2)
-        .background(RoundedRectangle(cornerRadius: 4).fill(app.openTaskID == task.id ? Palette.accentSoft : .clear))
+        .background(Watching(object: app.panels) { p in RoundedRectangle(cornerRadius: 4).fill(p.openTaskID == task.id ? Palette.accentSoft : .clear) })
         .contentShape(Rectangle())
-        .onTapGesture { app.openTaskID = task.id }
+        .onTapGesture { app.panels.openTaskID = task.id }
         .draggable("task:" + task.id)
     }
 }
@@ -296,9 +211,9 @@ struct TaskBlock: View {
         .font(.ui(12)).padding(.horizontal, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(Palette.win))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(c, style: StrokeStyle(lineWidth: app.openTaskID == task.id ? 2 : 1.2, dash: [4, 3])))
+        .overlay(Watching(object: app.panels) { p in RoundedRectangle(cornerRadius: 8).strokeBorder(c, style: StrokeStyle(lineWidth: p.openTaskID == task.id ? 2 : 1.2, dash: [4, 3])) })
         .contentShape(Rectangle())
-        .onTapGesture { app.openTaskID = task.id }
+        .onTapGesture { app.panels.openTaskID = task.id }
         .draggable("task:" + task.id)
     }
 }
@@ -307,10 +222,11 @@ struct TaskBlock: View {
 struct TaskList: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
+    @ObservedObject var panel: TaskPanel
     @FocusState private var adding: Bool
     @State private var showAll: Set<String> = []  // open lists showing past their first 20 tasks
     var body: some View {
-        let filter = app.taskListFilter.flatMap(store.taskList)
+        let filter = panel.filter.flatMap(store.taskList)
         let list = app.shownTodos.filter { filter == nil || $0.listID == filter!.id }
         let groups = Dictionary(grouping: list) { taskGroup($0, now: app.now) }
         VStack(alignment: .leading, spacing: 0) {
@@ -318,10 +234,10 @@ struct TaskList: View {
                 Text("Tasks").font(.ui(15, weight: .semibold))
                 Spacer()
                 Menu {
-                    Button("All lists") { app.taskListFilter = nil }
-                    ForEach(store.lists) { l in Button(l.title) { app.taskListFilter = l.id } }
+                    Button("All lists") { panel.filter = nil }
+                    ForEach(store.lists) { l in Button(l.title) { panel.filter = l.id } }
                 } label: { Text(filter?.title ?? "All lists") }.menuStyle(.borderlessButton).fixedSize()
-                Button { app.tasksOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
+                Button { app.panels.tasksOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
             }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
             if store.taskAccess == .denied && !store.todos.contains(where: { $0.a4 != nil }) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -333,7 +249,7 @@ struct TaskList: View {
             } else {
                 HStack(spacing: 8) {
                     Image(systemName: "plus").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.accent)
-                    TextField("Add a task: Call the bank Friday 3pm", text: $app.taskText).textFieldStyle(.plain).focused($adding).onSubmit { app.commitTask() }
+                    TextField("Add a task: Call the bank Friday 3pm", text: $panel.text).textFieldStyle(.plain).focused($adding).onSubmit { app.commitTask() }
                 }
                 .padding(.horizontal, 12).frame(height: 32)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field))
@@ -342,7 +258,7 @@ struct TaskList: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(TaskGroup.allCases, id: \.self) { g in
-                            if let rows = groups[g], !(g == .none && app.hideNoDate) {
+                            if let rows = groups[g], !(g == .none && panel.hideNoDate) {
                                 HStack(spacing: 8) {
                                     Text(g.rawValue.uppercased()).font(.ui(11, weight: .semibold)).foregroundStyle(g == .overdue ? Palette.now : Palette.text3)
                                     Text("\(rows.count)").font(.ui(11)).foregroundStyle(Palette.text3)
@@ -360,9 +276,9 @@ struct TaskList: View {
                     }.padding(.horizontal, 16).padding(.bottom, 12)
                 }
                 HStack(spacing: 4) {
-                    Button(app.showDone ? "Hide done tasks" : "Show done tasks") { app.showDone.toggle() }
+                    Button(panel.showDone ? "Hide done tasks" : "Show done tasks") { panel.showDone.toggle() }
                     Text("·")
-                    Button(app.hideNoDate ? "Show no-date tasks" : "Hide no-date tasks") { app.hideNoDate.toggle() }
+                    Button(panel.hideNoDate ? "Show no-date tasks" : "Hide no-date tasks") { panel.hideNoDate.toggle() }
                 }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 8)
                 .frame(maxWidth: .infinity, alignment: .leading).overlay(alignment: .top) { Palette.line.frame(height: 1) }
             }
@@ -373,9 +289,9 @@ struct TaskList: View {
     // No-date tasks with every list shown: each list folds, and remembers whether it was left open.
     func folded(_ rows: [ToDo]) -> some View {
         ForEach(noDateLists(rows) { store.taskList($0)?.title ?? "Other" }, id: \.id) { l in
-            let info = store.taskList(l.id), open = app.openTaskLists.contains(l.id), all = showAll.contains(l.id)
+            let info = store.taskList(l.id), open = panel.openLists.contains(l.id), all = showAll.contains(l.id)
             Button {
-                if open { app.openTaskLists.remove(l.id); showAll.remove(l.id) } else { app.openTaskLists.insert(l.id) }
+                if open { panel.openLists.remove(l.id); showAll.remove(l.id) } else { panel.openLists.insert(l.id) }
             } label: { HStack(spacing: 8) {
                 Image(systemName: "chevron.right").font(.ui(10, weight: .semibold)).foregroundStyle(Palette.text3)
                     .rotationEffect(.degrees(open ? 90 : 0)).frame(width: 12)
@@ -417,10 +333,10 @@ struct TaskList: View {
             Text(right).font(.ui(12)).foregroundStyle(late ? Palette.now : Palette.text3)
         }
         .padding(.vertical, 4).padding(.horizontal, 8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(app.openTaskID == t.id ? Palette.accentSoft : .clear))
+        .background(Watching(object: app.panels) { p in RoundedRectangle(cornerRadius: 8).fill(p.openTaskID == t.id ? Palette.accentSoft : .clear) })
         .padding(.horizontal, -8)
         .contentShape(Rectangle())
-        .onTapGesture { app.openTaskID = t.id }
+        .onTapGesture { app.panels.openTaskID = t.id }
         .draggable("task:" + t.id)
     }
 }
@@ -444,7 +360,7 @@ struct TaskDetail: View {
                 HStack {
                     Text("TASK").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                     Spacer()
-                    Button { commit(); app.openTaskID = nil } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
+                    Button { commit(); app.panels.openTaskID = nil } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
                 }.padding(.bottom, 8)
                 HStack(alignment: .top, spacing: 8) {
                     TaskCircle(done: task.done, color: l?.color ?? .gray, size: 16) { task.done.toggle(); commit() }.padding(.top, 4)

@@ -8,8 +8,10 @@
 //   --a4-code <vault> <path> <day>  prints what is sent to A4's engine, for the sandbox test
 //   --timing <file>   times the calendar reads on the real calendars, read only; run through `open` so the app's own permission applies
 //   --timing-file <file.ics>  times reading and showing a subscribed calendar's file
+//   --follow-check    changes each part of the split window state after a hidden window has drawn; the window must follow
 //   --timing-ui       times window redraws on made-up calendars, in a hidden window
 //   --render <folder> [names]  draws the window on sample calendars to PNG files off-screen (no calendar access); names picks some of the main window pictures
+//     with --late after the names, each picture's state is set after the window has drawn, so a screen that fails to follow it shows up against the normal picture
 import SwiftUI
 import AppKit
 
@@ -17,7 +19,7 @@ let args = CommandLine.arguments
 if args.contains("--selftest") { exit(selftest()) }
 if let i = args.firstIndex(of: "--a4-code"), i + 3 < args.count { print(a4EngineCode(vault: args[i + 1], path: args[i + 2], day: args[i + 3].isEmpty ? nil : args[i + 3])); exit(0) }  // what the engine is sent, for the sandbox test
 if let i = args.firstIndex(of: "--a4-check"), i + 1 < args.count { exit(a4Check(args[i + 1])) }
-if let i = args.firstIndex(of: "--timing"), i + 1 < args.count { exit(timingCheck(args[i + 1])) }
+if let i = args.firstIndex(of: "--timing"), i + 1 < args.count { exit(MainActor.assumeIsolated { timingCheck(args[i + 1]) }) }
 if let i = args.firstIndex(of: "--timing-file"), i + 1 < args.count { exit(timingFile(args[i + 1])) }
 if args.contains("--assistant") { exit(assistantRelay()) }
 if let i = args.firstIndex(of: "--email-check"), i + 1 < args.count {  // reads one email file with the on-device AI and prints the draft; saves nothing
@@ -33,9 +35,10 @@ if let i = args.firstIndex(of: "--accounts-check"), i + 1 < args.count {
     dispatchMain()
 }
 if args.contains("--sample") { MainActor.assumeIsolated { WeatherStore.sample = true } }  // made-up weather, no network
+if args.contains("--follow-check") { exit(MainActor.assumeIsolated { followCheck() }) }
 if args.contains("--timing-ui") { exit(MainActor.assumeIsolated { timingUI() }) }
 if let i = args.firstIndex(of: "--render"), i + 1 < args.count {
-    exit(MainActor.assumeIsolated { renderAll(to: args[i + 1], only: i + 2 < args.count ? Set(args[i + 2].split(separator: ",").map(String.init)) : []) } ? 0 : 1)
+    exit(MainActor.assumeIsolated { renderAll(to: args[i + 1], only: i + 2 < args.count && !args[i + 2].hasPrefix("--") ? Set(args[i + 2].split(separator: ",").map(String.init)) : []) } ? 0 : 1)
 }
 
 final class Delegate: NSObject, NSApplicationDelegate {
@@ -53,13 +56,13 @@ struct DatelineApp: App {
     @StateObject private var app = AppState(store: Store(sample: CommandLine.arguments.contains("--sample")))
     var body: some Scene {
         Window("Dateline", id: "main") {
-            MainView(app: app, store: app.store)
+            MainView(app: app, store: app.store, panels: app.panels)
                 .frame(minWidth: 980, minHeight: 600)
                 .onAppear { Look.apply(); app.startKeys() }
         }
         .defaultSize(width: 1380, height: 800)
         .windowToolbarStyle(.unified(showsTitle: true))
-        .commands { AppCommands(app: app, store: app.store) }
+        .commands { AppCommands(app: app, store: app.store, panels: app.panels) }
         Settings { SettingsView(app: app) }
     }
 }

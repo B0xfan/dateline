@@ -216,6 +216,10 @@ extension Store {
 
     // A changed A4 task, from the task details, a tick or a drop.
     func updateA4(_ t: ToDo, old: ToDo?) -> Failure? {
+        if access == .sample {
+            guard let i = todos.firstIndex(where: { $0.id == t.id }) else { return Failure("That task is gone.") }
+            todos[i] = t; return nil
+        }
         guard let old, var a = t.a4 else { return Failure("That task has been filed in A4's Archive, or is gone. Look for it in Obsidian.") }
         if a4Busy > 0 { return Failure("Still saving the last change to Obsidian. Try again in a moment.") }  // A4's engine would write over this when it finishes
         if old.done != t.done, A4Task.finished.contains(a.status) == old.done { a.status = t.done ? "done" : "open" }  // a tick changes only `done`
@@ -363,7 +367,7 @@ struct A4TaskDetail: View {
                 HStack {
                     Text("A4 TASK").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                     Spacer()
-                    Button { app.openTaskID = nil } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
+                    Button { app.panels.openTaskID = nil } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
                 }.padding(.bottom, 8)
                 HStack(alignment: .top, spacing: 8) {
                     TaskCircle(done: task.done, color: a4Color, size: 16) { let was = task.done; task.done.toggle(); task.a4?.status = task.done ? "done" : "open"; app.saveTask(task); if info.repeating { task.done = was; task.a4?.status = info.status } }.padding(.top, 4)
