@@ -40,7 +40,6 @@ struct TimeGrid: View {
 
     var body: some View {
         let days = app.visibleDays
-        let items = app.shownItems
         let sun = WorkWeek.sun ? here.spot : nil  // Phase 5: sunrise and sunset under each day's name
         let headH: CGFloat = sun == nil ? 44 : 56
         VStack(spacing: 0) {
@@ -72,7 +71,7 @@ struct TimeGrid: View {
                 Text("all-day").font(.ui(11)).foregroundStyle(Palette.text3).frame(width: gutter - 8, alignment: .trailing).padding(.trailing, 8).padding(.top, 8)
                 ForEach(days, id: \.self) { d in
                     VStack(spacing: 0) {
-                        ForEach(items.filter { $0.allDay && $0.start < addDays(d, 1) && $0.end > d }) { it in
+                        ForEach(store.shown(on: d).filter(\.allDay)) { it in
                             let c = store.color(it)
                             HStack(spacing: 4) { Mark(showAs: it.showAs, color: c); Text(it.shownTitle).lineLimit(1) }
                                 .font(.ui(12, weight: .medium))
@@ -101,7 +100,7 @@ struct TimeGrid: View {
                             }
                         }.frame(width: gutter)
                         ForEach(days, id: \.self) { d in
-                            DayColumn(app: app, store: store, day: d, days: days, items: items.filter { !$0.allDay && $0.start < addDays(d, 1) && $0.end > d })
+                            DayColumn(app: app, store: store, day: d, days: days, items: store.shown(on: d).filter { !$0.allDay })
                         }
                     }
                     .background(GeometryReader { g in Color.clear.preference(key: ScrollTop.self, value: g.frame(in: .named("hours")).minY) })
@@ -167,7 +166,7 @@ struct DayColumn: View {
                     let d = drag?.id == it.id ? drag : nil
                     let colW = (w - 4) / CGFloat(max(n, 1))
                     let stretchDY = d?.stretch == true ? d!.dy : 0
-                    EventBlock(item: it, color: store.color(it), selected: app.selectedID == it.id, height: f.h + stretchDY, now: app.now)
+                    OnClock(clock: app.clock) { EventBlock(item: it, color: store.color(it), selected: app.selectedID == it.id, height: f.h + stretchDY, now: $0) }
                         .frame(width: colW - 2, height: max(18, f.h + stretchDY - 2))
                         .onTapGesture(count: 2) { app.selectedID = it.id; app.panelOpen = true }
                         .onTapGesture { app.selectedID = it.id }
@@ -181,11 +180,12 @@ struct DayColumn: View {
                         .zIndex(d != nil ? 2 : 1)
                 }
                 if cal.isDate(day, inSameDayAs: app.now) {
-                    let y = CGFloat(app.now.timeIntervalSince(day) / 3600) * hourH
-                    ZStack(alignment: .leading) {
-                        Palette.now.frame(height: 2)
-                        Circle().fill(Palette.now).frame(width: 12, height: 12).offset(x: -5)
-                    }.offset(y: y - 1).allowsHitTesting(false).zIndex(3)
+                    OnClock(clock: app.clock) { now in
+                        ZStack(alignment: .leading) {
+                            Palette.now.frame(height: 2)
+                            Circle().fill(Palette.now).frame(width: 12, height: 12).offset(x: -5)
+                        }.offset(y: CGFloat(now.timeIntervalSince(day) / 3600) * hourH - 1)
+                    }.allowsHitTesting(false).zIndex(3)
                 }
                 // Reminders with a time on this day (not overdue: those sit in today's Tasks row).
                 ForEach(app.calendarTodos.filter { t in t.timed && !isOverdue(t, now: app.now) && t.due.map { cal.isDate($0, inSameDayAs: day) } == true }) { t in
@@ -312,7 +312,6 @@ struct MonthView: View {
         // Own grid, not visibleDays: on a switch to Day this view can redraw once more with a 1-day list and crash.
         let grid = monthGrid(app.anchor)
         let weeks = grid.count / 7
-        let items = app.shownItems
         let month = cal.component(.month, from: app.anchor)
         VStack(spacing: 0) {
             HStack(spacing: 0) {
@@ -327,7 +326,7 @@ struct MonthView: View {
                         .frame(width: 36).frame(maxHeight: .infinity, alignment: .top).padding(.top, 8).background(Palette.lineSoft)
                     ForEach(0..<7, id: \.self) { i in
                         let d = grid[w * 7 + i]
-                        cell(d, items.filter { $0.start < addDays(d, 1) && $0.end > d }, other: cal.component(.month, from: d) != month)
+                        cell(d, store.shown(on: d), other: cal.component(.month, from: d) != month)
                     }
                 }.frame(maxHeight: .infinity)
                 .overlay(alignment: .bottom) { Palette.lineSoft.frame(height: 1) }
@@ -550,16 +549,15 @@ struct QuarterView: View {
     @ObservedObject var store: Store
     var body: some View {
         let q = quarterStart(app.anchor)
-        let items = app.shownItems
         HStack(spacing: 0) {
             ForEach(0..<3, id: \.self) { i in
                 if i > 0 { Palette.line.frame(width: 1) }
-                month(cal.date(byAdding: .month, value: i, to: q)!, items)
+                month(cal.date(byAdding: .month, value: i, to: q)!)
             }
         }.background(Palette.win)
     }
 
-    func month(_ first: Date, _ items: [Item]) -> some View {
+    func month(_ first: Date) -> some View {
         // Own grid from the anchor, as in MonthView, so a switch to another view cannot redraw this with the wrong days.
         let grid = monthGrid(first), m = cal.component(.month, from: first)
         return VStack(alignment: .leading, spacing: 0) {
@@ -580,7 +578,7 @@ struct QuarterView: View {
                         .frame(width: 24).frame(maxHeight: .infinity, alignment: .top).padding(.top, 4).background(Palette.lineSoft)
                     ForEach(0..<7, id: \.self) { i in
                         let d = grid[w * 7 + i]
-                        if cal.component(.month, from: d) == m { cell(d, items.filter { $0.start < addDays(d, 1) && $0.end > d }) }
+                        if cal.component(.month, from: d) == m { cell(d, store.shown(on: d)) }
                         else { Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) } }
                     }
                 }.frame(maxHeight: .infinity)

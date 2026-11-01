@@ -553,6 +553,28 @@ func selftest() -> Int32 {
     weatherSelftest(expect)
     a4Selftest(expect)
     MainActor.assumeIsolated {
+        let a = AppState(store: Store(sample: true), today: now)
+        var redraws = 0
+        let watching = a.objectWillChange.sink { redraws += 1 }
+        a.addText = "Lunch"; a.now = now.addingTimeInterval(60)
+        expect(redraws == 0, "a typed letter or a clock tick doesn't redraw the whole window")
+        a.now = addDays(now, 1)
+        expect(redraws == 1, "a new day does")
+        watching.cancel()
+    }
+    let dayA = at(10, 26, 0), dayB = at(10, 27, 0), dayC = at(10, 28, 0)
+    let spans = [it2("inside", at(10, 26, 9), at(10, 26, 10)), it2("two days", at(10, 26, 22), at(10, 27, 2)), it2("ends at midnight", at(10, 26, 23), dayB),
+                 it2("no length", at(10, 27, 9), at(10, 27, 9)), it2("no length at midnight", dayB, dayB), it2("all day", dayB, dayC, allDay: true),
+                 it2("runs for years", at(1, 1, 0), addDays(dayC, 900))]
+    MainActor.assumeIsolated {
+        let s = Store(sample: true), day = cal.startOfDay(for: now)
+        s.show(from: addDays(day, -30), to: addDays(day, 30))
+        let onDays = s.items.filter { $0.start >= addDays(day, -30) && $0.end > $0.start && !s.hidden.contains($0.calendarID) }
+        expect(!onDays.isEmpty && onDays.allSatisfy { it in s.shown(on: it.start).contains { $0.id == it.id } }, "a day asked for by a date that isn't midnight still finds its events")
+    }
+    let grouped = itemsByDay(spans, from: dayA, to: addDays(dayC, 1))
+    expect([dayA, dayB, dayC].allSatisfy { d in grouped[d]?.map(\.id) ?? [] == spans.filter { $0.start < addDays(d, 1) && $0.end > d }.map(\.id) } && grouped.count == 3, "events grouped by day land on the days the old scan found")
+    MainActor.assumeIsolated {
         let d = UserDefaults.standard, before = (d.object(forKey: "hiddenCalendars") as? [String], d.string(forKey: "mode"))
         let a = AppState(store: Store(sample: true), today: now)
         a.store.hidden = ["selftest"]; a.mode = a.mode == .month ? .day : .month

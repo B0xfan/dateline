@@ -5,9 +5,21 @@ import Carbon.HIToolbox
 
 enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Month", quarter = "Quarter", year = "Year" }
 
+// These two change often and few views show them. Apart from AppState, a typed letter or a clock tick doesn't redraw the whole window.
+@MainActor final class AddText: ObservableObject { @Published var text = "" }
+@MainActor final class Clock: ObservableObject { @Published var now = Date() }
+
+// For what shows the time of day: redraws on each clock tick, without its surroundings.
+struct OnClock<V: View>: View {
+    @ObservedObject var clock: Clock
+    @ViewBuilder let content: (Date) -> V
+    var body: some View { content(clock.now) }
+}
+
 @MainActor
 final class AppState: ObservableObject {
     let store: Store
+    let addBox = AddText(), clock = Clock()
     @Published var mode: Mode = Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .day { didSet { if store.access != .sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") }; reload() } }
     @Published var days: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() { didSet { if Look.saves { UserDefaults.standard.set(days, forKey: "weekDays") }; reload() } }
     @Published var anchor: Date { didSet { reload(); if Look.saves && store.access != .sample { UserDefaults.standard.set(anchor, forKey: "anchor"); UserDefaults.standard.set(Date(), forKey: "anchorSaved") } } }
@@ -24,7 +36,7 @@ final class AppState: ObservableObject {
     @Published var sidebarOpen = UserDefaults.standard.object(forKey: "sidebarOpen") as? Bool ?? true { didSet { if Look.saves { UserDefaults.standard.set(sidebarOpen, forKey: "sidebarOpen") } } }
     // Reminders lists left unfolded in the task list's No date part; kept across restarts.
     @Published var openTaskLists = Set(UserDefaults.standard.stringArray(forKey: "openTaskLists") ?? []) { didSet { if Look.saves { UserDefaults.standard.set(Array(openTaskLists), forKey: "openTaskLists") } } }
-    @Published var addText = ""
+    var addText: String { get { addBox.text } set { addBox.text = newValue } }
     @Published var addFocused = false
     @Published var addCalendarID: String?
     @Published var showShortcuts = false
@@ -43,7 +55,11 @@ final class AppState: ObservableObject {
     @Published var confirmDelete: Item?
     @Published var toast: Toast?
     @Published var error: String?
-    @Published var now = Date()
+    // A new day changes what most views draw (today's mark, overdue tasks), so it redraws everything; a tick within the day doesn't.
+    var now: Date {
+        get { clock.now }
+        set { if !cal.isDate(newValue, inSameDayAs: clock.now) { objectWillChange.send() }; clock.now = newValue }
+    }
     @Published var focusAdd = 0  // bumped to put the cursor in the add box
     // Quick add from any app (Phase 2): its own text, the past event Tab picked, the highlighted suggestion.
     @Published var quickText = "" { didSet { if quickText != oldValue { quickPick = nil; quickSel = 0 } } }
@@ -66,7 +82,7 @@ final class AppState: ObservableObject {
         emails = EmailInbox(sample: store.access == .sample)
         // Back to the date you were on, that same day; a new day opens on today, the view stays.
         let saved = store.access == .sample || !Look.saves ? nil : UserDefaults.standard.object(forKey: "anchorSaved") as? Date
-        anchor = saved.map { cal.isDate($0, inSameDayAs: today) } == true ? UserDefaults.standard.object(forKey: "anchor") as? Date ?? cal.startOfDay(for: today) : cal.startOfDay(for: today)
+        anchor = cal.startOfDay(for: saved.map { cal.isDate($0, inSameDayAs: today) } == true ? UserDefaults.standard.object(forKey: "anchor") as? Date ?? today : today)  // saved in another time zone, it isn't midnight here
         store.onError = { [weak self] in self?.error = $0 }
         now = today
         reload()
@@ -165,8 +181,10 @@ final class AppState: ObservableObject {
 
     // Past midnight, a view on today moves on with it, even if the app stayed open or the Mac slept for days. A view you paged elsewhere stays.
     func tick(_ date: Date) {
-        if !cal.isDate(date, inSameDayAs: now), anchor == cal.startOfDay(for: now) { anchor = cal.startOfDay(for: date) }
+        let newDay = !cal.isDate(date, inSameDayAs: now)
+        if newDay, anchor == cal.startOfDay(for: now) { anchor = cal.startOfDay(for: date) }
         now = date
+        if newDay { store.refreshSoon() }  // "coming up" counts from today, and moving the view no longer rereads it
     }
 
     func open(day: Date) { anchor = cal.startOfDay(for: day); mode = .day }
@@ -335,9 +353,12 @@ final class AppState: ObservableObject {
         guard monitor == nil else { return }  // the window can appear again after being closed
         registerQuick()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in if let self { self.tick(Date()); MenuBar.shared.update(self); self.store.reloadA4() } } }
+        timer?.tolerance = 5  // slack lets the Mac bundle wake-ups
         if store.access != .sample { Here.shared.start() }
         travelTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in Task { @MainActor in Here.shared.refresh(); self?.planTravel(); self?.store.refreshSubs(); self?.store.refreshAccounts() } }
+        travelTimer?.tolerance = 30
         alertTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in Task { @MainActor in self?.checkAlerts() } }
+        alertTimer?.tolerance = 2
         MenuBar.shared.update(self)
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self else { return e }

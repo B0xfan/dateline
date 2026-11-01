@@ -148,7 +148,6 @@ struct MenuBarSettings: View {
     @State private var show = MenuIcon.show
 
     var body: some View {
-        let now = app.now
         VStack(alignment: .leading, spacing: 12) {
             Toggle("Show Dateline in the menu bar", isOn: Binding(get: { on }, set: { on = $0; MenuIcon.on = $0; MenuBar.shared.update(app) })).toggleStyle(.switch).controlSize(.small)
             VStack(spacing: 8) {
@@ -159,7 +158,7 @@ struct MenuBarSettings: View {
                             Circle().strokeBorder(picked ? Palette.accent : Palette.text3, lineWidth: picked ? 4 : 1.5).frame(width: 16, height: 16)
                             Text(MenuIcon.shows[i])
                             Spacer()
-                            chip(i, now)
+                            OnClock(clock: app.clock) { chip(i, $0) }
                         }
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(RoundedRectangle(cornerRadius: 8).fill(picked ? Palette.accentSoft : .clear))

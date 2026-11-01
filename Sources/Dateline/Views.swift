@@ -61,7 +61,7 @@ struct MainView: View {
             Sidebar(app: app, store: store).navigationSplitViewColumnWidth(236)
         } detail: {
             VStack(spacing: 0) {
-                if width < 700 { AddBox(app: app).frame(height: 32).padding(.horizontal, 8); Divider().overlay(Palette.line) }
+                if width < 700 { AddBox(app: app, box: app.addBox).frame(height: 32).padding(.horizontal, 8); Divider().overlay(Palette.line) }
                 ZStack(alignment: .bottom) {
                     Group {
                         switch store.access {
@@ -79,9 +79,7 @@ struct MainView: View {
                     if let t = app.toast { ToastView(app: app, toast: t).padding(.bottom, 16) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .topTrailing) {
-                    if app.addFocused && !app.addText.isEmpty { PreviewCard(app: app, store: store).padding(.trailing, 16).padding(.top, 8) }
-                }
+                .overlay(alignment: .topTrailing) { PreviewSpot(app: app, store: store, box: app.addBox) }
                 StatusBar()
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
@@ -142,7 +140,7 @@ struct MainView: View {
             if width >= 700 {
                 Button("Tasks", systemImage: "checklist") { app.tasksOpen.toggle() }.help("Show or hide tasks (R)")
                 Button("Map", systemImage: "map") { app.mapOpen = true }.help("Show this view's places on a map (P)")
-                AddBox(app: app).frame(width: width < 800 ? 160 : 260)
+                AddBox(app: app, box: app.addBox).frame(width: width < 800 ? 160 : 260)
             }
         }
     }
@@ -180,27 +178,29 @@ struct Sidebar: View {
                         Text("Reminders lists").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).textCase(.uppercase).padding(.horizontal, 8).padding(.top, 12).padding(.bottom, 4)
                         ForEach(store.lists.filter { $0.account != a4Account }) { l in listRow(l) }  // A4 has one list per project; its switch is in Settings
                     }
-                    let soon = comingUp(store.soon.filter { !store.hidden.contains($0.calendarID) }, now: app.now)
-                    if !soon.isEmpty {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("COMING UP").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.bottom, 4)
-                            ForEach(Array(soon.enumerated()), id: \.offset) { _, s in
-                                HStack(alignment: .top, spacing: 8) {
-                                    RoundedRectangle(cornerRadius: 2).fill(store.calendar(s.calendarID)?.color ?? .gray).frame(width: 4)
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(s.title).font(.ui(13, weight: .semibold)).lineLimit(1)
-                                        (Text(s.lead) + Text(s.big).fontWeight(.semibold).foregroundColor(Palette.text) + Text(s.tail))
-                                            .font(.ui(12)).foregroundStyle(s.dim ? Palette.text3 : Palette.text2)
-                                    }
-                                }.fixedSize(horizontal: false, vertical: true).padding(.vertical, 4)
+                    OnClock(clock: app.clock) { now in
+                        let soon = comingUp(store.soon.filter { !store.hidden.contains($0.calendarID) }, now: now)
+                        if !soon.isEmpty {
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text("COMING UP").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.bottom, 4)
+                                ForEach(Array(soon.enumerated()), id: \.offset) { _, s in
+                                    HStack(alignment: .top, spacing: 8) {
+                                        RoundedRectangle(cornerRadius: 2).fill(store.calendar(s.calendarID)?.color ?? .gray).frame(width: 4)
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(s.title).font(.ui(13, weight: .semibold)).lineLimit(1)
+                                            (Text(s.lead) + Text(s.big).fontWeight(.semibold).foregroundColor(Palette.text) + Text(s.tail))
+                                                .font(.ui(12)).foregroundStyle(s.dim ? Palette.text3 : Palette.text2)
+                                        }
+                                    }.fixedSize(horizontal: false, vertical: true).padding(.vertical, 4)
+                                }
                             }
+                            .padding(.horizontal, 12).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Palette.win))
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
+                            .padding(.horizontal, 8).padding(.top, 12)
                         }
-                        .padding(.horizontal, 12).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.win))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
-                        .padding(.horizontal, 8).padding(.top, 12)
                     }
-                    if Zones.card && !Zones.list.isEmpty { ZoneCard(now: app.now) }
+                    if Zones.card && !Zones.list.isEmpty { OnClock(clock: app.clock) { ZoneCard(now: $0) } }
                 }.padding(.horizontal, 12).padding(.vertical, 8)
             }
             Divider().overlay(Palette.line)
@@ -387,11 +387,12 @@ struct Seg: View {
 
 struct AddBox: View {
     @ObservedObject var app: AppState
+    @ObservedObject var box: AddText
     @FocusState private var focused: Bool
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "plus").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.accent)
-            TextField("Add: Dinner with Ana Friday 7pm", text: $app.addText)
+            TextField("Add: Dinner with Ana Friday 7pm", text: $box.text)
                 .textFieldStyle(.plain).focused($focused)
                 .onSubmit { app.commitAdd() }
         }
@@ -404,14 +405,25 @@ struct AddBox: View {
     }
 }
 
+// Watches the typing, so only the preview redraws with each letter.
+struct PreviewSpot: View {
+    @ObservedObject var app: AppState
+    @ObservedObject var store: Store
+    @ObservedObject var box: AddText
+    var body: some View {
+        if app.addFocused && !box.text.isEmpty { PreviewCard(app: app, store: store, p: app.preview).padding(.trailing, 16).padding(.top, 8) }
+    }
+}
+
 // "What I understood": the live preview under the add box (A2).
 struct PreviewCard: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
+    let p: Parsed
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("WHAT I UNDERSTOOD").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.bottom, 8)
-            Understood(app: app, store: store, p: app.preview, pick: nil, menu: true)
+            Understood(app: app, store: store, p: p, pick: nil, menu: true)
             Divider().overlay(Palette.line).padding(.top, 8)
             HStack(spacing: 8) {
                 Key("Return"); Text("add"); Key("Esc"); Text("cancel"); Key("Tab"); Text("edit details")

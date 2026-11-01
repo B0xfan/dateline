@@ -90,6 +90,17 @@ func callLink(in texts: [String]) -> Call? {
     return nil
 }
 
+// Each day's events, in the order given: an event is on a day when it starts before the day ends and ends after it starts. `from` and `to` cap an event that runs for years.
+func itemsByDay(_ items: [Item], from: Date, to: Date) -> [Date: [Item]] {
+    var out: [Date: [Item]] = [:]
+    let first = cal.startOfDay(for: from)
+    for it in items {
+        var d = max(cal.startOfDay(for: it.start), first)
+        while d < it.end && d < to { out[d, default: []].append(it); d = cal.startOfDay(for: addDays(d, 1)) }
+    }
+    return out
+}
+
 @MainActor
 final class Store: ObservableObject {
     @Published var calendars: [CalInfo] = []
@@ -101,7 +112,10 @@ final class Store: ObservableObject {
             if !calendars.isEmpty { UserDefaults.standard.set(activeSet?.id ?? "", forKey: "lastSet") }
         }
     }
-    @Published private(set) var items: [Item] = []
+    @Published private(set) var items: [Item] = [] { didSet { byDay = itemsByDay(items, from: range.0, to: range.1) } }
+    private var byDay: [Date: [Item]] = [:]  // grouped once per load, so day squares don't each scan every event
+    // Start of day: a date saved in another time zone isn't midnight here, and would otherwise show an empty day.
+    func shown(on day: Date) -> [Item] { (byDay[cal.startOfDay(for: day)] ?? []).filter { !hidden.contains($0.calendarID) } }
     @Published private(set) var soon: [Item] = []  // the next 120 days, for the "Coming up" card
     @Published var access: Access = .unknown
     @Published var defaultCalendarID: String?
@@ -204,7 +218,7 @@ final class Store: ObservableObject {
         ek.requestFullAccessToEvents { ok, _ in
             Task { @MainActor in
                 self.access = ok ? .granted : .denied
-                guard ok else { return }
+                guard ok else { self.fetch(); return }  // subscribed calendars and accounts still fill "coming up"
                 self.reloadCalendars()
                 self.refreshSubs()
                 // Changes made in Apple Calendar or on another device show up here straight away.
@@ -226,7 +240,7 @@ final class Store: ObservableObject {
             if let id = UserDefaults.standard.string(forKey: "lastSet"), let s = sets.first(where: { $0.id == id }), activeSet?.id != id { use(s) }
         }
         defaultCalendarID = ek.defaultCalendarForNewEvents.map { d in shownHere(d.source) ? accInfos.first { $0.title == d.title }?.id : d.calendarIdentifier } ?? nil
-        pastCache = nil
+        pastStale = pastCache != nil
         fetch()
     }
 
@@ -235,13 +249,16 @@ final class Store: ObservableObject {
     // Loads the events between two dates (the visible view plus a margin).
     func show(from: Date, to: Date) {
         range = (from, to)
-        fetch()
+        items = between(from, to)  // "coming up" stays: it doesn't depend on where the view is
     }
 
     private func fetch() {
-        let (a, b) = range
+        items = between(range.0, range.1)
+        refreshSoon()
+    }
+
+    func refreshSoon() {
         let now = sampleToday ?? Date(), later = now.addingTimeInterval(120 * 86400)
-        items = between(a, b)
         let subSoon = subEvents(from: now.addingTimeInterval(-86400), to: later).filter { sub($0.calendarID)?.kind == nil }  // not a sunrise line every day
         if access == .sample { soon = sample.filter { $0.end > now && $0.start < later } + subSoon; return }
         let accSoon = accEvents(from: now.addingTimeInterval(-86400), to: later)
@@ -263,20 +280,45 @@ final class Store: ObservableObject {
         return ek.events(matching: ek.predicateForEvents(withStart: a, end: b, calendars: keep.count == all.count ? nil : keep))
     }
 
-    // The last year's events, one per title, newest first (quick add's "From your past events"). Kept until the calendars change.
+    // The last year's events, one per title, newest first (quick add's "From your past events").
     private var pastCache: [Item]?
+    private var pastStale = false  // the calendars changed since it was read
+    private var pastFetch = 0  // only the newest read is kept
     func past() -> [Item] {
-        if let pastCache { return pastCache }
-        let now = sampleToday ?? Date()
+        if let pastCache, !pastStale { return pastCache }
+        pastStale = false
+        let now = sampleToday ?? Date(), from = now.addingTimeInterval(-365 * 86400)
+        // After a calendar change the old list answers now and the new one is read in the background, so typing never waits for it.
+        let all = ek.calendars(for: .event), keep = accounts.isEmpty ? all : all.filter { !shownHere($0.source) }
+        if let pastCache, access == .granted, !keep.isEmpty {
+            pastFetch += 1
+            let n = pastFetch, ids = keep.count == all.count ? nil : Set(keep.map(\.calendarIdentifier))
+            Task.detached(priority: .utility) {
+                let own = EKEventStore()  // the main thread keeps using the shared one
+                let search = own.predicateForEvents(withStart: from, end: now, calendars: ids.map { ids in own.calendars(for: .event).filter { ids.contains($0.calendarIdentifier) } })
+                let found = own.events(matching: search).filter { $0.calendar != nil }.map(Store.item)  // a calendar deleted during the read leaves none
+                await MainActor.run {
+                    guard n == self.pastFetch else { return }
+                    self.pastCache = Self.onePerTitle(found + self.accEvents(from: from, to: now))
+                    self.objectWillChange.send()  // an open quick add picks up the new list
+                }
+            }
+            return pastCache
+        }
         let list = access == .sample ? sample.filter { $0.start < now }
-            : (access == .granted ? ekFind(now.addingTimeInterval(-365 * 86400), now).map(Self.item) : []) + accEvents(from: now.addingTimeInterval(-365 * 86400), to: now)
-        var seen = Set<String>()
-        let out = list.sorted { $0.start > $1.start }.filter { seen.insert($0.title.lowercased()).inserted }
+            : (access == .granted ? ekFind(from, now).map(Self.item) : []) + accEvents(from: from, to: now)
+        pastFetch += 1  // an older background read must not replace this
+        let out = Self.onePerTitle(list)
         pastCache = out
         return out
     }
 
-    private static func item(_ e: EKEvent) -> Item {
+    private static func onePerTitle(_ list: [Item]) -> [Item] {
+        var seen = Set<String>()
+        return list.sorted { $0.start > $1.start }.filter { seen.insert($0.title.lowercased()).inserted }
+    }
+
+    nonisolated static func item(_ e: EKEvent) -> Item {
         let s: ShowAs = e.availability == .free ? .free : e.availability == .tentative ? .maybe : .busy
         // A repeating event's occurrences share one identifier; the start date tells them apart. A one-time event keeps its plain identifier so moving it keeps it selected.
         let occ = e.hasRecurrenceRules ? "|" + String(e.occurrenceDate?.timeIntervalSince1970 ?? 0) : ""
