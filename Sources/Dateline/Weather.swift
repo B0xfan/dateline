@@ -137,13 +137,13 @@ struct WxChip: View {
     @State private var hover = false
     var body: some View {
         if let f = wx.forecast(at), let d = f.days[wxDayKey(day)] {
-            HStack(spacing: 3) {
+            HStack(spacing: 4) {
                 WxIcon(code: d.code).font(.ui(11))
                 Text(degrees(d.hi)).foregroundStyle(Palette.text2)
                 Text(degrees(d.lo)).foregroundStyle(Palette.text3)
             }
             .font(.ui(11)).monospacedDigit().fixedSize()
-            .padding(.horizontal, 3).background(RoundedRectangle(cornerRadius: 4).fill(hover ? Palette.accentSoft : .clear))
+            .padding(.horizontal, 4).background(RoundedRectangle(cornerRadius: 4).fill(hover ? Palette.accentSoft : .clear))
             .onHover { hover = $0 }
             .popover(isPresented: $hover, arrowEdge: .bottom) { WxHours(day: day, f: f, d: d) }
             .accessibilityElement(children: .ignore).accessibilityLabel("\(wxLook(d.code).words), high \(degrees(d.hi)), low \(degrees(d.lo))")
@@ -154,18 +154,18 @@ struct WxChip: View {
 struct WxHours: View {
     let day: Date, f: Forecast, d: WxDay
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(dateText(day, "EEEE") + (WeatherPrefs.town.isEmpty ? "" : ", " + WeatherPrefs.town)).font(.ui(12, weight: .semibold))
-            Text(wxLook(d.code).words + (d.rain > 0 ? ", \(d.rain)% chance of rain" : "")).font(.ui(11.5)).foregroundStyle(Palette.text3)
+            Text(wxLook(d.code).words + (d.rain > 0 ? ", \(d.rain)% chance of rain" : "")).font(.ui(12)).foregroundStyle(Palette.text3)
             ForEach([6, 9, 12, 15, 18, 21], id: \.self) { h in
                 let t = cal.date(byAdding: .hour, value: h, to: cal.startOfDay(for: day))!
                 if let w = f.hours[wxHourKey(t)] {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Text(timeText(t, short: true)).frame(width: 44, alignment: .leading)
-                        WxIcon(code: w.code).frame(width: 18)
-                        Text(degrees(w.temp)).frame(width: 34, alignment: .leading)
+                        WxIcon(code: w.code).frame(width: 20)
+                        Text(degrees(w.temp)).frame(width: 36, alignment: .leading)
                         Text("\(w.rain)%").foregroundStyle(Palette.text3)
-                    }.font(.ui(11.5)).monospacedDigit()
+                    }.font(.ui(12)).monospacedDigit()
                 }
             }
         }
@@ -182,7 +182,7 @@ struct WxAtPlace: View {
             let h = allDay ? nil : f.hours[wxHourKey(start)]
             if let d = f.days[wxDayKey(start)] {
                 let code = h?.code ?? d.code
-                HStack(spacing: 10) {
+                HStack(spacing: 12) {
                     WxIcon(code: code).font(.system(size: 24)).frame(width: 32)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(h.map { "\(degrees($0.temp)), \(wxLook(code).words.lowercased()) at \(timeText(start))" } ?? "\(wxLook(code).words), high \(degrees(d.hi)), low \(degrees(d.lo))")
@@ -190,7 +190,7 @@ struct WxAtPlace: View {
                             .font(.ui(11)).foregroundStyle(Palette.text3)
                     }
                 }
-                .padding(.horizontal, 10).padding(.vertical, 9).frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
                 .padding(.top, 8)
             }
@@ -221,7 +221,7 @@ struct WeatherSettings: View {
                         .onSubmit { if let t = found.first, foundFor == town.trimmingCharacters(in: .whitespaces) { pick(t) } else if town.trimmingCharacters(in: .whitespaces).isEmpty { pick(nil) } }
                     // Matches as you type (as in LifeWorld), from Open-Meteo's free town search.
                     ForEach(found) { t in
-                        Button { pick(t) } label: { Text(t.label).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 6).padding(.vertical, 4).contentShape(Rectangle()) }
+                        Button { pick(t) } label: { Text(t.label).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8).padding(.vertical, 4).contentShape(Rectangle()) }
                             .buttonStyle(.plain)
                     }
                 }.frame(width: 260)
@@ -238,8 +238,8 @@ struct WeatherSettings: View {
                 note = found.isEmpty ? "No town called \u{201C}\(t)\u{201D} found. Try another spelling." : ""
             }
             Text(note.isEmpty ? "Leave it empty to use where this Mac is. Events with a place always show the weather at that place." : note)
-                .font(.system(size: 11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
-            Link("Weather data by Open-Meteo.com", destination: URL(string: "https://open-meteo.com/")!).font(.system(size: 11.5))
+                .font(.system(size: 12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
+            Link("Weather data by Open-Meteo.com", destination: URL(string: "https://open-meteo.com/")!).font(.system(size: 12))
         }
         .font(.system(size: 13))
         .padding(.horizontal, 24).padding(.vertical, 20).frame(width: 620)

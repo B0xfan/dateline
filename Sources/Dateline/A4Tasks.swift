@@ -363,17 +363,17 @@ struct A4TaskDetail: View {
                 HStack {
                     Text("A4 TASK").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                     Spacer()
-                    Button { app.openTaskID = nil } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.buttonStyle(.plain).foregroundStyle(Palette.text3)
-                }.padding(.bottom, 10)
+                    Button { app.openTaskID = nil } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
+                }.padding(.bottom, 8)
                 HStack(alignment: .top, spacing: 8) {
-                    TaskCircle(done: task.done, color: a4Color, size: 16) { let was = task.done; task.done.toggle(); task.a4?.status = task.done ? "done" : "open"; app.saveTask(task); if info.repeating { task.done = was; task.a4?.status = info.status } }.padding(.top, 3)
+                    TaskCircle(done: task.done, color: a4Color, size: 16) { let was = task.done; task.done.toggle(); task.a4?.status = task.done ? "done" : "open"; app.saveTask(task); if info.repeating { task.done = was; task.a4?.status = info.status } }.padding(.top, 4)
                     Text(task.title).font(.ui(17, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
                 }
-                row("Project") { HStack(spacing: 6) { Circle().fill(a4Color).frame(width: 8, height: 8); Text((store.taskList(task.listID)?.title ?? "").replacingOccurrences(of: "A4: ", with: "")) } }
+                row("Project") { HStack(spacing: 8) { Circle().fill(a4Color).frame(width: 8, height: 8); Text((store.taskList(task.listID)?.title ?? "").replacingOccurrences(of: "A4: ", with: "")) } }
                 row("Due") {
                     if let d = task.due {
                         DatePicker("", selection: Binding(get: { d }, set: { task.due = cal.startOfDay(for: $0); app.saveTask(task) }), displayedComponents: .date).labelsHidden().datePickerStyle(.field)
-                        if !info.repeating { Button { task.due = nil; app.saveTask(task) } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(Palette.text3).help("Clear the Due property") }
+                        if !info.repeating { Button { task.due = nil; app.saveTask(task) } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Clear due").buttonStyle(.plain).foregroundStyle(Palette.text3).help("Clear the Due property") }
                     } else {
                         Button("Add a date") { task.due = cal.startOfDay(for: app.now); app.saveTask(task) }.buttonStyle(.plain).foregroundStyle(Palette.accent)
                     }
@@ -388,12 +388,12 @@ struct A4TaskDetail: View {
                         ForEach(A4Task.priorities, id: \.self) { p in Button(p.capitalized) { task.a4?.priority = p; app.saveTask(task) } }
                     } label: { Text(info.priority.capitalized) }.menuStyle(.borderlessButton).fixedSize()
                 }
-                Text("NOTE").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 18).padding(.bottom, 6)
+                Text("NOTE").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 16).padding(.bottom, 4)
                 Text(task.notes.isEmpty ? "No text in this note." : task.notes).font(.ui(13)).foregroundStyle(task.notes.isEmpty ? Palette.text3 : Palette.text2)
                     .lineLimit(8).fixedSize(horizontal: false, vertical: true)
                 Button("Open in Obsidian") { openInObsidian(info.file) }.padding(.top, 12)
                 Text("Saved in your A4 vault, so Obsidian sees each change. Change the title and the note's text in Obsidian.")
-                    .font(.ui(11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
+                    .font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
             .padding(16)
         }
@@ -416,7 +416,7 @@ struct A4TaskDetail: View {
     }
 
     func row<V: View>(_ k: String, @ViewBuilder _ v: () -> V) -> some View {
-        HStack(spacing: 8) { Text(k).foregroundStyle(Palette.text3).frame(width: 52, alignment: .leading); v(); Spacer(minLength: 0) }.padding(.top, 10)
+        HStack(spacing: 8) { Text(k).foregroundStyle(Palette.text3).frame(width: 52, alignment: .leading); v(); Spacer(minLength: 0) }.padding(.top, 8)
     }
 }
 
@@ -426,7 +426,7 @@ struct A4Settings: View {
         let count = store.todos.filter { $0.a4 != nil && !$0.done }.count
         VStack(alignment: .leading, spacing: 16) {
             Toggle("Show A4 tasks on the calendar", isOn: Binding(get: { store.a4On }, set: { store.a4Set(on: $0) })).toggleStyle(.switch)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Tasks folder").font(.ui(13, weight: .semibold))
                 HStack(spacing: 8) {
                     Text((store.a4Folder as NSString).abbreviatingWithTildeInPath).lineLimit(1).truncationMode(.middle).help(store.a4Folder)
@@ -438,7 +438,7 @@ struct A4Settings: View {
                 Text(FileManager.default.fileExists(atPath: store.a4Folder) || store.access == .sample
                      ? "Found \(count) tasks that aren't done. Tasks with a Due property show on the calendar; the rest sit under No date, by project."
                      : "That folder isn't on this Mac.")
-                    .font(.ui(11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
+                    .font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(20).frame(width: 480, alignment: .leading)

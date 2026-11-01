@@ -58,7 +58,7 @@ func findZone(_ text: String) async -> Zone? {
 struct ZoneCard: View {
     let now: Date
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("TIME ZONES").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
             line("Here", cal.timeZone, zoneCity(cal.timeZone.identifier))
             ForEach(Zones.list) { z in
@@ -66,18 +66,18 @@ struct ZoneCard: View {
                 line(z.nick.isEmpty ? z.city : z.nick, tz, (z.nick.isEmpty ? "" : z.city + " · ") + zoneDiff(tz, at: now))
             }
         }
-        .padding(.horizontal, 12).padding(.vertical, 11).frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 9).fill(Palette.win))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Palette.line))
-        .padding(.horizontal, 8).padding(.top, 10)
+        .padding(.horizontal, 12).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.win))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
+        .padding(.horizontal, 8).padding(.top, 8)
     }
 
     func line(_ name: String, _ tz: TimeZone, _ sub: String) -> some View {
         VStack(spacing: 1) {
             HStack {
-                Text(name).font(.ui(12.5, weight: .semibold)).lineLimit(1)
+                Text(name).font(.ui(13, weight: .semibold)).lineLimit(1)
                 Spacer(minLength: 4)
-                Text(zoneTime(now, tz, "h:mm a")).font(.ui(12.5, weight: .semibold)).monospacedDigit()
+                Text(zoneTime(now, tz, "h:mm a")).font(.ui(13, weight: .semibold)).monospacedDigit()
             }
             HStack {
                 Text(sub).lineLimit(1)
@@ -102,14 +102,14 @@ struct ZoneSettings: View {
                 VStack(spacing: 0) {
                     ForEach(list) { z in
                         let tz = TimeZone(identifier: z.tz) ?? cal.timeZone
-                        HStack(spacing: 10) {
-                            TextField(z.city, text: Binding(get: { z.nick }, set: { v in edit(z.id) { $0.nick = v } })).textFieldStyle(.roundedBorder).frame(width: 130)
+                        HStack(spacing: 12) {
+                            TextField(z.city, text: Binding(get: { z.nick }, set: { v in edit(z.id) { $0.nick = v } })).textFieldStyle(.roundedBorder).frame(width: 132)
                             Text(z.place).lineLimit(1)
                             Spacer(minLength: 4)
                             Text(zoneOffset(tz, at: app.now)).monospacedDigit().foregroundStyle(Palette.text2).frame(width: 92, alignment: .trailing)
                             Button { save(list.filter { $0.id != z.id }) } label: { Text("✕").foregroundStyle(Palette.text3) }.buttonStyle(.plain).frame(width: 20).help("Remove")
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 8).contentShape(Rectangle())
+                        .padding(.horizontal, 12).padding(.vertical, 8).contentShape(Rectangle())
                         .overlay(alignment: .bottom) { if z.id != list.last?.id { Palette.lineSoft.frame(height: 1) } }
                         .draggable(z.id)
                         .dropDestination(for: String.self) { ids, _ in
@@ -119,19 +119,19 @@ struct ZoneSettings: View {
                         }
                     }
                 }
-                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Palette.line))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
             }
             if list.count < Zones.most {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Text("+").foregroundStyle(Palette.accent)
                     TextField("Add a city: type a name, like Lisbon", text: $text).textFieldStyle(.plain).onSubmit(add)
                 }
-                .padding(.horizontal, 9).frame(height: 28)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Palette.line))
-                if missed { Text("No city found with that name. Try the nearest big city.").font(.system(size: 11.5)).foregroundStyle(Palette.now) }
+                .padding(.horizontal, 8).frame(height: 28)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
+                if missed { Text("No city found with that name. Try the nearest big city.").font(.system(size: 12)).foregroundStyle(Palette.now) }
             }
             Text("The nickname is what the sidebar shows; leave it empty to show the city. Drag rows to reorder. Up to 6 places. Clocks change for summer time by themselves.")
-                .font(.system(size: 11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: 12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
             Toggle("Show the Time zones card in the sidebar", isOn: Binding(get: { card }, set: { card = $0; Zones.card = $0; app.objectWillChange.send() })).toggleStyle(.switch).controlSize(.small)
         }
         .font(.system(size: 13))

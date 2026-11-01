@@ -40,19 +40,19 @@ struct LookSettings: View {
     @ObservedObject var app: AppState
     var body: some View {
         HStack(alignment: .top, spacing: 20) {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
                 row("Appearance") { Seg(options: Look.appearances, selected: Look.appearance, small: true) { Look.appearance = $0; app.look += 1 } }
                 row("Font") {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         ForEach(Look.fonts, id: \.self) { f in
                             let on = f == Look.font
                             Button { Look.font = f; app.look += 1 } label: {
                                 VStack(spacing: 2) {
                                     Text("Aa").font(.system(size: 17, design: ["Rounded": .rounded, "Serif": .serif, "Mono": .monospaced][f] ?? .default))
-                                    Text(f).font(.system(size: 10.5)).foregroundStyle(Palette.text2)
-                                }.frame(width: 58, height: 48)
-                                .background(RoundedRectangle(cornerRadius: 7).fill(on ? Palette.accentSoft : Palette.field))
-                                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(on ? Palette.accent : Palette.line, lineWidth: on ? 1.5 : 1))
+                                    Text(f).font(.system(size: 11)).foregroundStyle(Palette.text2)
+                                }.frame(width: 60, height: 48)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(on ? Palette.accentSoft : Palette.field))
+                                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(on ? Palette.accent : Palette.line, lineWidth: on ? 1.5 : 1))
                                 .contentShape(Rectangle())
                             }.buttonStyle(.plain)
                         }
@@ -65,24 +65,24 @@ struct LookSettings: View {
                             Slider(value: Binding(get: { Look.scale }, set: { Look.scale = ($0 * 20).rounded() / 20; app.look += 1 }), in: 0.85...1.25)
                             Text("A").font(.system(size: 17))
                         }
-                        HStack { Text("Small"); Spacer(); Text("Normal"); Spacer(); Text("Large") }.font(.system(size: 10.5)).foregroundStyle(Palette.text3).padding(.horizontal, 16)
-                    }.frame(width: 250)
+                        HStack { Text("Small"); Spacer(); Text("Normal"); Spacer(); Text("Large") }.font(.system(size: 11)).foregroundStyle(Palette.text3).padding(.horizontal, 16)
+                    }.frame(width: 252)
                 }
                 row("How packed") { Seg(options: Look.packs, selected: Look.pack, small: true) { Look.pack = $0; app.look += 1 } }
                 row("Hour height") { Seg(options: Look.hours, selected: Look.hour, small: true) { Look.hour = $0; app.look += 1 } }
                 Text("Compact fits a full working day, 8 AM to 6 PM, on the screen without scrolling.")
-                    .font(.system(size: 11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
-            }.frame(width: 370, alignment: .leading)
+                    .font(.system(size: 12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
+            }.frame(width: 372, alignment: .leading)
             LookPreview().id(app.look)
         }
         .font(.system(size: 13))
-        .padding(20).frame(width: 690)
+        .padding(20).frame(width: 692)
     }
 
     // The settings themselves keep the normal size, so the window does not jump while you pick.
     func row<V: View>(_ k: String, @ViewBuilder _ v: () -> V) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(k).foregroundStyle(Palette.text2).frame(width: 96, alignment: .leading).padding(.top, 3)
+        HStack(alignment: .top, spacing: 12) {
+            Text(k).foregroundStyle(Palette.text2).frame(width: 96, alignment: .leading).padding(.top, 4)
             v()
         }
     }
@@ -95,7 +95,7 @@ struct LookPreview: View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Color.clear.frame(width: 44, height: 1)
-                ForEach(["Tue 27", "Wed 28"], id: \.self) { d in Text(d).font(.ui(11.5, weight: .semibold)).foregroundStyle(Palette.text2).frame(maxWidth: .infinity).padding(.vertical, 5 * Look.packFactor) }
+                ForEach(["Tue 27", "Wed 28"], id: \.self) { d in Text(d).font(.ui(12, weight: .semibold)).foregroundStyle(Palette.text2).frame(maxWidth: .infinity).padding(.vertical, 4 * Look.packFactor) }
             }.overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
             ZStack(alignment: .topLeading) {
                 VStack(spacing: 0) {
@@ -124,10 +124,10 @@ struct LookPreview: View {
             Text(title).font(.ui(11, weight: .semibold)).lineLimit(1)
             Text(time).font(.ui(10)).foregroundStyle(Palette.text2).lineLimit(1)
         }
-        .padding(.horizontal, 5).padding(.vertical, 3 * Look.packFactor)
+        .padding(.horizontal, 4).padding(.vertical, 3 * Look.packFactor)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 5).fill(c.opacity(0.16)))
-        .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(c).frame(width: 3) }
-        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .background(RoundedRectangle(cornerRadius: 4).fill(c.opacity(0.16)))
+        .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 2).fill(c).frame(width: 4) }
+        .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 }

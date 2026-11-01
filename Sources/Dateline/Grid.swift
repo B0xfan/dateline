@@ -27,10 +27,16 @@ func dayShift(columns n: Int, from day: Date, in days: [Date]) -> Int {
     return cal.dateComponents([.day], from: day, to: days[edge]).day! + (i + n - edge)
 }
 
+private struct ScrollTop: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 struct TimeGrid: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
     @ObservedObject private var here = Here.shared
+    @State private var scrolled = false
 
     var body: some View {
         let days = app.visibleDays
@@ -55,7 +61,7 @@ struct TimeGrid: View {
                         }
                         if let sun { SunRow(day: d, at: sun) }
                     }
-                    .padding(.horizontal, 10).frame(height: headH).frame(minWidth: 0, maxWidth: .infinity)
+                    .padding(.horizontal, 8).frame(height: headH).frame(minWidth: 0, maxWidth: .infinity)
                     .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
                     .contentShape(Rectangle()).onTapGesture { if app.mode == .week { app.open(day: d) } }
                 }
@@ -63,21 +69,21 @@ struct TimeGrid: View {
             .frame(height: headH)
             .overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
             HStack(alignment: .top, spacing: 0) {
-                Text("all-day").font(.ui(11)).foregroundStyle(Palette.text3).frame(width: gutter - 8, alignment: .trailing).padding(.trailing, 8).padding(.top, 9)
+                Text("all-day").font(.ui(11)).foregroundStyle(Palette.text3).frame(width: gutter - 8, alignment: .trailing).padding(.trailing, 8).padding(.top, 8)
                 ForEach(days, id: \.self) { d in
                     VStack(spacing: 0) {
                         ForEach(items.filter { $0.allDay && $0.start < addDays(d, 1) && $0.end > d }) { it in
                             let c = store.color(it)
-                            HStack(spacing: 5) { Mark(showAs: it.showAs, color: c); Text(it.shownTitle).lineLimit(1) }
+                            HStack(spacing: 4) { Mark(showAs: it.showAs, color: c); Text(it.shownTitle).lineLimit(1) }
                                 .font(.ui(12, weight: .medium))
-                                .padding(.horizontal, 8).padding(.vertical, 3).frame(maxWidth: .infinity, alignment: .leading)
-                                .background(RoundedRectangle(cornerRadius: 5).fill(c.opacity(0.16)))
-                                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(c, lineWidth: app.selectedID == it.id ? 2 : 0))
-                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .padding(.horizontal, 8).padding(.vertical, 4).frame(maxWidth: .infinity, alignment: .leading)
+                                .background(RoundedRectangle(cornerRadius: 4).fill(c.opacity(0.16)))
+                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(c, lineWidth: app.selectedID == it.id ? 2 : 0))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
                                 .onTapGesture { app.selectedID = it.id; app.panelOpen = true }
                         }
                     }
-                    .padding(.vertical, 2).frame(minWidth: 0, maxWidth: .infinity, minHeight: 34, alignment: .topLeading).clipped()
+                    .padding(.vertical, 2).frame(minWidth: 0, maxWidth: .infinity, minHeight: 36, alignment: .topLeading).clipped()
                     .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
                 }
             }
@@ -98,16 +104,26 @@ struct TimeGrid: View {
                             DayColumn(app: app, store: store, day: d, days: days, items: items.filter { !$0.allDay && $0.start < addDays(d, 1) && $0.end > d })
                         }
                     }
+                    .background(GeometryReader { g in Color.clear.preference(key: ScrollTop.self, value: g.frame(in: .named("hours")).minY) })
                 }
-                // Opens at the start of the working day (Settings, Week).
-                .onAppear { DispatchQueue.main.async { sv.scrollTo(WorkWeek.from / 60, anchor: .top) } }
-                .onChange(of: app.mode) { _, _ in DispatchQueue.main.async { sv.scrollTo(WorkWeek.from / 60, anchor: .top) } }
+                .coordinateSpace(name: "hours")
+                // Height changes as the view scrolls; only saved once the opening scroll has landed, or the first draw would save midnight.
+                .onPreferenceChange(ScrollTop.self) { y in
+                    guard scrolled, Look.saves, store.access != .sample else { return }
+                    let hour = max(0, min(23, Int((-y / hourH).rounded())))
+                    if hour != UserDefaults.standard.object(forKey: "topHour") as? Int { UserDefaults.standard.set(hour, forKey: "topHour") }
+                }
+                // Reopens where it was left; the first time, at the start of the working day (Settings, Week).
+                .onAppear { DispatchQueue.main.async {
+                    sv.scrollTo((Look.saves && store.access != .sample ? UserDefaults.standard.object(forKey: "topHour") as? Int : nil) ?? WorkWeek.from / 60, anchor: .top)
+                    DispatchQueue.main.async { scrolled = true }
+                } }
             }
         }
         .background(Palette.win)
     }
 
-    func dayName(_ d: Date) -> some View { Text(dateText(d, "EEE")).font(.ui(12)).foregroundStyle(Palette.text2) }
+    func dayName(_ d: Date) -> some View { Text(dateText(d, "EEE")).font(.ui(12)).foregroundStyle(Palette.text2).fixedSize() }
     @ViewBuilder func dayNumber(_ d: Date, today: Bool) -> some View {
         if today {
             Text(dateText(d, "d")).font(.ui(14, weight: .medium)).foregroundStyle(.white)
@@ -157,7 +173,7 @@ struct DayColumn: View {
                         .onTapGesture { app.selectedID = it.id }
                         .gesture(dragGesture(it, colWidth: w, stretch: false))
                         .overlay(alignment: .bottom) {
-                            Color.clear.frame(height: 6).contentShape(Rectangle())
+                            Color.clear.frame(height: 8).contentShape(Rectangle())
                                 .onHover { ($0 ? NSCursor.resizeUpDown : NSCursor.arrow).set() }  // set, not push/pop: a redraw mid-hover cannot leave it stuck
                                 .gesture(dragGesture(it, colWidth: w, stretch: true))
                         }
@@ -168,7 +184,7 @@ struct DayColumn: View {
                     let y = CGFloat(app.now.timeIntervalSince(day) / 3600) * hourH
                     ZStack(alignment: .leading) {
                         Palette.now.frame(height: 2)
-                        Circle().fill(Palette.now).frame(width: 10, height: 10).offset(x: -5)
+                        Circle().fill(Palette.now).frame(width: 12, height: 12).offset(x: -5)
                     }.offset(y: y - 1).allowsHitTesting(false).zIndex(3)
                 }
                 // Reminders with a time on this day (not overdue: those sit in today's Tasks row).
@@ -238,30 +254,30 @@ struct EventBlock: View {
         let meta = item.place.isEmpty ? time : time + " · " + item.place
         VStack(alignment: .leading, spacing: 1) {
             if height < 34 {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Mark(showAs: item.showAs, color: color)
                     Text(item.shownTitle).fontWeight(.semibold).lineLimit(1)
-                    Text(meta).font(.ui(11.5)).foregroundStyle(Palette.text2).lineLimit(1)
+                    Text(meta).font(.ui(12)).foregroundStyle(Palette.text2).lineLimit(1)
                     Spacer(minLength: 0)
                     if let call { join(call) }  // a short event: in the line, not over the title
                 }
             } else {
-                HStack(spacing: 5) { Mark(showAs: item.showAs, color: color); Text(item.shownTitle).fontWeight(.semibold).lineLimit(height > 60 ? 2 : 1) }
-                Text(meta).font(.ui(11.5)).foregroundStyle(Palette.text2).lineLimit(1)
+                HStack(spacing: 4) { Mark(showAs: item.showAs, color: color); Text(item.shownTitle).fontWeight(.semibold).lineLimit(height > 60 ? 2 : 1) }
+                Text(meta).font(.ui(12)).foregroundStyle(Palette.text2).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
         .font(.ui(12))
-        .padding(.leading, 9).padding(.trailing, 8).padding(.vertical, height < 34 ? 2 : 4)
+        .padding(.leading, 8).padding(.trailing, 8).padding(.vertical, height < 34 ? 2 : 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Palette.win))
-        .background(RoundedRectangle(cornerRadius: 6).fill(tint).padding(0))
-        .overlay(alignment: .leading) { UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 6).fill(color).frame(width: 3) }
-        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(color, lineWidth: selected ? 2 : 0))
+        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.win))
+        .background(RoundedRectangle(cornerRadius: 8).fill(tint).padding(0))
+        .overlay(alignment: .leading) { UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 6).fill(color).frame(width: 4) }
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(color, lineWidth: selected ? 2 : 0))
         .overlay(alignment: .topTrailing) {
-            if let call, height >= 34 { join(call).padding(3) }
+            if let call, height >= 34 { join(call).padding(4) }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
     }
 
@@ -300,15 +316,15 @@ struct MonthView: View {
         let month = cal.component(.month, from: app.anchor)
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                Color.clear.frame(width: 34)
+                Color.clear.frame(width: 36)
                 ForEach(0..<7, id: \.self) { i in
                     Text(dateText(grid[i], "EEE")).font(.ui(11)).foregroundStyle(Palette.text3).frame(maxWidth: .infinity, alignment: .trailing).padding(8)
                 }
-            }.frame(height: 30).overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
+            }.frame(height: 32).overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
             ForEach(0..<weeks, id: \.self) { w in
                 HStack(spacing: 0) {
-                    Text("\(weekNumber(grid[w * 7]))").font(.ui(10.5)).foregroundStyle(Palette.text3)
-                        .frame(width: 34).frame(maxHeight: .infinity, alignment: .top).padding(.top, 8).background(Palette.lineSoft)
+                    Text("\(weekNumber(grid[w * 7]))").font(.ui(11)).foregroundStyle(Palette.text3)
+                        .frame(width: 36).frame(maxHeight: .infinity, alignment: .top).padding(.top, 8).background(Palette.lineSoft)
                     ForEach(0..<7, id: \.self) { i in
                         let d = grid[w * 7 + i]
                         cell(d, items.filter { $0.start < addDays(d, 1) && $0.end > d }, other: cal.component(.month, from: d) != month)
@@ -326,18 +342,18 @@ struct MonthView: View {
                 HStack {
                     Spacer()
                     if cal.isDate(d, inSameDayAs: app.now) {
-                        Text(dateText(d, "d")).font(.ui(12)).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(Palette.now))
+                        Text(dateText(d, "d")).font(.ui(12)).foregroundStyle(.white).padding(.horizontal, 8).padding(.vertical, 1).background(Capsule().fill(Palette.now))
                     } else { Text(dateText(d, "d")).font(.ui(12)).foregroundStyle(other ? Palette.text3.opacity(0.6) : Palette.text2) }
-                }.padding(.bottom, 3).contentShape(Rectangle()).onTapGesture { app.open(day: d) }
+                }.padding(.bottom, 4).contentShape(Rectangle()).onTapGesture { app.open(day: d) }
                 let shown = list.count > fit ? Array(list.prefix(max(0, fit - 1))) : list
                 ForEach(shown) { it in
                     let c = store.color(it)
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Mark(showAs: it.showAs, color: c)
                         if !it.allDay { Text(timeText(it.start, short: true)).foregroundStyle(Palette.text3) }
                         Text(it.shownTitle).foregroundStyle(Palette.text)
                     }
-                    .font(.ui(11)).lineLimit(1).padding(.vertical, 1).frame(height: 17)
+                    .font(.ui(11)).lineLimit(1).padding(.vertical, 1).frame(height: 16)
                     .background(app.selectedID == it.id ? c.opacity(0.16) : .clear)
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) { app.selectedID = it.id; app.panelOpen = true }
@@ -347,7 +363,7 @@ struct MonthView: View {
                     Text("\(list.count - shown.count) more").font(.ui(11)).foregroundStyle(Palette.text3).onTapGesture { app.open(day: d) }
                 }
                 Spacer(minLength: 0)
-            }.padding(.horizontal, 6).padding(.vertical, 5)
+            }.padding(.horizontal, 8).padding(.vertical, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
@@ -373,8 +389,8 @@ struct DetailPanel: View {
                 HStack {
                     Text("EVENT").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                     Spacer()
-                    Button { commit(); app.panelOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.buttonStyle(.plain).foregroundStyle(Palette.text3)
-                }.padding(.bottom, 10)
+                    Button { commit(); app.panelOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
+                }.padding(.bottom, 8)
                 TextField("Title", text: $item.title, axis: .vertical).textFieldStyle(.plain).font(.ui(17, weight: .semibold))
                     .focused($field, equals: "title").onSubmit { commit() }
                     .disabled(locked)  // an invite's title is the sender's; an edit there would also block saving its emoji and tags
@@ -383,14 +399,14 @@ struct DetailPanel: View {
                     Menu {
                         ForEach(store.calendars.filter(\.writable)) { k in Button(k.title + "  (" + k.account + ")") { item.calendarID = k.id; commit() } }
                     } label: {
-                        HStack(spacing: 6) { Circle().fill(c?.color ?? .gray).frame(width: 8, height: 8); Text(c?.title ?? ""); Text(c?.account ?? "").foregroundStyle(Palette.text3) }
+                        HStack(spacing: 8) { Circle().fill(c?.color ?? .gray).frame(width: 8, height: 8); Text(c?.title ?? ""); Text(c?.account ?? "").foregroundStyle(Palette.text3) }
                     }.menuStyle(.borderlessButton).fixedSize().disabled(locked)
                 }.padding(.top, 12)
                 // Phase 3: kept by Dateline on this Mac, so they work on invites and read-only calendars too.
                 row("Emoji") { EmojiRow(store: store, item: $item, commit: commit) }
                 row("Color") { ColorRow(store: store, item: $item, commit: commit) }
                 HStack(alignment: .top, spacing: 8) {
-                    Text("Tags").foregroundStyle(Palette.text3).frame(width: 64, alignment: .leading).padding(.top, 5)
+                    Text("Tags").foregroundStyle(Palette.text3).frame(width: 64, alignment: .leading).padding(.top, 4)
                     TagsRow(store: store, item: $item, commit: commit)
                 }.padding(.top, 8).zIndex(1)
                 Text("Tags, emoji and the event color are kept by Dateline on this Mac. They don't show on your phone or in Apple Calendar.")
@@ -411,7 +427,7 @@ struct DetailPanel: View {
                 }
                 if !item.allDay {
                     row("Time") {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 8) {
                             DatePicker("", selection: Binding(get: { item.start }, set: { v in
                                 let len = item.end.timeIntervalSince(item.start); item.start = v; item.end = v.addingTimeInterval(len); commit()
                             }), displayedComponents: .hourAndMinute).labelsHidden()
@@ -421,7 +437,7 @@ struct DetailPanel: View {
                             }), displayedComponents: .hourAndMinute).labelsHidden()
                         }
                     }
-                    Text(lengthText).font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.leading, 72)
+                    Text(lengthText).font(.ui(12)).foregroundStyle(Palette.text3).padding(.leading, 72)
                 }
                 section("SHOW AS")
                 Seg(options: ShowAs.allCases.map(\.rawValue), selected: item.showAs.rawValue) { item.showAs = ShowAs(rawValue: $0)!; commit() }
@@ -442,10 +458,10 @@ struct DetailPanel: View {
                 section("NOTES")
                 NotesBox(item: $item, editing: $notesEditing, locked: locked, commit: commit)
                 Text(locked ? "This calendar is read only." : "Changes save when you leave a field. Command Z undoes.")
-                    .font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.top, 12)
+                    .font(.ui(12)).foregroundStyle(Palette.text3).padding(.top, 12)
                 if !locked {
                     Button("Delete event") { commit(); app.confirmDelete = app.selected }
-                        .buttonStyle(.plain).foregroundStyle(Palette.now).padding(.top, 14)
+                        .buttonStyle(.plain).foregroundStyle(Palette.now).padding(.top, 12)
                 }
             }
             .padding(16)
@@ -470,7 +486,7 @@ struct DetailPanel: View {
                 Button("Join") { NSWorkspace.shared.open(call.url) }.buttonStyle(.borderedProminent)
             }.controlSize(.small)
             if !locked, callLink(in: [item.link]) != nil {
-                Button("Remove link") { item.link = ""; commit() }.buttonStyle(.plain).font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.top, 6)
+                Button("Remove link") { item.link = ""; commit() }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.text3).padding(.top, 4)
             }
         } else if locked {
             Text("No video call").foregroundStyle(Palette.text3)
@@ -520,7 +536,7 @@ struct DetailPanel: View {
     }
 
     func section(_ t: String) -> some View {
-        Text(t).font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 18).padding(.bottom, 6)
+        Text(t).font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 16).padding(.bottom, 4)
     }
 
     func row<V: View>(_ k: String, w: CGFloat = 64, @ViewBuilder _ v: () -> V) -> some View {
@@ -549,16 +565,19 @@ struct QuarterView: View {
         return VStack(alignment: .leading, spacing: 0) {
             Text(dateText(first, "MMMM")).font(.ui(13, weight: .semibold))
                 .foregroundStyle(cal.isDate(first, equalTo: app.now, toGranularity: .month) ? Palette.now : Palette.text)
-                .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
+                .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 4)
                 .contentShape(Rectangle()).onTapGesture { app.anchor = first; app.mode = .month }
-            HStack(spacing: 0) {
-                Color.clear.frame(width: 24, height: 1)
-                ForEach(0..<7, id: \.self) { i in Text(dateText(grid[i], "EEE")).font(.ui(10)).foregroundStyle(Palette.text3).frame(maxWidth: .infinity) }
-            }.padding(.top, 2).padding(.bottom, 4).overlay(alignment: .bottom) { Palette.lineSoft.frame(height: 1) }
+            GeometryReader { g in
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: 24, height: 1)
+                    // One form for the whole row: a day too thin for "Wed" gets single letters.
+                    ForEach(0..<7, id: \.self) { i in Text(dateText(grid[i], (g.size.width - 24) / 7 < 24 ? "EEEEE" : "EEE")).font(.ui(10)).foregroundStyle(Palette.text3).lineLimit(1).frame(maxWidth: .infinity) }
+                }
+            }.frame(height: 14).padding(.top, 2).padding(.bottom, 4).overlay(alignment: .bottom) { Palette.lineSoft.frame(height: 1) }
             ForEach(0..<grid.count / 7, id: \.self) { w in
                 HStack(spacing: 0) {
-                    Text("\(weekNumber(grid[w * 7]))").font(.ui(9.5)).foregroundStyle(Palette.text3)
-                        .frame(width: 24).frame(maxHeight: .infinity, alignment: .top).padding(.top, 5).background(Palette.lineSoft)
+                    Text("\(weekNumber(grid[w * 7]))").font(.ui(10)).foregroundStyle(Palette.text3)
+                        .frame(width: 24).frame(maxHeight: .infinity, alignment: .top).padding(.top, 4).background(Palette.lineSoft)
                     ForEach(0..<7, id: \.self) { i in
                         let d = grid[w * 7 + i]
                         if cal.component(.month, from: d) == m { cell(d, items.filter { $0.start < addDays(d, 1) && $0.end > d }) }
@@ -572,7 +591,15 @@ struct QuarterView: View {
 
     func cell(_ d: Date, _ list: [Item]) -> some View {
         GeometryReader { g in
-            let fit = max(0, Int((g.size.height - 20) / 14))
+            let fit = max(0, Int((g.size.height - 24) / 16))
+            // Three months beside a side panel: too thin for words, so a number and dots, as in the year view.
+            if g.size.width < 30 {
+                VStack(spacing: 2) {
+                    Text(dateText(d, "d")).font(.ui(10)).lineLimit(1).fixedSize()
+                        .foregroundStyle(cal.isDate(d, inSameDayAs: app.now) ? Palette.now : Palette.text2)
+                    HStack(spacing: 1) { ForEach(list.prefix(2)) { Circle().fill(store.color($0)).frame(width: 4, height: 4) } }
+                }.frame(maxWidth: .infinity).padding(.top, 4).contentShape(Rectangle()).onTapGesture { app.open(day: d) }
+            } else {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Spacer()
@@ -584,8 +611,8 @@ struct QuarterView: View {
                 let shown = list.count > fit ? Array(list.prefix(max(0, fit - 1))) : list
                 ForEach(shown) { it in
                     let c = store.color(it)
-                    HStack(spacing: 3) { Mark(showAs: it.showAs, color: c, size: 6); Text(it.shownTitle) }
-                        .font(.ui(10)).lineLimit(1).frame(height: 14)
+                    HStack(spacing: 4) { Mark(showAs: it.showAs, color: c, size: 6); Text(it.shownTitle) }
+                        .font(.ui(10)).lineLimit(1).frame(height: 16)
                         .background(app.selectedID == it.id ? c.opacity(0.16) : .clear)
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { app.selectedID = it.id; app.panelOpen = true }
@@ -595,7 +622,8 @@ struct QuarterView: View {
                     Text("\(list.count - shown.count) more").font(.ui(10)).foregroundStyle(Palette.text3).onTapGesture { app.open(day: d) }
                 }
                 Spacer(minLength: 0)
-            }.padding(.horizontal, 4).padding(.vertical, 3)
+            }.padding(.horizontal, 4).padding(.vertical, 4)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
@@ -625,27 +653,31 @@ struct YearView: View {
     var body: some View {
         let year = cal.dateInterval(of: .year, for: app.anchor)!
         let dots = dayCalendars(app.shownItems, in: year)
-        ScrollView {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 28, alignment: .top), count: 4), alignment: .leading, spacing: 22) {
-                ForEach(0..<12, id: \.self) { m in month(cal.date(byAdding: .month, value: m, to: year.start)!, dots) }
-            }.padding(.horizontal, 26).padding(.vertical, 20)
+        GeometryReader { g in
+            // Up to four across, as approved; a month under 150 points wide runs its two-digit days together.
+            let across = max(1, min(4, Int((g.size.width - 28) / 178)))
+            ScrollView {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 28, alignment: .top), count: across), alignment: .leading, spacing: 24) {
+                    ForEach(0..<12, id: \.self) { m in month(cal.date(byAdding: .month, value: m, to: year.start)!, dots) }
+                }.padding(.horizontal, 28).padding(.vertical, 20)
+            }
         }.background(Palette.win)
     }
 
     func month(_ first: Date, _ dots: [Date: [String]]) -> some View {
         let grid = monthGrid(first), m = cal.component(.month, from: first)
-        return VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 8) {
             Text(dateText(first, "MMMM")).font(.ui(13, weight: .semibold))
                 .foregroundStyle(cal.isDate(first, equalTo: app.now, toGranularity: .month) ? Palette.now : Palette.text)
                 .contentShape(Rectangle()).onTapGesture { app.anchor = first; app.mode = .month }
             VStack(spacing: 2) {
                 HStack(spacing: 0) {
-                    Color.clear.frame(width: 22, height: 1)
+                    Color.clear.frame(width: 24, height: 1)
                     ForEach(0..<7, id: \.self) { i in Text(dateText(grid[i], "EEEEE")).font(.ui(10)).foregroundStyle(Palette.text3).frame(maxWidth: .infinity) }
                 }.padding(.bottom, 1)
                 ForEach(0..<grid.count / 7, id: \.self) { w in
                     HStack(spacing: 0) {
-                        Text("\(weekNumber(grid[w * 7]))").font(.ui(9.5)).foregroundStyle(Palette.text3).padding(.top, 4).frame(width: 22, height: 24, alignment: .top)
+                        Text("\(weekNumber(grid[w * 7]))").font(.ui(10)).foregroundStyle(Palette.text3).padding(.top, 4).frame(width: 24, height: 24, alignment: .top)
                         ForEach(0..<7, id: \.self) { i in
                             let d = grid[w * 7 + i]
                             if cal.component(.month, from: d) == m { day(d, dots[d] ?? []) } else { Color.clear.frame(maxWidth: .infinity).frame(height: 24) }
@@ -667,7 +699,7 @@ struct YearView: View {
                 ForEach(cals.prefix(3), id: \.self) { Circle().fill(store.calendar($0)?.color ?? .gray).frame(width: 4, height: 4) }
             }.frame(height: 4)
         }
-        .padding(.top, 3).frame(maxWidth: .infinity).frame(height: 24, alignment: .top)
+        .padding(.top, 4).frame(maxWidth: .infinity).frame(height: 24, alignment: .top)
         .opacity(!today && d < cal.startOfDay(for: app.now) ? 0.55 : 1)
         .contentShape(Rectangle()).onTapGesture { app.open(day: d) }
         .help(dateText(d, "EEEE, MMMM d"))

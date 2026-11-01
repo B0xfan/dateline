@@ -121,7 +121,7 @@ struct MoonDot: View {
         case .new: Circle().fill(Palette.text3)
         case .firstHalf, .lastHalf:
             Circle().fill(Palette.lineSoft).overlay(alignment: phase == .firstHalf ? .trailing : .leading) {
-                Rectangle().fill(Color(red: 0.95, green: 0.85, blue: 0.54)).frame(width: 5.5)
+                Rectangle().fill(Color(red: 0.95, green: 0.85, blue: 0.54)).frame(width: 4)
             }.clipShape(Circle()).overlay(Circle().strokeBorder(Palette.text3.opacity(0.6)))
         }
     }
@@ -139,7 +139,7 @@ struct SunRow: View {
                 line(clock(s.rise) + " · " + clock(s.set), moon, words: false)
                 Color.clear.frame(height: 0)  // no room: left out
             }
-            .font(.ui(10.5)).foregroundStyle(Palette.text3)
+            .font(.ui(11)).foregroundStyle(Palette.text3)
         }
     }
     func line(_ t: String, _ moon: MoonDay?, words: Bool) -> some View {
@@ -147,7 +147,7 @@ struct SunRow: View {
             Text("☀ " + t).fixedSize()
             if let moon {
                 Text("·").fixedSize()
-                MoonDot(phase: moon).frame(width: 10, height: 10).help(moon.name)
+                MoonDot(phase: moon).frame(width: 12, height: 12).help(moon.name)
                 if words { Text(moon.name).fixedSize() }
             }
         }
@@ -174,7 +174,7 @@ struct SunHours: View {
                 }
                 if labels {
                     ForEach([(rise, "Sunrise " + timeText(s.rise, short: false)), (set, "Sunset " + timeText(s.set, short: false))], id: \.1) { y, t in
-                        Text("☀ " + t).font(.ui(10.5)).foregroundStyle(amber).padding(.horizontal, 4).background(Palette.win).offset(x: 4, y: y - 8)
+                        Text("☀ " + t).font(.ui(11)).foregroundStyle(amber).padding(.horizontal, 4).background(Palette.win).offset(x: 4, y: y - 8)
                     }
                 }
             }
@@ -325,7 +325,7 @@ struct TravelBlock: View {
     let minutes: Int, color: Color
     var body: some View {
         Text("🚗 \(minutes) min").font(.ui(11)).foregroundStyle(Palette.text2).lineLimit(1)
-            .padding(.horizontal, 7).padding(.top, 2)
+            .padding(.horizontal, 8).padding(.top, 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6).fill(ImagePaint(image: stripes(color), scale: 1)))
             .overlay(UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6).strokeBorder(color.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
@@ -378,7 +378,7 @@ struct PlaceField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Text("📍")
                 TextField("Add a place", text: Binding(get: { item.place }, set: { v in
                     guard v != item.place else { return }
@@ -387,7 +387,7 @@ struct PlaceField: View {
                 })).textFieldStyle(.plain).focused(field, equals: "place").onSubmit { search.results = []; commit() }
             }
             .padding(.horizontal, 8).frame(height: 28)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Palette.line))
+            .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
             if field.wrappedValue == "place" && !search.results.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(search.results, id: \.self) { s in
@@ -397,12 +397,12 @@ struct PlaceField: View {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(s.title).lineLimit(1)
                                 if !s.subtitle.isEmpty { Text(s.subtitle).font(.ui(11)).foregroundStyle(Palette.text3).lineLimit(1) }
-                            }.padding(.horizontal, 8).padding(.vertical, 5).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                            }.padding(.horizontal, 8).padding(.vertical, 4).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                         }.buttonStyle(.plain)
                     }
                 }
-                .background(RoundedRectangle(cornerRadius: 7).fill(Palette.pop).shadow(color: .black.opacity(0.12), radius: 6, y: 3))
-                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Palette.line))
+                .background(RoundedRectangle(cornerRadius: 8).fill(Palette.pop).shadow(color: .black.opacity(0.12), radius: 6, y: 3))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
                 .padding(.top, 4)
             }
         }
@@ -435,12 +435,12 @@ struct SmallMap: View {
     @State private var address = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 8) {
             ZStack {
                 if let picture { Image(nsImage: picture).resizable().aspectRatio(contentMode: .fill) } else { Palette.side }
                 Pin(color: color, size: 20).offset(y: -14)
             }
-            .frame(height: 130).frame(maxWidth: .infinity).clipped()
+            .frame(height: 132).frame(maxWidth: .infinity).clipped()
             .clipShape(RoundedRectangle(cornerRadius: 8)).overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
             .contentShape(Rectangle()).onTapGesture { openInMaps(geo, name: name, directions: true) }
             .help("Open in Apple Maps")
@@ -448,7 +448,7 @@ struct SmallMap: View {
                 Text(foot).lineLimit(1)
                 Spacer(minLength: 6)
                 Button("Open in Maps ↗") { openInMaps(geo, name: name, directions: true) }.buttonStyle(.plain).foregroundStyle(Palette.accent)
-            }.font(.ui(11.5)).foregroundStyle(Palette.text2)
+            }.font(.ui(12)).foregroundStyle(Palette.text2)
         }
         .task(id: "\(geo.lat),\(geo.lon),\(scheme == .dark)") { await load() }
     }
@@ -483,16 +483,16 @@ struct PlacesMap: View {
     var body: some View {
         let span = month ? cal.dateInterval(of: .month, for: app.anchor)! : DateInterval(start: startOfWeek(app.anchor), duration: 7 * 86400)
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Text("Places · " + dateText(span.start, "MMM d") + " to " + dateText(span.end.addingTimeInterval(-1), "MMM d")).font(.ui(15, weight: .semibold))
                 Seg(options: ["This week", "This month"], selected: month ? "This month" : "This week", small: true) { month = $0 == "This month"; selected = nil; position = .automatic }
                 Spacer()
                 Button("Done") { app.mapOpen = false }.keyboardShortcut(.cancelAction)
             }
-            .padding(.horizontal, 14).frame(height: 52).background(Palette.bar).overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
+            .padding(.horizontal, 16).frame(height: 52).background(Palette.bar).overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
             HStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(list.count) EVENT\(list.count == 1 ? "" : "S") WITH A PLACE").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.horizontal, 6).padding(.bottom, 6)
+                    Text("\(list.count) EVENT\(list.count == 1 ? "" : "S") WITH A PLACE").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.bottom, 4)
                     ScrollView {
                         VStack(alignment: .leading, spacing: 2) {
                             ForEach(Array(list.enumerated()), id: \.element.id) { i, it in
@@ -504,7 +504,7 @@ struct PlacesMap: View {
                                     }
                                     Spacer(minLength: 0)
                                 }
-                                .padding(6).background(RoundedRectangle(cornerRadius: 7).fill(selected == it.id ? Palette.accentSoft : .clear))
+                                .padding(8).background(RoundedRectangle(cornerRadius: 8).fill(selected == it.id ? Palette.accentSoft : .clear))
                                 .contentShape(Rectangle())
                                 .onTapGesture(count: 2) { open(it) }
                                 .onTapGesture { selected = it.id; position = .region(MKCoordinateRegion(center: it.geo!.coord, latitudinalMeters: 3000, longitudinalMeters: 3000)) }
@@ -513,9 +513,9 @@ struct PlacesMap: View {
                     }
                     Spacer(minLength: 0)
                     Text("Events without a place are left out. Only the calendars you have shown are on the map.")
-                        .font(.ui(11)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(6)
+                        .font(.ui(11)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(8)
                 }
-                .padding(10).frame(width: 270).background(Palette.side).overlay(alignment: .trailing) { Palette.line.frame(width: 1) }
+                .padding(12).frame(width: 272).background(Palette.side).overlay(alignment: .trailing) { Palette.line.frame(width: 1) }
                 Map(position: $position) {
                     ForEach(Array(list.enumerated()), id: \.element.id) { i, it in
                         Annotation("", coordinate: it.geo!.coord, anchor: .bottom) {
@@ -539,13 +539,13 @@ struct PlacesMap: View {
 
     func callout(_ it: Item) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(it.shownTitle).font(.ui(12.5, weight: .semibold))
+            Text(it.shownTitle).font(.ui(13, weight: .semibold))
             Text(dateText(it.start, "EEE MMM d") + (it.allDay ? "" : ", " + timeText(it.start, short: true) + " to " + timeText(it.end, short: true)))
             Text(([it.place] + (app.drive[it.id].map { ["\($0) min drive"] } ?? [])).joined(separator: " · ")).foregroundStyle(Palette.text2)
         }
-        .font(.ui(12)).padding(.horizontal, 10).padding(.vertical, 8).frame(width: 210, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 9).fill(Palette.pop).shadow(color: .black.opacity(0.2), radius: 13, y: 10))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Palette.line))
+        .font(.ui(12)).padding(.horizontal, 12).padding(.vertical, 8).frame(width: 212, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.pop).shadow(color: .black.opacity(0.2), radius: 13, y: 10))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
         .onTapGesture(count: 2) { open(it) }
     }
 

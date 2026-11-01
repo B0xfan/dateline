@@ -1,0 +1,70 @@
+// The menu bar: every toolbar button and key is here too, so people can find them. Plain-letter keys stay in the key handler (Model), because a menu key would also fire while typing.
+import SwiftUI
+import UniformTypeIdentifiers
+
+struct AppCommands: Commands {
+    let app: AppState
+    @ObservedObject var store: Store  // the set list and its keys follow changes; the app only redraws menus for its own
+
+    func toggle(_ title: String, _ on: Bool, _ pick: @escaping () -> Void) -> Toggle<Text> {
+        Toggle(title, isOn: Binding(get: { on }, set: { _ in pick() }))
+    }
+
+    var body: some Commands {
+        CommandGroup(after: .appInfo) { CheckForUpdatesItem() }
+        SidebarCommands()
+        ToolbarCommands()
+        CommandGroup(replacing: .newItem) {
+            Button("New Event") {
+                app.openMain?()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { app.focusAdd += 1 }  // shortcut: a reopened window needs a moment before its add box listens; fine unless the Mac is very slow
+            }.keyboardShortcut("n")
+            Button("New Set…") { app.newSet() }
+            Button("Edit Sets…") { app.openMain?(); app.editingSet = store.activeSet ?? store.sets.first }.disabled(store.sets.isEmpty)
+            Divider()
+            Button("Subscribe to Calendar…") { app.openMain?(); app.subscribing = true }
+            Button("Make Event from Email File…") {
+                let o = NSOpenPanel(); o.allowedContentTypes = [UTType(filenameExtension: "eml") ?? .data]; o.allowsMultipleSelection = true
+                guard o.runModal() == .OK else { return }
+                o.urls.forEach(app.emails.importFile); app.openMain?()
+            }
+        }
+        CommandGroup(before: .sidebar) {
+            ForEach(Array(Mode.allCases.enumerated()), id: \.element) { i, m in
+                toggle(m.rawValue, app.mode == m) { app.openMain?(); app.mode = m }
+                    .keyboardShortcut(KeyEquivalent(Character(String(i + 1))), modifiers: [.option, .command])
+            }
+            Menu("Days in Week") {
+                ForEach([3, 5, 7], id: \.self) { d in toggle("\(d) Days", app.days == d) { app.days = d } }
+            }
+            Menu("Calendar Set") {
+                Button("All Calendars") { app.pickSet(1) }.keyboardShortcut("1")
+                ForEach(Array(store.sets.prefix(8).enumerated()), id: \.element.id) { i, s in
+                    Button(s.name) { app.pickSet(i + 2) }.keyboardShortcut(KeyEquivalent(Character(String(i + 2))))
+                }
+            }.disabled(app.editingSet != nil)  // the set editor is showing what would change behind it
+            Divider()
+            Button("Today") { app.openMain?(); app.goToday() }.keyboardShortcut("t")
+            Button("Previous") { app.openMain?(); app.step(-1) }.keyboardShortcut(.leftArrow, modifiers: [.option, .command])
+            Button("Next") { app.openMain?(); app.step(1) }.keyboardShortcut(.rightArrow, modifiers: [.option, .command])
+            Divider()
+            Button(app.tasksOpen ? "Hide Tasks" : "Show Tasks") { app.openMain?(); app.tasksOpen.toggle() }.keyboardShortcut("r", modifiers: [.option, .command])
+            Button("Show Map") { app.openMain?(); app.mapOpen = true }.keyboardShortcut("p", modifiers: [.option, .command])
+            Divider()
+        }
+        CommandMenu("Event") {
+            Button("Open Details") { app.openMain?(); app.panelOpen = true }.disabled(app.selected == nil)
+            Button("Delete Event…") { app.openMain?(); app.confirmDelete = app.selected }.disabled(app.selected == nil)
+            Divider()
+            Button("Previous Event") { app.openMain?(); app.selectNext(-1) }
+            Button("Next Event") { app.openMain?(); app.selectNext(1) }
+            Button("Move 15 Minutes Earlier") { app.openMain?(); app.nudge(-15) }.disabled(app.selected == nil)
+            Button("Move 15 Minutes Later") { app.openMain?(); app.nudge(15) }.disabled(app.selected == nil)
+            Divider()
+            Button("Undo Last Change") { app.openMain?(); app.undo() }.disabled(!app.canUndo)
+        }
+        CommandGroup(replacing: .help) {
+            Button("Keyboard Shortcuts") { app.openMain?(); app.showShortcuts = true }.keyboardShortcut("/", modifiers: [.command, .shift])
+        }
+    }
+}

@@ -348,11 +348,11 @@ struct AssistantSettings: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 28) {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
                 Toggle("Let AI apps use Dateline", isOn: $a.on).toggleStyle(.switch).controlSize(.small)
-                HStack(spacing: 10) {
+                HStack(spacing: 12) {
                     Text("C").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
-                        .frame(width: 26, height: 26).background(Color(red: 0.85, green: 0.47, blue: 0.34), in: RoundedRectangle(cornerRadius: 7))
+                        .frame(width: 28, height: 28).background(Color(red: 0.85, green: 0.47, blue: 0.34), in: RoundedRectangle(cornerRadius: 8))
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Claude")
                         Text(!claudeHere ? "The Claude desktop app isn't on this Mac" : connected ? "Connected · the desktop app on this Mac" : "Not connected yet")
@@ -369,7 +369,7 @@ struct AssistantSettings: View {
                     }
                 }
                 .opacity(a.on ? 1 : 0.5)
-                if let problem { Text(problem).font(.system(size: 11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true) }
+                if let problem { Text(problem).font(.system(size: 12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true) }
                 Text("WHAT IT MAY DO").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.text3)
                 Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {
                     rule("See events", "Titles, times and places", $a.see, [.allowed, .never])
@@ -383,23 +383,23 @@ struct AssistantSettings: View {
                 .disabled(!a.on)
             }
             .frame(width: 400, alignment: .leading)
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text("CALENDARS IT CAN SEE").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.text3)
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 8) {
                         ForEach(app.store.calendars) { c in
                             Toggle(isOn: Binding(get: { !a.hidden.contains(c.id) }, set: { if $0 { a.hidden.remove(c.id) } else { a.hidden.insert(c.id) } })) { Text(c.title) }
                                 .toggleStyle(.checkbox).tint(c.color)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
-                }.frame(maxHeight: 150)
+                }.frame(maxHeight: 152)
                 Text("WHAT IT DID").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 4)
                 if a.log.isEmpty { Text("Nothing yet.").foregroundStyle(Palette.text3) }
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 8) {
                         ForEach(a.log) { l in
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Text(cal.isDate(l.when, inSameDayAs: app.now) ? timeText(l.when) : dateText(l.when, "MMM d")).foregroundStyle(Palette.text3).frame(width: 62, alignment: .leading)
+                                Text(cal.isDate(l.when, inSameDayAs: app.now) ? timeText(l.when) : dateText(l.when, "MMM d")).foregroundStyle(Palette.text3).frame(width: 64, alignment: .leading)
                                 Text(l.text).fixedSize(horizontal: false, vertical: true)
                                 Spacer(minLength: 4)
                                 if a.undos[l.id] != nil { Button("Undo") { a.undo(l) }.buttonStyle(.plain).foregroundStyle(Palette.accent) }
@@ -409,7 +409,7 @@ struct AssistantSettings: View {
                 }.frame(maxHeight: 160)
             }
             .font(.system(size: 12))
-            .frame(width: 250, alignment: .leading)
+            .frame(width: 252, alignment: .leading)
         }
         .font(.system(size: 13))
         .padding(.horizontal, 24).padding(.vertical, 20)

@@ -6,10 +6,9 @@
 //   --accounts-check <address>   the iCloud account code against scripts/caldav-standin.py (no settings, no passwords saved)
 //   --a4-check <folder>  reads and edits every A4 task note in a COPY of the tasks folder (it changes the files it is given)
 //   --a4-code <vault> <path> <day>  prints what is sent to A4's engine, for the sandbox test
-//   --render <folder>   draws the window on sample calendars to PNG files off-screen (no window, no calendar access)
+//   --render <folder> [names]  draws the window on sample calendars to PNG files off-screen (no calendar access); names picks some of the main window pictures
 import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
 
 let args = CommandLine.arguments
 if args.contains("--selftest") { exit(selftest()) }
@@ -30,7 +29,7 @@ if let i = args.firstIndex(of: "--accounts-check"), i + 1 < args.count {
 }
 if args.contains("--sample") { MainActor.assumeIsolated { WeatherStore.sample = true } }  // made-up weather, no network
 if let i = args.firstIndex(of: "--render"), i + 1 < args.count {
-    exit(MainActor.assumeIsolated { renderAll(to: args[i + 1]) } ? 0 : 1)
+    exit(MainActor.assumeIsolated { renderAll(to: args[i + 1], only: i + 2 < args.count ? Set(args[i + 2].split(separator: ",").map(String.init)) : []) } ? 0 : 1)
 }
 
 final class Delegate: NSObject, NSApplicationDelegate {
@@ -53,18 +52,8 @@ struct DatelineApp: App {
                 .onAppear { Look.apply(); app.startKeys() }
         }
         .defaultSize(width: 1380, height: 800)
-        .windowStyle(.hiddenTitleBar)
-        .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("Subscribe to Calendar…") { app.openMain?(); app.subscribing = true }
-                Button("Make Event from Email File…") {
-                    let o = NSOpenPanel(); o.allowedContentTypes = [UTType(filenameExtension: "eml") ?? .data]; o.allowsMultipleSelection = true
-                    guard o.runModal() == .OK else { return }
-                    o.urls.forEach(app.emails.importFile); app.openMain?()
-                }
-            }
-            CommandGroup(after: .appInfo) { CheckForUpdatesItem() }
-        }
+        .windowToolbarStyle(.unified(showsTitle: true))
+        .commands { AppCommands(app: app, store: app.store) }
         Settings { SettingsView(app: app) }
     }
 }

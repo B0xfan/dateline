@@ -96,8 +96,8 @@ struct MenuDrop: View {
         let tasks = app.calendarTodos.filter { !$0.done && $0.due.map { cal.startOfDay(for: $0) <= cal.startOfDay(for: now) } == true }
         VStack(alignment: .leading, spacing: 0) {
             HStack { Text("Today · " + dateText(now, "EEE MMM d")).fontWeight(.semibold); Spacer(); Text("Week \(weekNumber(now))").foregroundStyle(Palette.text3) }
-                .padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 8)
-            if items.isEmpty && tasks.isEmpty { Text("Nothing on today").foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.vertical, 6) }
+                .padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 8)
+            if items.isEmpty && tasks.isEmpty { Text("Nothing on today").foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.vertical, 4) }
             ForEach(items) { it in
                 row(Circle().fill(store.color(it)), it.shownTitle, it.allDay ? "all day" : timeText(it.start)) { close(); app.openEvent(it) }
             }
@@ -106,29 +106,29 @@ struct MenuDrop: View {
                     close(); app.openMain?(); NSApp.activate(ignoringOtherApps: true); app.openTaskID = t.id
                 }
             }
-            Palette.line.frame(height: 1).padding(.horizontal, 4).padding(.vertical, 6)
+            Palette.line.frame(height: 1).padding(.horizontal, 4).padding(.vertical, 4)
             command("Quick add…", keySymbols(app.quickName)) { close(); QuickPanel.toggle(app) }
             command("Open Dateline", nil) { close(); app.openMain?(); NSApp.activate(ignoringOtherApps: true) }
         }
-        .font(.ui(12.5)).foregroundStyle(Palette.text)
+        .font(.ui(13)).foregroundStyle(Palette.text)
         .padding(8).frame(width: 300)
     }
 
     func row<S: View>(_ mark: S, _ title: String, _ when: String, _ act: @escaping () -> Void) -> some View {
         Button(action: act) {
-            HStack(spacing: 9) {
+            HStack(spacing: 8) {
                 mark.frame(width: 8, height: 8)
                 Text(title).lineLimit(1)
                 Spacer(minLength: 6)
                 Text(when).foregroundStyle(Palette.text3).monospacedDigit()
-            }.padding(.horizontal, 8).padding(.vertical, 6).contentShape(Rectangle())
+            }.padding(.horizontal, 8).padding(.vertical, 4).contentShape(Rectangle())
         }.buttonStyle(MenuRowStyle())
     }
 
     func command(_ t: String, _ key: String?, _ act: @escaping () -> Void) -> some View {
         Button(action: act) {
             HStack { Text(t); Spacer(); if let key { Text(key).font(.ui(11)).foregroundStyle(Palette.text2) } }
-                .padding(.horizontal, 8).padding(.vertical, 6).contentShape(Rectangle())
+                .padding(.horizontal, 8).padding(.vertical, 4).contentShape(Rectangle())
         }.buttonStyle(MenuRowStyle())
     }
 }
@@ -137,7 +137,7 @@ struct MenuDrop: View {
 struct MenuRowStyle: ButtonStyle {
     @State private var hover = false
     func makeBody(configuration c: Configuration) -> some View {
-        c.label.background(RoundedRectangle(cornerRadius: 6).fill(hover || c.isPressed ? Palette.accentSoft : .clear)).onHover { hover = $0 }
+        c.label.background(RoundedRectangle(cornerRadius: 8).fill(hover || c.isPressed ? Palette.accentSoft : .clear)).onHover { hover = $0 }
     }
 }
 
@@ -155,13 +155,13 @@ struct MenuBarSettings: View {
                 ForEach(MenuIcon.shows.indices, id: \.self) { i in
                     let picked = i == show
                     Button { show = i; MenuIcon.show = i; MenuBar.shared.update(app) } label: {
-                        HStack(spacing: 10) {
-                            Circle().strokeBorder(picked ? Palette.accent : Palette.text3, lineWidth: picked ? 4 : 1.5).frame(width: 14, height: 14)
+                        HStack(spacing: 12) {
+                            Circle().strokeBorder(picked ? Palette.accent : Palette.text3, lineWidth: picked ? 4 : 1.5).frame(width: 16, height: 16)
                             Text(MenuIcon.shows[i])
                             Spacer()
                             chip(i, now)
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 8)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(RoundedRectangle(cornerRadius: 8).fill(picked ? Palette.accentSoft : .clear))
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(picked ? Palette.accent : Palette.line))
                         .contentShape(Rectangle())
@@ -169,7 +169,7 @@ struct MenuBarSettings: View {
                 }
             }.disabled(!on).opacity(on ? 1 : 0.5)
             Text("\u{201C}What's next\u{201D} shows the next event today, or the icon alone when the day is clear. Long names are shortened so the menu bar stays tidy.")
-                .font(.system(size: 11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: 12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
         }
         .font(.system(size: 13))
         .padding(.horizontal, 24).padding(.vertical, 20).frame(width: 620)
@@ -178,12 +178,12 @@ struct MenuBarSettings: View {
     // A sample of what the menu bar shows.
     func chip(_ i: Int, _ now: Date) -> some View {
         let words = i == 3 ? (menuWords(3, now: now, today: MenuBar.shared.today(app, now)) ?? "") : menuWords(i, now: now, today: [])
-        return HStack(spacing: 5) {
+        return HStack(spacing: 4) {
             if i == 0 || i == 3 { Image(nsImage: dateIcon(cal.component(.day, from: now))).renderingMode(.template) }
             if let words, !words.isEmpty { Text(words) }
         }
         .font(.system(size: 12)).foregroundStyle(Color(red: 0.11, green: 0.11, blue: 0.13))
         .padding(.horizontal, 8).padding(.vertical, 2)
-        .background(RoundedRectangle(cornerRadius: 5).fill(Color(red: 0.87, green: 0.89, blue: 0.92)))
+        .background(RoundedRectangle(cornerRadius: 4).fill(Color(red: 0.87, green: 0.89, blue: 0.92)))
     }
 }

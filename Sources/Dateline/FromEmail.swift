@@ -366,20 +366,20 @@ struct FromEmailList: View {
                 Text("FROM EMAIL").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                 Spacer()
                 Text("\(inbox.items.count)").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
-            }.padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 4)
+            }.padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 4)
             ForEach(inbox.items) { p in
                 Button { app.reviewing = p.id } label: {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "envelope").font(.ui(11)).foregroundStyle(Palette.text3).padding(.top, 2)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(p.draft?.title.isEmpty == false ? p.draft!.title : p.mail.subject).font(.ui(12.5, weight: .semibold)).lineLimit(1)
-                            Text("From \(p.mail.fromName) · \(receivedText(p.mail.date, now: app.now))").font(.ui(11.5)).foregroundStyle(Palette.text2).lineLimit(1)
+                            Text(p.draft?.title.isEmpty == false ? p.draft!.title : p.mail.subject).font(.ui(13, weight: .semibold)).lineLimit(1)
+                            Text("From \(p.mail.fromName) · \(receivedText(p.mail.date, now: app.now))").font(.ui(12)).foregroundStyle(Palette.text2).lineLimit(1)
                             if p.draft == nil { Text("Reading…").font(.ui(11)).foregroundStyle(Palette.text3) }
                             else if p.draft?.start == nil { Text("Couldn't find a date").font(.ui(11)).foregroundStyle(Palette.family) }
                         }
                         Spacer(minLength: 4)
                         if !p.seen, p.draft?.start != nil {
-                            Text("New").font(.ui(10.5, weight: .semibold)).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 1.5)
+                            Text("New").font(.ui(11, weight: .semibold)).foregroundStyle(.white).padding(.horizontal, 8).padding(.vertical, 2)
                                 .background(Capsule().fill(Palette.accent))
                         }
                     }.padding(.horizontal, 8).padding(.vertical, 4).contentShape(Rectangle())
@@ -424,16 +424,16 @@ struct EmailReview: View {
                 Divider().overlay(Palette.line)
                 ScrollView { Text(highlighted).font(.ui(13)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
             }
-            .padding(18).frame(width: 380).frame(maxHeight: .infinity, alignment: .top).background(Palette.side)
+            .padding(20).frame(width: 380).frame(maxHeight: .infinity, alignment: .top).background(Palette.side)
             Divider().overlay(Palette.line)
             VStack(alignment: .leading, spacing: 12) {
                 Text("Event from this email").font(.ui(15, weight: .semibold))
                 if !d.problem.isEmpty { Text(d.problem).font(.ui(12)).foregroundStyle(Palette.family) }
                 field("Title", "title") { TextField("Title", text: $d.title).textFieldStyle(.roundedBorder) }
                 field("When", "when", note: d.whenNote) {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Toggle("All day", isOn: $d.allDay).toggleStyle(.checkbox)
-                        HStack(spacing: 6) {
+                        HStack(spacing: 8) {
                             DatePicker("", selection: $start, displayedComponents: d.allDay ? [.date] : [.date, .hourAndMinute]).labelsHidden()
                             Text("to").foregroundStyle(Palette.text2)
                             DatePicker("", selection: $end, in: (d.allDay ? cal.startOfDay(for: start) : start)..., displayedComponents: d.allDay ? [.date] : [.date, .hourAndMinute]).labelsHidden()
@@ -446,8 +446,8 @@ struct EmailReview: View {
                 }
                 field("Notes", "") {
                     VStack(alignment: .leading, spacing: 4) {
-                        TextEditor(text: $d.notes).font(.ui(13)).frame(height: 70).scrollContentBackground(.hidden).padding(4)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Palette.line))
+                        TextEditor(text: $d.notes).font(.ui(13)).frame(height: 72).scrollContentBackground(.hidden).padding(4)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
                         Text("The full email is saved with the event.").font(.ui(11)).foregroundStyle(Palette.text3)
                     }
                 }
@@ -459,7 +459,7 @@ struct EmailReview: View {
                     Button("Add event") { addEvent() }.keyboardShortcut(.defaultAction).disabled(d.title.trimmingCharacters(in: .whitespaces).isEmpty || calID.isEmpty)
                 }
             }
-            .padding(18).frame(width: 440).frame(maxHeight: .infinity, alignment: .top)
+            .padding(20).frame(width: 440).frame(maxHeight: .infinity, alignment: .top)
         }
         .frame(height: 540)
         .background(Palette.win)
@@ -478,7 +478,7 @@ struct EmailReview: View {
     func field<V: View>(_ label: String, _ key: String, note: String = "", @ViewBuilder _ content: () -> V) -> some View {
         let unsure = !key.isEmpty && d.unsure.contains(key)
         return VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.ui(11.5, weight: .semibold)).foregroundStyle(Palette.text2)
+            Text(label).font(.ui(12, weight: .semibold)).foregroundStyle(Palette.text2)
             content()
             if unsure && !note.isEmpty { Text(note).font(.ui(11)).foregroundStyle(Palette.family) }
         }

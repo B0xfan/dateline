@@ -61,7 +61,7 @@ struct UpdateSettings: View {
                 Button("Check now") { up.check() }.disabled(!up.canCheck)
             }
             Text("Dateline looks on GitHub for a new version. Your calendars and settings stay as they are when it updates.")
-                .font(.system(size: 11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: 12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
         }
         .font(.system(size: 13))
         .padding(.horizontal, 24).padding(.vertical, 20).frame(width: 620)

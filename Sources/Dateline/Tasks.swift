@@ -235,12 +235,12 @@ struct TaskRow: View {
     var body: some View {
         let list = app.calendarTodos
         HStack(alignment: .top, spacing: 0) {
-            Text("tasks").font(.ui(11)).foregroundStyle(Palette.text3).frame(width: gutter - 8, alignment: .trailing).padding(.trailing, 8).padding(.top, 7)
+            Text("tasks").font(.ui(11)).foregroundStyle(Palette.text3).frame(width: gutter - 8, alignment: .trailing).padding(.trailing, 8).padding(.top, 8)
             ForEach(days, id: \.self) { d in
                 VStack(alignment: .leading, spacing: 1) {
                     ForEach(list.filter { taskRowDay($0, now: app.now) == d }) { t in TaskChip(app: app, store: store, task: t) }
                 }
-                .padding(.horizontal, 6).padding(.vertical, 4).frame(minWidth: 0, maxWidth: .infinity, minHeight: 28, alignment: .topLeading).clipped()
+                .padding(.horizontal, 8).padding(.vertical, 4).frame(minWidth: 0, maxWidth: .infinity, minHeight: 28, alignment: .topLeading).clipped()
                 .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
             }
         }
@@ -254,16 +254,16 @@ struct TaskChip: View {
     let task: ToDo
     var body: some View {
         let late = isOverdue(task, now: app.now)
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             TaskCircle(done: task.done, color: late ? Palette.now : store.taskList(task.listID)?.color ?? .gray) { app.toggle(task) }
             Text(task.title).strikethrough(task.done).foregroundStyle(task.done ? Palette.text3 : late ? Palette.now : Palette.text).lineLimit(1)
             if task.place != nil && task.remind != .time { Text("📍").font(.ui(10)) }
-            if late, let d = task.due { Text("from " + shortDay(d, now: app.now)).font(.ui(10.5)).foregroundStyle(Palette.now.opacity(0.8)).lineLimit(1).layoutPriority(-1) }
+            if late, let d = task.due { Text("from " + shortDay(d, now: app.now)).font(.ui(11)).foregroundStyle(Palette.now.opacity(0.8)).lineLimit(1).layoutPriority(-1) }
             Spacer(minLength: 0)
         }
         .font(.ui(12))
         .padding(.horizontal, 4).padding(.vertical, 2)
-        .background(RoundedRectangle(cornerRadius: 5).fill(app.openTaskID == task.id ? Palette.accentSoft : .clear))
+        .background(RoundedRectangle(cornerRadius: 4).fill(app.openTaskID == task.id ? Palette.accentSoft : .clear))
         .contentShape(Rectangle())
         .onTapGesture { app.openTaskID = task.id }
         .draggable("task:" + task.id)
@@ -290,16 +290,16 @@ struct TaskBlock: View {
     let task: ToDo
     var body: some View {
         let c = store.taskList(task.listID)?.color ?? .gray
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             TaskCircle(done: task.done, color: c, size: 11) { app.toggle(task) }
             Text(task.due.map { timeText($0, short: true) } ?? "").foregroundStyle(Palette.text2)
             Text(task.title).fontWeight(.medium).strikethrough(task.done).lineLimit(1)
             Spacer(minLength: 0)
         }
-        .font(.ui(11.5)).padding(.horizontal, 6)
+        .font(.ui(12)).padding(.horizontal, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Palette.win))
-        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(c, style: StrokeStyle(lineWidth: app.openTaskID == task.id ? 2 : 1.2, dash: [4, 3])))
+        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.win))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(c, style: StrokeStyle(lineWidth: app.openTaskID == task.id ? 2 : 1.2, dash: [4, 3])))
         .contentShape(Rectangle())
         .onTapGesture { app.openTaskID = task.id }
         .draggable("task:" + task.id)
@@ -324,8 +324,8 @@ struct TaskList: View {
                     Button("All lists") { app.taskListFilter = nil }
                     ForEach(store.lists) { l in Button(l.title) { app.taskListFilter = l.id } }
                 } label: { Text(filter?.title ?? "All lists") }.menuStyle(.borderlessButton).fixedSize()
-                Button { app.tasksOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.buttonStyle(.plain).foregroundStyle(Palette.text3)
-            }.padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+                Button { app.tasksOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
+            }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
             if store.taskAccess == .denied && !store.todos.contains(where: { $0.a4 != nil }) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Dateline can't see Reminders yet").font(.ui(13, weight: .semibold))
@@ -334,11 +334,11 @@ struct TaskList: View {
                 }.padding(16)
                 Spacer()
             } else {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: "plus").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.accent)
                     TextField("Add a task: Call the bank Friday 3pm", text: $app.taskText).textFieldStyle(.plain).focused($adding).onSubmit { app.commitTask() }
                 }
-                .padding(.horizontal, 10).frame(height: 30)
+                .padding(.horizontal, 12).frame(height: 32)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(adding ? Palette.accent : Palette.line, lineWidth: adding ? 1.5 : 1))
                 .padding(.horizontal, 16)
@@ -346,10 +346,10 @@ struct TaskList: View {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(TaskGroup.allCases, id: \.self) { g in
                             if let rows = groups[g], !(g == .none && app.hideNoDate) {
-                                HStack(spacing: 6) {
+                                HStack(spacing: 8) {
                                     Text(g.rawValue.uppercased()).font(.ui(11, weight: .semibold)).foregroundStyle(g == .overdue ? Palette.now : Palette.text3)
                                     Text("\(rows.count)").font(.ui(11)).foregroundStyle(Palette.text3)
-                                }.padding(.top, 14).padding(.bottom, 4)
+                                }.padding(.top, 12).padding(.bottom, 4)
                                 if g == .none && filter == nil {
                                     folded(rows)
                                 } else {
@@ -366,7 +366,7 @@ struct TaskList: View {
                     Button(app.showDone ? "Hide done tasks" : "Show done tasks") { app.showDone.toggle() }
                     Text("·")
                     Button(app.hideNoDate ? "Show no-date tasks" : "Hide no-date tasks") { app.hideNoDate.toggle() }
-                }.buttonStyle(.plain).font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 10)
+                }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 8)
                 .frame(maxWidth: .infinity, alignment: .leading).overlay(alignment: .top) { Palette.line.frame(height: 1) }
             }
         }
@@ -380,14 +380,14 @@ struct TaskList: View {
             Button {
                 if open { app.openTaskLists.remove(l.id); showAll.remove(l.id) } else { app.openTaskLists.insert(l.id) }
             } label: { HStack(spacing: 8) {
-                Image(systemName: "chevron.right").font(.ui(9, weight: .semibold)).foregroundStyle(Palette.text3)
+                Image(systemName: "chevron.right").font(.ui(10, weight: .semibold)).foregroundStyle(Palette.text3)
                     .rotationEffect(.degrees(open ? 90 : 0)).frame(width: 12)
-                RoundedRectangle(cornerRadius: 3).fill(info?.color ?? .gray).frame(width: 10, height: 10)
+                RoundedRectangle(cornerRadius: 4).fill(info?.color ?? .gray).frame(width: 12, height: 12)
                 Text(info?.title ?? "Other").lineLimit(1)
                 Spacer(minLength: 4)
                 Text("\(l.rows.count)").font(.ui(12)).foregroundStyle(Palette.text3)
             }
-            .padding(.vertical, 6).padding(.horizontal, 4)
+            .padding(.vertical, 4).padding(.horizontal, 4)
             .contentShape(Rectangle()) }
             .buttonStyle(.plain).accessibilityValue(open ? "open" : "folded")
             .help(open ? "Fold this list" : "Show this list's tasks")
@@ -397,7 +397,7 @@ struct TaskList: View {
                     if l.rows.count > 20 && !all {
                         Button("Show all \(l.rows.count)") { showAll.insert(l.id) }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.accent).padding(.vertical, 4)
                     }
-                }.padding(.leading, 22).padding(.bottom, 4)
+                }.padding(.leading, 24).padding(.bottom, 4)
             }
         }
     }
@@ -414,14 +414,14 @@ struct TaskList: View {
                     Text(t.title).strikethrough(t.done).foregroundStyle(t.done ? Palette.text3 : Palette.text)
                     if t.place != nil && t.remind != .time { Text("📍").font(.ui(10)) }
                 }
-                if !sub.isEmpty { Text(sub).font(.ui(11.5)).foregroundStyle(Palette.text3).lineLimit(1) }
+                if !sub.isEmpty { Text(sub).font(.ui(12)).foregroundStyle(Palette.text3).lineLimit(1) }
             }
             Spacer(minLength: 4)
-            Text(right).font(.ui(11.5)).foregroundStyle(late ? Palette.now : Palette.text3)
+            Text(right).font(.ui(12)).foregroundStyle(late ? Palette.now : Palette.text3)
         }
-        .padding(.vertical, 5).padding(.horizontal, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(app.openTaskID == t.id ? Palette.accentSoft : .clear))
-        .padding(.horizontal, -6)
+        .padding(.vertical, 4).padding(.horizontal, 8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(app.openTaskID == t.id ? Palette.accentSoft : .clear))
+        .padding(.horizontal, -8)
         .contentShape(Rectangle())
         .onTapGesture { app.openTaskID = t.id }
         .draggable("task:" + t.id)
@@ -447,17 +447,17 @@ struct TaskDetail: View {
                 HStack {
                     Text("TASK").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                     Spacer()
-                    Button { commit(); app.openTaskID = nil } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.buttonStyle(.plain).foregroundStyle(Palette.text3)
-                }.padding(.bottom, 10)
+                    Button { commit(); app.openTaskID = nil } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
+                }.padding(.bottom, 8)
                 HStack(alignment: .top, spacing: 8) {
-                    TaskCircle(done: task.done, color: l?.color ?? .gray, size: 16) { task.done.toggle(); commit() }.padding(.top, 3)
+                    TaskCircle(done: task.done, color: l?.color ?? .gray, size: 16) { task.done.toggle(); commit() }.padding(.top, 4)
                     TextField("Title", text: $task.title, axis: .vertical).textFieldStyle(.plain).font(.ui(17, weight: .semibold))
                         .focused($field, equals: "title").onSubmit { commit() }
                 }
                 row("List") {
                     Menu {
                         ForEach(store.lists.filter(\.writable)) { k in Button(k.title) { task.listID = k.id; commit() } }
-                    } label: { HStack(spacing: 6) { Circle().fill(l?.color ?? .gray).frame(width: 8, height: 8); Text(l?.title ?? "") } }
+                    } label: { HStack(spacing: 8) { Circle().fill(l?.color ?? .gray).frame(width: 8, height: 8); Text(l?.title ?? "") } }
                         .menuStyle(.borderlessButton).fixedSize()
                 }
                 row("Due") {
@@ -470,7 +470,7 @@ struct TaskDetail: View {
                         } else {
                             Button("add time") { task.timed = true; task.due = cal.date(byAdding: .hour, value: 9, to: cal.startOfDay(for: d)); commit() }.buttonStyle(.plain).foregroundStyle(Palette.accent)
                         }
-                        Button { task.due = nil; task.timed = false; commit() } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(Palette.text3).help("No due date")
+                        Button { task.due = nil; task.timed = false; commit() } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Clear due").buttonStyle(.plain).foregroundStyle(Palette.text3).help("No due date")
                     } else {
                         Button("Add a date") { task.due = cal.startOfDay(for: app.now); commit() }.buttonStyle(.plain).foregroundStyle(Palette.accent)
                     }
@@ -479,47 +479,47 @@ struct TaskDetail: View {
                 Seg(options: Remind.allCases.map(\.rawValue), selected: task.remind.rawValue, small: true) { task.remind = Remind(rawValue: $0)!; commit() }
                 if task.remind == .time {
                     Text(task.timed ? "Your iPhone and Mac remind you at the due time." : "Add a time to the due date to get a reminder then.")
-                        .font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.top, 8)
+                        .font(.ui(12)).foregroundStyle(Palette.text3).padding(.top, 8)
                 } else {
                     Text("Place").foregroundStyle(Palette.text3).padding(.top, 12).padding(.bottom, 4)
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Text("📍")
                         TextField("Type a place or address", text: $placeText).textFieldStyle(.plain).focused($field, equals: "place").onSubmit { find() }
                         if finding { ProgressView().controlSize(.small) }
                     }
                     .padding(.horizontal, 8).frame(height: 28)
-                    .background(RoundedRectangle(cornerRadius: 7).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Palette.line))
-                    if let e = placeError { Text(e).font(.ui(11.5)).foregroundStyle(Palette.now).padding(.top, 4).fixedSize(horizontal: false, vertical: true) }
-                    HStack(spacing: 6) {
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
+                    if let e = placeError { Text(e).font(.ui(12)).foregroundStyle(Palette.now).padding(.top, 4).fixedSize(horizontal: false, vertical: true) }
+                    HStack(spacing: 8) {
                         Text("Within").foregroundStyle(Palette.text3)
                         Menu {
                             ForEach([100.0, 150, 300, 500, 1000], id: \.self) { m in Button(distance(m)) { task.place?.radius = m; commit() } }
                         } label: { Text(distance(task.place?.radius ?? 150)) }.menuStyle(.borderlessButton).fixedSize().disabled(task.place == nil)
                     }.padding(.top, 8)
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         chip("🏠 Home") { mine(work: false) }
                         chip("💼 Work") { mine(work: true) }
                     }.padding(.top, 8)
                 }
                 section("NOTES")
-                TextEditor(text: $task.notes).font(.ui(13)).scrollContentBackground(.hidden).padding(.horizontal, 3).padding(.vertical, 5)
+                TextEditor(text: $task.notes).font(.ui(13)).scrollContentBackground(.hidden).padding(.horizontal, 4).padding(.vertical, 4)
                     .focused($field, equals: "notes")
                     .frame(height: dragHeight ?? notesHeight)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Palette.field))
-                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(field == "notes" ? Palette.accent : Palette.line, lineWidth: field == "notes" ? 1.5 : 1))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(field == "notes" ? Palette.accent : Palette.line, lineWidth: field == "notes" ? 1.5 : 1))
                     .overlay(alignment: .topLeading) {
-                        if task.notes.isEmpty { Text("Add notes").font(.ui(13)).foregroundStyle(Palette.text3).padding(.leading, 9).padding(.top, 5).allowsHitTesting(false) }
+                        if task.notes.isEmpty { Text("Add notes").font(.ui(13)).foregroundStyle(Palette.text3).padding(.leading, 8).padding(.top, 4).allowsHitTesting(false) }
                     }
                 // The grip sits under the box, not on it, so a drag never lands in the text. Drag down for taller notes, up to shrink them.
                 Capsule().fill(Palette.text3.opacity(0.5)).frame(width: 36, height: 4)
-                    .frame(maxWidth: .infinity).frame(height: 14).contentShape(Rectangle())
+                    .frame(maxWidth: .infinity).frame(height: 16).contentShape(Rectangle())
                     .onHover { h in if dragHeight == nil { (h ? NSCursor.resizeUpDown : NSCursor.arrow).set() } }  // set, not push/pop, as in the grid
                     .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)  // global: the grip moves with the box, so its own space would jitter
                         .onChanged { v in dragHeight = min(max(notesHeight + v.translation.height, 50), 600) }
                         .onEnded { _ in if let h = dragHeight { notesHeight = h }; dragHeight = nil; NSCursor.arrow.set() })
                     .help("Drag to resize the notes")
                 Text("Saved in Apple Reminders, so your iPhone sees it too. A place reminder goes off on your iPhone when you get there, even with the Mac closed.")
-                    .font(.ui(11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 4)
+                    .font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 4)
             }
             .padding(16)
         }
@@ -566,16 +566,16 @@ struct TaskDetail: View {
 
     func chip(_ t: String, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
-            Text(t).font(.ui(12)).padding(.horizontal, 9).padding(.vertical, 4)
+            Text(t).font(.ui(12)).padding(.horizontal, 8).padding(.vertical, 4)
                 .background(Capsule().fill(Palette.lineSoft)).overlay(Capsule().strokeBorder(Palette.line))
         }.buttonStyle(.plain)
     }
 
     func section(_ t: String) -> some View {
-        Text(t).font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 18).padding(.bottom, 6)
+        Text(t).font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 16).padding(.bottom, 4)
     }
 
     func row<V: View>(_ k: String, @ViewBuilder _ v: () -> V) -> some View {
-        HStack(spacing: 8) { Text(k).foregroundStyle(Palette.text3).frame(width: 44, alignment: .leading); v(); Spacer(minLength: 0) }.padding(.top, 10)
+        HStack(spacing: 8) { Text(k).foregroundStyle(Palette.text3).frame(width: 44, alignment: .leading); v(); Spacer(minLength: 0) }.padding(.top, 8)
     }
 }

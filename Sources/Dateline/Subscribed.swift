@@ -397,7 +397,7 @@ struct SubscribeSheet: View {
                 .pickerStyle(.segmented).labelsHidden().frame(width: 240).frame(maxWidth: .infinity)
             if tab == 0 { web } else { ready }
         }
-        .padding(.horizontal, 26).padding(.vertical, 20)
+        .padding(.horizontal, 28).padding(.vertical, 20)
         .frame(width: 580)
         .background(Palette.pop)
         .font(.ui(13))
@@ -406,15 +406,15 @@ struct SubscribeSheet: View {
     var web: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Subscribe to a calendar").font(.ui(15, weight: .semibold))
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     TextField("Paste a calendar's web address", text: $address).textFieldStyle(.roundedBorder)
                     Button("Paste") { if let s = NSPasteboard.general.string(forType: .string) { address = s } }
                 }
-                Text("Addresses that start with webcal:// or https:// both work.").font(.ui(11.5)).foregroundStyle(Palette.text3)
+                Text("Addresses that start with webcal:// or https:// both work.").font(.ui(12)).foregroundStyle(Palette.text3)
             }
             if checking {
-                HStack(spacing: 7) { ProgressView().controlSize(.small); Text("Checking the address…").foregroundStyle(Palette.text2) }.font(.ui(12))
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Checking the address…").foregroundStyle(Palette.text2) }.font(.ui(12))
             } else if let problem {
                 Label(problem, systemImage: "exclamationmark.triangle.fill").font(.ui(12)).foregroundStyle(Palette.now).fixedSize(horizontal: false, vertical: true)
             } else if let events = found?.1 {
@@ -422,7 +422,7 @@ struct SubscribeSheet: View {
                 Label("Found it: \(events.count) event\(events.count == 1 ? "" : "s")" + (next.first.map { ", the next one " + when($0.start) } ?? ", none coming up"),
                       systemImage: "checkmark.circle.fill").font(.ui(12)).foregroundStyle(Palette.tags[2])
                 if !next.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("COMING UP IN THIS CALENDAR").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                         ForEach(next) { it in
                             HStack(spacing: 8) {
@@ -432,8 +432,8 @@ struct SubscribeSheet: View {
                             }
                         }
                     }
-                    .font(.ui(12)).padding(.horizontal, 12).padding(.vertical, 10).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 9).fill(Palette.side)).overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Palette.line))
+                    .font(.ui(12)).padding(.horizontal, 12).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Palette.side)).overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
                 }
             }
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 14) {
@@ -477,10 +477,10 @@ struct SubscribeSheet: View {
 
     var ready: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 ForEach(["All", "Holidays", "Sky", "Sports"], id: \.self) { g in
                     Button(g) { group = g }.buttonStyle(.plain).font(.ui(12))
-                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .padding(.horizontal, 12).padding(.vertical, 4)
                         .foregroundStyle(group == g ? .white : Palette.text2)
                         .background(Capsule().fill(group == g ? Palette.accent : .clear))
                         .overlay(Capsule().strokeBorder(group == g ? Palette.accent : Palette.line))
@@ -492,19 +492,19 @@ struct SubscribeSheet: View {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(r.name).fontWeight(.semibold)
-                            Text(r.about).font(.ui(11.5)).foregroundStyle(Palette.text3)
+                            Text(r.about).font(.ui(12)).foregroundStyle(Palette.text3)
                         }
                         Spacer()
                         if added(r) { Label("Added", systemImage: "checkmark").font(.ui(12)).foregroundStyle(Palette.tags[2]) }
                         else { Button("Add") { store.subscribe(Sub(url: r.url, kind: r.kind, name: r.name, color: r.color, hours: 168)) } }
                     }
-                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
                     if r.id != list.last?.id { Divider().overlay(Palette.lineSoft) }
                 }
             }
-            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Palette.line))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
             Text("The list is small on purpose and free: each one is a public web address checked to work before it went in. More can come in a later update.")
-                .font(.ui(11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
+                .font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
             Divider().overlay(Palette.line)
             HStack {
                 let n = readyMade.filter(added).count
@@ -547,10 +547,10 @@ func calendarName(_ text: String) -> String? {
 struct Swatches: View {
     @Binding var pick: Int
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 8) {
             ForEach(Palette.tags.indices, id: \.self) { i in
                 Button { pick = i } label: {
-                    Circle().fill(Palette.tags[i]).frame(width: 18, height: 18)
+                    Circle().fill(Palette.tags[i]).frame(width: 20, height: 20)
                         .overlay(Circle().strokeBorder(Palette.tags[i], lineWidth: 2).padding(-4).opacity(pick == i ? 1 : 0))
                 }.buttonStyle(.plain).padding(4)
             }
@@ -593,12 +593,6 @@ struct SubscribedList: View {
                         }
                 }
             }
-        }
-        Button("+ Add a calendar") { app.subscribing = true }
-            .buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.accent).padding(.horizontal, 8).padding(.top, 6)
-        if !store.subs.isEmpty {
-            Text("Right-click a subscribed calendar to update it now, rename it, change its color or remove it.")
-                .font(.ui(11)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 8).padding(.top, 4)
         }
         Color.clear.frame(height: 0)
             .alert("Rename calendar", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {

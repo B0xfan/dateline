@@ -58,14 +58,14 @@ struct WeekSettings: View {
                     Seg(options: WorkWeek.starts, selected: WorkWeek.start, small: true) { WorkWeek.start = $0; changed() }
                 }
                 row("Working days", "The 5-day view shows today, then these days. Days off get a light grey background in the week view.") {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         ForEach(order, id: \.self) { wd in
                             let on = WorkWeek.days.contains(wd)
                             Button { if on { WorkWeek.days.remove(wd) } else { WorkWeek.days.insert(wd) }; changed() } label: {
                                 Text(String(cal.shortWeekdaySymbols[wd - 1].prefix(2))).font(.system(size: 12, weight: on ? .semibold : .regular))
-                                    .foregroundStyle(on ? Palette.accent : Palette.text3).frame(width: 34, height: 28)
-                                    .background(RoundedRectangle(cornerRadius: 7).fill(on ? Palette.accentSoft : .clear))
-                                    .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(on ? Palette.accent : Palette.line))
+                                    .foregroundStyle(on ? Palette.accent : Palette.text3).frame(width: 36, height: 28)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(on ? Palette.accentSoft : .clear))
+                                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(on ? Palette.accent : Palette.line))
                                     .contentShape(Rectangle())
                             }.buttonStyle(.plain)
                         }
@@ -90,7 +90,7 @@ struct WeekSettings: View {
                     Toggle("Alert me when it's time to leave", isOn: Binding(get: { WorkWeek.leave }, set: { WorkWeek.leave = $0; changed(); app.planTravel() }))
                         .toggleStyle(.switch).controlSize(.small)
                 }
-            }.frame(width: 430, alignment: .leading)
+            }.frame(width: 432, alignment: .leading)
             WeekPreview(order: order).id(app.look)
         }
         .font(.system(size: 13))
@@ -109,11 +109,11 @@ struct WeekSettings: View {
     }
 
     func row<V: View>(_ k: String, _ hint: String?, @ViewBuilder _ v: () -> V) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(k).foregroundStyle(Palette.text2).frame(width: 110, alignment: .leading).padding(.top, 3)
-            VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .top, spacing: 12) {
+            Text(k).foregroundStyle(Palette.text2).frame(width: 112, alignment: .leading).padding(.top, 4)
+            VStack(alignment: .leading, spacing: 8) {
                 v()
-                if let hint { Text(hint).font(.system(size: 11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true) }
+                if let hint { Text(hint).font(.system(size: 12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true) }
             }
         }
     }
@@ -134,14 +134,14 @@ struct WeekPreview: View {
         let s = startOfWeek(Date()), days = (0..<7).map { addDays(s, $0) }
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                Color.clear.frame(width: 30, height: 1)
-                ForEach(days, id: \.self) { d in Text(String(dateText(d, "EEE").prefix(1))).font(.system(size: 10.5)).foregroundStyle(Palette.text2).frame(maxWidth: .infinity) }
-            }.padding(.vertical, 5).background(Palette.bar).overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
+                Color.clear.frame(width: 32, height: 1)
+                ForEach(days, id: \.self) { d in Text(String(dateText(d, "EEE").prefix(1))).font(.system(size: 11)).foregroundStyle(Palette.text2).frame(maxWidth: .infinity) }
+            }.padding(.vertical, 4).background(Palette.bar).overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
                     ForEach(first..<last, id: \.self) { h in
-                        Text(h % 2 == 0 ? "\(h % 12 == 0 ? 12 : h % 12)\(h < 12 ? "a" : "p")" : "").font(.system(size: 9)).foregroundStyle(Palette.text3)
-                            .frame(width: 26, height: rowH, alignment: .trailing)
+                        Text(h % 2 == 0 ? "\(h % 12 == 0 ? 12 : h % 12)\(h < 12 ? "a" : "p")" : "").font(.system(size: 10)).foregroundStyle(Palette.text3)
+                            .frame(width: 28, height: rowH, alignment: .trailing)
                     }
                 }.padding(.trailing, 4)
                 ForEach(days, id: \.self) { d in
@@ -149,13 +149,13 @@ struct WeekPreview: View {
                         .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
                 }
             }
-            Text(caption).font(.system(size: 10.5)).foregroundStyle(Palette.text3).frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 8).padding(.vertical, 6).overlay(alignment: .top) { Palette.line.frame(height: 1) }
+            Text(caption).font(.system(size: 11)).foregroundStyle(Palette.text3).frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8).padding(.vertical, 4).overlay(alignment: .top) { Palette.line.frame(height: 1) }
         }
         .background(Palette.win)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
-        .frame(width: 230)
+        .frame(width: 232)
     }
 
     var caption: String {

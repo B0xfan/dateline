@@ -1,9 +1,48 @@
 // Off-screen pictures of the window on sample calendars, for checking the look against the approved mockups.
 import SwiftUI
 import AppKit
+import ScreenCaptureKit
 
-@MainActor func renderAll(to dir: String) -> Bool {
-    _ = NSApplication.shared
+// A real window, so the system toolbar, sidebar and glass draw as in use. It sits behind the desktop picture, never in sight: the system will not capture a window off every screen.
+private final class ShotWindow: NSWindow {
+    override var isKeyWindow: Bool { true }
+    override var isMainWindow: Bool { true }
+    override func constrainFrameRect(_ r: NSRect, to s: NSScreen?) -> NSRect { r }
+}
+
+@MainActor private func saveWindow<V: View>(_ view: V, dark: Bool, wait: Double, width: CGFloat, to path: String) -> Bool {
+    let vc = NSHostingController(rootView: view)
+    vc.sceneBridgingOptions = [.toolbars, .title]
+    let w = ShotWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 800), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+    w.isReleasedWhenClosed = false
+    w.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) - 1)
+    w.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+    w.toolbarStyle = .unified
+    w.contentViewController = vc
+    w.setFrame(NSRect(x: 0, y: 0, width: width, height: 800), display: true)
+    w.orderFrontRegardless()
+    RunLoop.main.run(until: Date().addingTimeInterval(max(wait, 1)))
+    defer { w.close() }
+    var picture: CGImage?, done = false
+    Task {
+        defer { done = true }
+        do {
+            let found = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+            guard let win = found.windows.first(where: { $0.windowID == CGWindowID(w.windowNumber) }) else { print("window not listed"); return }
+            let c = SCStreamConfiguration(); c.width = Int(width * 2); c.height = 1600; c.showsCursor = false
+            picture = try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: win), configuration: c)
+        } catch { print("capture failed: \(error)") }
+    }
+    let giveUp = Date().addingTimeInterval(30)
+    while !done && Date() < giveUp { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    guard let picture, let data = NSBitmapImageRep(cgImage: picture).representation(using: .png, properties: [:]), (try? data.write(to: URL(fileURLWithPath: path))) != nil else { print("no picture: \(path)"); return false }
+    print(path)
+    return true
+}
+
+@MainActor func renderAll(to dir: String, only: Set<String> = []) -> Bool {
+    NSApplication.shared.setActivationPolicy(.accessory)
+    NSApp.finishLaunching()
     try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
     cal.timeZone = TimeZone(identifier: "America/Costa_Rica")!
     let today = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 9, minute: 41))!  // the mockup's "today"
@@ -15,13 +54,18 @@ import AppKit
     for dark in [false, true] {
         let tag = dark ? "dark" : "light"
         func shot(_ name: String, wait: Double = 0.2, width: CGFloat = 1380, _ setup: (AppState) -> Void) {
+            if !only.isEmpty && !only.contains(name) { return }
             let app = AppState(store: Store(sample: true), today: today)
             app.openTaskLists = []; app.sidebarOpen = true  // never the folds or sidebar saved on this Mac
             setup(app)
             // A sheet (the places map) does not draw off-screen, so it is drawn on its own.
             let p = app.emails.items.first { $0.id == app.reviewing }
-            let view = app.mapOpen ? AnyView(PlacesMap(app: app, store: app.store)) : p.map { AnyView(EmailReview(app: app, p: $0).frame(maxWidth: .infinity, maxHeight: .infinity).background(Palette.side)) } ?? AnyView(MainView(app: app, store: app.store))
-            ok = save(view.frame(width: width, height: 800), dark: dark, wait: wait, width: width, to: "\(dir)/\(name)-\(tag).png") && ok
+            if app.mapOpen || p != nil {
+                let view = app.mapOpen ? AnyView(PlacesMap(app: app, store: app.store)) : AnyView(EmailReview(app: app, p: p!).frame(maxWidth: .infinity, maxHeight: .infinity).background(Palette.side))
+                ok = save(view.frame(width: width, height: 800), dark: dark, wait: wait, width: width, to: "\(dir)/\(name)-\(tag).png") && ok
+            } else {
+                ok = saveWindow(MainView(app: app, store: app.store), dark: dark, wait: wait, width: width, to: "\(dir)/\(name)-\(tag).png") && ok
+            }
         }
         shot("day") { $0.mode = .day }
         shot("week") { $0.mode = .week; $0.days = 7 }
@@ -34,7 +78,7 @@ import AppKit
         shot("details-extras") { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Christian at the condo" }?.id; a.panelOpen = true }
         shot("set-family") { a in a.pickSet(3) }
         shot("tasks-week") { $0.mode = .week; $0.days = 5 }
-        // Pictures cannot scroll (they show midnight to 9 AM), so move the electrician into view to check the dashed block.
+        // Moved into the working day, to check the dashed block.
         shot("task-timed") { a in a.mode = .week; a.days = 5
             if let i = a.store.todos.firstIndex(where: { $0.title == "Electrician" }) { a.store.todos[i].due = cal.date(byAdding: .hour, value: 7, to: addDays(cal.startOfDay(for: today), 1)) } }
         // Phase 5 (approved mockups): the event map, drive time block, sun and moon. The map picture loads from Apple Maps, so it waits longer.
@@ -115,7 +159,7 @@ import AppKit
             a.mode = .week; a.days = 7; a.sidebarOpen = true; a.openTaskLists = []
             if let call = a.store.items.first(where: { $0.title == "Client call" }) {
                 a.selectedID = call.id; a.panelOpen = true
-                ok = save(MainView(app: a, store: a.store).frame(width: 1380, height: 800), dark: dark, width: 1380, to: "\(dir)/call-\(tag).png") && ok
+                ok = saveWindow(MainView(app: a, store: a.store), dark: dark, wait: 1, width: 1380, to: "\(dir)/call-\(tag).png") && ok
                 ok = save(EventBlock(item: call, color: a.store.color(call), selected: false, height: 60, now: t).frame(width: 220, height: 58).padding(20).background(Palette.win), dark: dark, to: "\(dir)/call-block-\(tag).png") && ok
                 ok = save(FullAlertView(items: [call], store: a.store, now: t, next: nil, close: {}, snooze: {}, open: { _ in }).frame(width: 1380, height: 800), dark: dark, to: "\(dir)/call-alert-\(tag).png") && ok
             } else { ok = false }

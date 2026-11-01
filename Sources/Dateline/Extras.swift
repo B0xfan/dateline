@@ -12,8 +12,8 @@ struct EmojiRow: View {
         HStack(spacing: 8) {
             Button { open = true } label: {
                 Text(item.emoji.isEmpty ? "Add" : item.emoji).font(.ui(item.emoji.isEmpty ? 12 : 15)).foregroundStyle(Palette.text2)
-                    .frame(minWidth: 30, minHeight: 26).padding(.horizontal, item.emoji.isEmpty ? 6 : 0)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Palette.line))
+                    .frame(minWidth: 32, minHeight: 28).padding(.horizontal, item.emoji.isEmpty ? 6 : 0)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
             }.buttonStyle(.plain)
             .popover(isPresented: $open, arrowEdge: .bottom) {
                 EmojiPicker(recent: store.recentEmoji) { e in item.emoji = e; store.usedEmoji(e); open = false; commit() }
@@ -53,19 +53,19 @@ struct EmojiPicker: View {
             TextField("Search emoji", text: $search).textFieldStyle(.roundedBorder)
             HStack(spacing: 2) {
                 ForEach(["Recent"] + emojiGroups.map(\.0), id: \.self) { g in
-                    Button(g) { group = g; search = "" }.buttonStyle(.plain).font(.ui(11.5, weight: g == group ? .semibold : .regular))
-                        .foregroundStyle(g == group && search.isEmpty ? Palette.text : Palette.text3).padding(.horizontal, 6).padding(.vertical, 3)
-                        .background(RoundedRectangle(cornerRadius: 5).fill(g == group && search.isEmpty ? Palette.lineSoft : .clear))
+                    Button(g) { group = g; search = "" }.buttonStyle(.plain).font(.ui(12, weight: g == group ? .semibold : .regular))
+                        .foregroundStyle(g == group && search.isEmpty ? Palette.text : Palette.text3).padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 4).fill(g == group && search.isEmpty ? Palette.lineSoft : .clear))
                 }
             }
             ScrollView {
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(30), spacing: 2), count: 8), spacing: 2) {
                     ForEach(shown, id: \.self) { e in
-                        Button { pick(e) } label: { Text(e).font(.system(size: 19)).frame(width: 30, height: 30).contentShape(Rectangle()) }.buttonStyle(.plain)
+                        Button { pick(e) } label: { Text(e).font(.system(size: 19)).frame(width: 32, height: 32).contentShape(Rectangle()) }.buttonStyle(.plain)
                     }
                 }
             }.frame(height: 140)
-            if shown.isEmpty { Text("No emoji matches \u{201C}\(search)\u{201D}").font(.ui(11.5)).foregroundStyle(Palette.text3) }
+            if shown.isEmpty { Text("No emoji matches \u{201C}\(search)\u{201D}").font(.ui(12)).foregroundStyle(Palette.text3) }
         }.padding(12).frame(width: 272)
     }
 }
@@ -76,7 +76,7 @@ struct ColorRow: View {
     @Binding var item: Item
     let commit: () -> Void
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 4) {
             dot(store.calendar(item.calendarID)?.color ?? .gray, on: item.color == nil) { item.color = nil }.help("The calendar's color")
             ForEach(Palette.tags.indices, id: \.self) { i in dot(Palette.tags[i], on: item.color == i) { item.color = item.color == i ? nil : i } }
         }
@@ -84,7 +84,7 @@ struct ColorRow: View {
 
     func dot(_ c: Color, on: Bool, _ act: @escaping () -> Void) -> some View {
         Button { act(); commit() } label: {
-            Circle().fill(c).frame(width: 15, height: 15).padding(2.5).overlay(Circle().strokeBorder(on ? Palette.text : .clear, lineWidth: 1.5))
+            Circle().fill(c).frame(width: 16, height: 16).padding(2).overlay(Circle().strokeBorder(on ? Palette.text : .clear, lineWidth: 1.5))
         }.buttonStyle(.plain)
     }
 }
@@ -104,24 +104,24 @@ struct TagsRow: View {
             Flow {
                 ForEach(item.tags, id: \.self) { t in
                     HStack(spacing: 4) {
-                        Circle().fill(Palette.tag(t)).frame(width: 6, height: 6)
+                        Circle().fill(Palette.tag(t)).frame(width: 8, height: 8)
                         Text(t).font(.ui(12))
-                        Button { item.tags.removeAll { $0 == t }; commit() } label: { Image(systemName: "xmark").font(.ui(8, weight: .bold)) }
+                        Button { item.tags.removeAll { $0 == t }; commit() } label: { Image(systemName: "xmark").font(.ui(10, weight: .bold)) }.accessibilityLabel("Remove tag")
                             .buttonStyle(.plain).foregroundStyle(Palette.text3)
-                    }.padding(.horizontal, 7).padding(.vertical, 2).background(Capsule().fill(Palette.lineSoft))
+                    }.padding(.horizontal, 8).padding(.vertical, 2).background(Capsule().fill(Palette.lineSoft))
                 }
                 TextField(item.tags.isEmpty ? "Add a tag" : "", text: $text).textFieldStyle(.plain).font(.ui(12)).frame(minWidth: 60)
                     .focused($focused).onSubmit { add(hits.first?.0 ?? (isNew ? typed : nil)) }
             }
-            .padding(5).frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Palette.field))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(focused ? Palette.accent : Palette.line))
+            .padding(4).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(focused ? Palette.accent : Palette.line))
             if focused && (!hits.isEmpty || isNew) {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(hits.enumerated()), id: \.element.0) { i, h in
                         Button { add(h.0) } label: {
-                            HStack(spacing: 6) {
-                                Circle().fill(Palette.tag(h.0)).frame(width: 7, height: 7)
+                            HStack(spacing: 8) {
+                                Circle().fill(Palette.tag(h.0)).frame(width: 8, height: 8)
                                 Text(h.0)
                                 Spacer()
                                 Text("\(h.1) event" + (h.1 == 1 ? "" : "s")).font(.ui(11)).foregroundStyle(Palette.text3)
@@ -135,10 +135,10 @@ struct TagsRow: View {
                         }.buttonStyle(.plain)
                     }
                 }
-                .font(.ui(12)).padding(.vertical, 3)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Palette.pop).shadow(color: .black.opacity(0.14), radius: 8, y: 4))
-                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Palette.line))
-                .padding(.top, 3)
+                .font(.ui(12)).padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Palette.pop).shadow(color: .black.opacity(0.14), radius: 8, y: 4))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
+                .padding(.top, 4)
             }
         }
     }
@@ -223,22 +223,22 @@ struct NotesBox: View {
                 HStack(spacing: 2) {
                     tool(Text("B").fontWeight(.bold), "Bold (Command B)") { view.toggle(bold: true) }
                     tool(Text("I").italic(), "Italic (Command I)") { view.toggle(bold: false) }
-                    Palette.line.frame(width: 1, height: 14).padding(.horizontal, 4)
+                    Palette.line.frame(width: 1, height: 16).padding(.horizontal, 4)
                     tool(Image(systemName: "list.bullet"), "Bullet list") { view.list(bulletMark) }
                     tool(Image(systemName: "list.number"), "Numbered list") { view.list("1. ") }
                     tool(Image(systemName: "checklist"), "Checklist") { view.list(openBox) }
                     tool(Image(systemName: "link"), "Link (Command K)") { view.link() }
                     Spacer()
-                }.padding(.horizontal, 4).padding(.vertical, 3).overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
+                }.padding(.horizontal, 4).padding(.vertical, 4).overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
             }
-            NotesEditor(view: view, item: $item, editing: $editing, locked: locked, commit: commit).frame(minHeight: 110)
+            NotesEditor(view: view, item: $item, editing: $editing, locked: locked, commit: commit).frame(minHeight: 112)
         }
-        .background(RoundedRectangle(cornerRadius: 6).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Palette.line))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     func tool<V: View>(_ label: V, _ help: String, _ act: @escaping () -> Void) -> some View {
-        Button { act(); if !editing { commit() } } label: { label.font(.ui(12)).foregroundStyle(Palette.text2).frame(width: 24, height: 22).contentShape(Rectangle()) }
+        Button { act(); if !editing { commit() } } label: { label.font(.ui(12)).foregroundStyle(Palette.text2).frame(width: 24, height: 24).contentShape(Rectangle()) }
             .buttonStyle(.plain).help(help)
     }
 }

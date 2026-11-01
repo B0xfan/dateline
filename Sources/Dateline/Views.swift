@@ -43,7 +43,7 @@ struct Key: View {
     init(_ k: String) { self.k = k }
     var body: some View {
         Text(k).font(.ui(11)).foregroundStyle(Palette.text2)
-            .padding(.horizontal, 5).padding(.vertical, 2)
+            .padding(.horizontal, 4).padding(.vertical, 2)
             .background(RoundedRectangle(cornerRadius: 4).fill(Palette.field))
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.line))
     }
@@ -54,14 +54,14 @@ struct MainView: View {
     @ObservedObject var store: Store
     @Environment(\.openWindow) private var openWindow
 
+    @State private var width: CGFloat = 1000  // the calendar's width: narrow toolbars use short words
+
     var body: some View {
-        HStack(spacing: 0) {
-            if app.sidebarOpen {
-                Sidebar(app: app, store: store).frame(width: 236)
-                Divider().overlay(Palette.line)
-            }
+        NavigationSplitView(columnVisibility: Binding(get: { app.sidebarOpen ? .all : .detailOnly }, set: { app.sidebarOpen = $0 != .detailOnly })) {
+            Sidebar(app: app, store: store).navigationSplitViewColumnWidth(236)
+        } detail: {
             VStack(spacing: 0) {
-                Toolbar(app: app, store: store)
+                if width < 700 { AddBox(app: app).frame(height: 32).padding(.horizontal, 8); Divider().overlay(Palette.line) }
                 ZStack(alignment: .bottom) {
                     Group {
                         switch store.access {
@@ -76,24 +76,30 @@ struct MainView: View {
                             }
                         }
                     }
-                    if let t = app.toast { ToastView(app: app, toast: t).padding(.bottom, 14) }
+                    if let t = app.toast { ToastView(app: app, toast: t).padding(.bottom, 16) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay(alignment: .topTrailing) {
-                    if app.addFocused && !app.addText.isEmpty { PreviewCard(app: app, store: store).padding(.trailing, 14).padding(.top, 6) }
+                    if app.addFocused && !app.addText.isEmpty { PreviewCard(app: app, store: store).padding(.trailing, 16).padding(.top, 8) }
                 }
                 StatusBar()
             }
-            if let t = app.openTask {
-                Divider().overlay(Palette.line)
-                if t.a4 != nil { A4TaskDetail(app: app, store: store, task: t).id(t.id).frame(width: 320) } else { TaskDetail(app: app, store: store, task: t).id(t.id).frame(width: 320) }
-            } else if app.panelOpen, let it = app.selected {
-                Divider().overlay(Palette.line)
-                DetailPanel(app: app, store: store, item: it).id(it.id).frame(width: 320)
-            } else if app.tasksOpen {
-                Divider().overlay(Palette.line)
-                TaskList(app: app, store: store).frame(width: 320)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            .navigationTitle(app.mode == .week && width < 560 ? dateText(app.anchor, "MMM") : width < 700 ? app.shortTitle : app.title)
+            .navigationSubtitle(width < 700 && app.mode != .year ? app.weekLabel : app.subtitle)
+            .toolbar { toolbar }
+        }
+        .inspector(isPresented: Binding(get: { app.openTask != nil || (app.panelOpen && app.selected != nil) || app.tasksOpen }, set: { if !$0 { app.closeSide() } })) {
+            Group {
+                if let t = app.openTask {
+                    if t.a4 != nil { A4TaskDetail(app: app, store: store, task: t).id(t.id) } else { TaskDetail(app: app, store: store, task: t).id(t.id) }
+                } else if app.panelOpen, let it = app.selected {
+                    DetailPanel(app: app, store: store, item: it).id(it.id)
+                } else if app.tasksOpen {
+                    TaskList(app: app, store: store)
+                }
             }
+            .inspectorColumnWidth(min: 320, ideal: 320, max: 320)
         }
         .background(Palette.win)
         .foregroundStyle(Palette.text)
@@ -114,11 +120,37 @@ struct MainView: View {
             Button("OK") { app.error = nil }
         } message: { Text(app.error ?? "") }
     }
+
+    // Three groups, as Apple's own apps: moving through time, what to show, and tasks, map and the add box.
+    @ToolbarContentBuilder var toolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            Button("Today") { app.goToday() }.help("Go to today (T)")
+            Button("Previous", systemImage: "chevron.left") { app.step(-1) }.help("Go back (Left arrow)")
+            Button("Next", systemImage: "chevron.right") { app.step(1) }.help("Go forward (Right arrow)")
+        }
+        // Narrow windows give up the smaller controls first; each is still in the menus and on its key. The add box moves under the toolbar, so it never lands behind the "more" arrow.
+        ToolbarItemGroup(placement: .principal) {
+            if app.mode == .week && width >= 800 {
+                Picker("Days", selection: $app.days) { ForEach([3, 5, 7], id: \.self) { Text(String($0)).tag($0) } }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize().help("Days to show in the week")
+            }
+            Picker("View", selection: $app.mode) {
+                ForEach(Mode.allCases, id: \.self) { m in Text(width < 800 ? String(m.rawValue.prefix(1)) : m.rawValue).tag(m).accessibilityLabel(m.rawValue) }
+            }.pickerStyle(.segmented).labelsHidden().fixedSize().help("Day to year (keys 1 to 5)")
+        }
+        ToolbarItemGroup(placement: .primaryAction) {
+            if width >= 700 {
+                Button("Tasks", systemImage: "checklist") { app.tasksOpen.toggle() }.help("Show or hide tasks (R)")
+                Button("Map", systemImage: "map") { app.mapOpen = true }.help("Show this view's places on a map (P)")
+                AddBox(app: app).frame(width: width < 800 ? 160 : 260)
+            }
+        }
+    }
 }
 
 struct NoAccess: View {
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Text("Dateline can't see your calendars yet").font(.ui(15, weight: .semibold))
             Text("Turn on Dateline under Privacy & Security, Calendars, in System Settings, then reopen it.").foregroundStyle(Palette.text2)
             Button("Open System Settings") {
@@ -133,12 +165,11 @@ struct Sidebar: View {
     @ObservedObject var store: Store
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(height: 40)  // room for the window's buttons
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     FromEmailList(app: app, inbox: app.emails)
                     SetList(app: app, store: store)
-                    Text("Calendars on this Mac").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 4)
+                    Text("Calendars on this Mac").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.top, 12).padding(.bottom, 4)
                     let groups = Dictionary(grouping: store.calendars.filter { !isSub($0.id) }, by: \.account)
                     ForEach(groups.keys.sorted(), id: \.self) { acct in
                         Text(acct).font(.ui(11)).foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 2)
@@ -146,46 +177,37 @@ struct Sidebar: View {
                     }
                     SubscribedList(app: app, store: store) { AnyView(row($0, trailing: $1)) }
                     if store.lists.contains(where: { $0.account != a4Account }) {
-                        Text("Reminders lists").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).textCase(.uppercase).padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 4)
+                        Text("Reminders lists").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).textCase(.uppercase).padding(.horizontal, 8).padding(.top, 12).padding(.bottom, 4)
                         ForEach(store.lists.filter { $0.account != a4Account }) { l in listRow(l) }  // A4 has one list per project; its switch is in Settings
-                        Text("Untick a list to hide its tasks. Sets remember lists too.").font(.ui(11)).foregroundStyle(Palette.text3)
-                            .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 8).padding(.top, 4)
                     }
                     let soon = comingUp(store.soon.filter { !store.hidden.contains($0.calendarID) }, now: app.now)
                     if !soon.isEmpty {
                         VStack(alignment: .leading, spacing: 0) {
-                            Text("COMING UP").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.bottom, 3)
+                            Text("COMING UP").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.bottom, 4)
                             ForEach(Array(soon.enumerated()), id: \.offset) { _, s in
                                 HStack(alignment: .top, spacing: 8) {
-                                    RoundedRectangle(cornerRadius: 2).fill(store.calendar(s.calendarID)?.color ?? .gray).frame(width: 3)
+                                    RoundedRectangle(cornerRadius: 2).fill(store.calendar(s.calendarID)?.color ?? .gray).frame(width: 4)
                                     VStack(alignment: .leading, spacing: 1) {
-                                        Text(s.title).font(.ui(12.5, weight: .semibold)).lineLimit(1)
+                                        Text(s.title).font(.ui(13, weight: .semibold)).lineLimit(1)
                                         (Text(s.lead) + Text(s.big).fontWeight(.semibold).foregroundColor(Palette.text) + Text(s.tail))
-                                            .font(.ui(11.5)).foregroundStyle(s.dim ? Palette.text3 : Palette.text2)
+                                            .font(.ui(12)).foregroundStyle(s.dim ? Palette.text3 : Palette.text2)
                                     }
                                 }.fixedSize(horizontal: false, vertical: true).padding(.vertical, 4)
                             }
                         }
-                        .padding(.horizontal, 11).padding(.vertical, 10).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 9).fill(Palette.win))
-                        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Palette.line))
+                        .padding(.horizontal, 12).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.win))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
                         .padding(.horizontal, 8).padding(.top, 12)
                     }
                     if Zones.card && !Zones.list.isEmpty { ZoneCard(now: app.now) }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Uses your Mac's accounts").font(.ui(12, weight: .semibold))
-                        Text("Shows the calendars already set up in your Mac's settings. No separate sign-ins.").foregroundStyle(Palette.text2)
-                    }
-                    .font(.ui(12))
-                    .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Palette.lineSoft))
-                    .padding(.horizontal, 8).padding(.top, 10)
-                }.padding(.horizontal, 10).padding(.vertical, 8)
+                }.padding(.horizontal, 12).padding(.vertical, 8)
             }
             Divider().overlay(Palette.line)
-            Text("Your data stays on this Mac").font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 10)
+            Text("Your data stays on this Mac").font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 8)
         }
-        .background(Palette.side)
+        .padding(.top, 26)  // half the toolbar's height: the measured gap grows twice as fast as this number
+        .ignoresSafeArea(.container, edges: .top)
     }
 
     func listRow(_ l: CalInfo) -> some View {
@@ -197,7 +219,7 @@ struct Sidebar: View {
                 Tick(on: on, color: l.color)
                 Text(l.title).lineLimit(1)
                 Spacer()
-                Text("\(store.todos.filter { $0.listID == l.id && !$0.done }.count)").font(.ui(11.5)).foregroundStyle(Palette.text3)
+                Text("\(store.todos.filter { $0.listID == l.id && !$0.done }.count)").font(.ui(12)).foregroundStyle(Palette.text3)
             }.padding(.horizontal, 8).padding(.vertical, 4 * Look.packFactor).contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
@@ -222,8 +244,8 @@ struct Tick: View {
     var body: some View {
         RoundedRectangle(cornerRadius: 4).fill(on ? color : .clear)
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(color, lineWidth: 1.5))
-            .overlay(Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.white).opacity(on ? 1 : 0))
-            .frame(width: 14, height: 14)
+            .overlay(Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white).opacity(on ? 1 : 0))
+            .frame(width: 16, height: 16)
     }
 }
 
@@ -236,21 +258,15 @@ struct SetList: View {
         let all = store.calendars.allSatisfy { !store.hidden.contains($0.id) }
         VStack(alignment: .leading, spacing: 1) {
             Text("Sets").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).textCase(.uppercase).padding(.horizontal, 8).padding(.bottom, 4)
-            row(nil, "All calendars", 1, on: all)
+            row(nil, "All calendars", 1, on: all).contextMenu { Button("New Set…") { app.newSet() } }
             ForEach(Array(store.sets.enumerated()), id: \.element.id) { i, s in
                 row(s, s.name, i + 2, on: !all && active?.id == s.id)
                     .contextMenu {
+                        Button("New Set…") { app.newSet() }
                         Button("Edit set") { app.editingSet = s }
                         Button("Delete set", role: .destructive) { store.sets.removeAll { $0.id == s.id } }
                     }
             }
-            HStack(spacing: 4) {
-                Button("+ New set") { app.editingSet = CalSet(name: "", calendars: store.calendars.map(\.id).filter { !store.hidden.contains($0) }) }
-                if !store.sets.isEmpty {
-                    Text("·")
-                    Button("Edit sets") { app.editingSet = active ?? store.sets.first }
-                }
-            }.buttonStyle(.plain).font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.top, 5)
         }
     }
 
@@ -259,7 +275,7 @@ struct SetList: View {
             HStack(spacing: 8) {
                 if let s {
                     HStack(spacing: 2) {
-                        ForEach(s.calendars.compactMap(store.calendar).prefix(3)) { RoundedRectangle(cornerRadius: 2).fill($0.color).frame(width: 4, height: 14) }
+                        ForEach(s.calendars.compactMap(store.calendar).prefix(3)) { RoundedRectangle(cornerRadius: 2).fill($0.color).frame(width: 4, height: 16) }
                     }
                 }
                 Text(name).fontWeight(on ? .semibold : .regular).lineLimit(1)
@@ -267,7 +283,7 @@ struct SetList: View {
                 if n <= 9 { Key("⌘\(n)") }
             }
             .padding(.horizontal, 8).padding(.vertical, 4 * Look.packFactor)
-            .background(RoundedRectangle(cornerRadius: 6).fill(on ? Palette.accentSoft : .clear))
+            .background(RoundedRectangle(cornerRadius: 8).fill(on ? Palette.accentSoft : .clear))
             .contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
@@ -283,7 +299,7 @@ struct SetEditor: View {
         let place = (store.sets.firstIndex { $0.id == draft.id } ?? store.sets.count) + 2
         let targets = store.calendars.filter { $0.writable && draft.calendars.contains($0.id) }
         VStack(alignment: .leading, spacing: 0) {
-            Text(isNew ? "New set" : "Edit set: " + (store.sets.first { $0.id == draft.id }?.name ?? "")).font(.ui(14, weight: .semibold)).padding(.bottom, 14)
+            Text(isNew ? "New set" : "Edit set: " + (store.sets.first { $0.id == draft.id }?.name ?? "")).font(.ui(14, weight: .semibold)).padding(.bottom, 12)
             row("Name") { TextField("Family", text: $draft.name).textFieldStyle(.roundedBorder) }
             row("Calendars shown") {
                 VStack(spacing: 0) {
@@ -295,12 +311,12 @@ struct SetEditor: View {
                                 Text(c.title).foregroundStyle(on ? Palette.text : Palette.text2).lineLimit(1)
                                 Spacer()
                                 Text(c.account).font(.ui(11)).foregroundStyle(Palette.text3).lineLimit(1)
-                            }.padding(.horizontal, 10).padding(.vertical, 4).contentShape(Rectangle())
+                            }.padding(.horizontal, 12).padding(.vertical, 4).contentShape(Rectangle())
                         }.buttonStyle(.plain)
                     }
                 }
                 .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Palette.line))
+                .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
             }
             row("New events go to") {
                 let c = targets.first { $0.id == draft.defaultCalendar }
@@ -308,7 +324,7 @@ struct SetEditor: View {
                     Button("Your Mac's default") { draft.defaultCalendar = nil }
                     ForEach(targets) { k in Button(k.title + "  (" + k.account + ")") { draft.defaultCalendar = k.id } }
                 } label: {
-                    HStack(spacing: 6) { Circle().fill(c?.color ?? Palette.text3).frame(width: 8, height: 8); Text(c?.title ?? "Your Mac's default") }
+                    HStack(spacing: 8) { Circle().fill(c?.color ?? Palette.text3).frame(width: 8, height: 8); Text(c?.title ?? "Your Mac's default") }
                 }.menuStyle(.borderlessButton).fixedSize()
             }
             row("Shortcut") {
@@ -316,7 +332,7 @@ struct SetEditor: View {
                 else { Text("None: only the first eight sets have one").foregroundStyle(Palette.text3) }
             }
             Text("A typed /code still wins: \"/w\" sends one event to Work while you are in this set.")
-                .font(.ui(11.5)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 2)
+                .font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 2)
             Divider().overlay(Palette.line).padding(.vertical, 12)
             HStack {
                 if !isNew {
@@ -328,7 +344,7 @@ struct SetEditor: View {
                     .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || draft.calendars.isEmpty)
             }
         }
-        .padding(20).frame(width: 470).background(Palette.pop)
+        .padding(20).frame(width: 472).background(Palette.pop)
     }
 
     func save() {
@@ -343,96 +359,10 @@ struct SetEditor: View {
     }
 
     func row<V: View>(_ k: String, @ViewBuilder _ v: () -> V) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 12) {
             Text(k).foregroundStyle(Palette.text2).frame(width: 120, alignment: .leading).padding(.top, 4)
             v().frame(maxWidth: .infinity, alignment: .leading)
-        }.padding(.bottom, 10)
-    }
-}
-
-struct Toolbar: View {
-    @ObservedObject var app: AppState
-    @ObservedObject var store: Store
-    @State private var width: CGFloat = 1000
-    @State private var fullScreen = false
-    var body: some View {
-        // A tight bar first drops the set's name and the Days word; narrower bars drop the rest (see bar), so the add box stays on screen.
-        bar(compact: width < 800, roomy: width >= 1200, tight: width < 700, tiny: width < 560)
-        // With the sidebar gone, the window's close/minimize/zoom buttons sit over the bar's start (not in full screen, where they are not drawn).
-        .padding(.leading, app.sidebarOpen || fullScreen ? 14 : 80).padding(.trailing, 14).frame(height: 52)
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in fullScreen = true }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in fullScreen = false }
-        // Still too wide: the end of the bar is cut, never the sidebar or the window.
-        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .background(Palette.bar)
-        .overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
-    }
-
-    // Only a side panel gets the bar this narrow. tight: the week's title is just its month, and no tasks button (the panel has its own X, R still works). tiny (the sidebar open too): also no map (P still works) and no 3, 5, 7.
-    func bar(compact: Bool, roomy: Bool, tight: Bool, tiny: Bool) -> some View {
-        HStack(spacing: tiny ? 3 : compact ? 6 : 10) {  // tighter at the smallest window, so the sidebar button still leaves room for the add box
-            Button { app.sidebarOpen.toggle() } label: { Image(systemName: "sidebar.left") }
-                .buttonStyle(TButton(icon: true)).fixedSize().help(app.sidebarOpen ? "Hide calendars (S)" : "Show calendars (S)")
-            Button("Today") { app.goToday() }.buttonStyle(TButton()).fixedSize()
-            HStack(spacing: 4) {
-                Button { app.step(-1) } label: { Image(systemName: "chevron.left") }.buttonStyle(TButton(icon: true))
-                Button { app.step(1) } label: { Image(systemName: "chevron.right") }.buttonStyle(TButton(icon: true))
-            }
-            Group {
-                if tight && app.mode == .week { Text(dateText(app.anchor, "MMM")).fixedSize() }
-                else {
-                    ViewThatFits(in: .horizontal) {
-                        Text(app.title).fixedSize()
-                        Text(app.shortTitle).fixedSize()
-                    }
-                }
-            }.font(.ui(15, weight: .semibold)).padding(.leading, 4).layoutPriority(2)
-            if app.mode != .year && !app.sideOpen && !compact {
-                Text(app.weekLabel).font(.ui(11, weight: .medium)).foregroundStyle(Palette.text2)
-                    .padding(.horizontal, 7).padding(.vertical, 2).background(RoundedRectangle(cornerRadius: 5).fill(Palette.lineSoft)).fixedSize()
-            }
-            if !app.sideOpen && roomy, let s = store.activeSet, !store.calendars.allSatisfy({ !store.hidden.contains($0.id) }) {
-                Text("· \(s.name) set").font(.ui(12)).foregroundStyle(Palette.text3).lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            if app.mode == .week && !tiny {
-                HStack(spacing: 6) {
-                    if !app.sideOpen && roomy { Text("Days").font(.ui(12)).foregroundStyle(Palette.text2) }
-                    Seg(options: ["3", "5", "7"], selected: String(app.days), small: true) { app.days = Int($0)! }
-                }.fixedSize()
-            }
-            // With the details panel open there is less room: the views shrink to their first letters (D W M Q Y).
-            ViewThatFits(in: .horizontal) {
-                Seg(options: Mode.allCases.map(\.rawValue), selected: app.mode.rawValue) { app.mode = Mode(rawValue: $0)! }.fixedSize()
-                Seg(options: Mode.allCases.map { String($0.rawValue.prefix(1)) }, selected: String(app.mode.rawValue.prefix(1)), small: compact) { l in
-                    app.mode = Mode.allCases.first { $0.rawValue.hasPrefix(l) }!
-                }.fixedSize()
-            }.layoutPriority(1)
-            // Icons in every view (John 2026-10-28); the hover tip names each one and its key.
-            if !tight {
-                Button { app.tasksOpen.toggle() } label: { Image(systemName: "checklist") }
-                    .buttonStyle(TButton(icon: true)).fixedSize().help("Tasks: Reminders (R)")
-            }
-            if !tiny {
-                Button { app.mapOpen = true } label: { Image(systemName: "map") }
-                    .buttonStyle(TButton(icon: true)).fixedSize().help("Map: Events (P)")
-            }
-            AddBox(app: app).frame(minWidth: tiny ? 30 : tight ? 80 : compact ? 100 : 130, maxWidth: 300)
-            // With a panel open there is no room for it; the ? key still opens the list.
-            if !app.sideOpen && !compact { Button("?") { app.showShortcuts = true }.buttonStyle(TButton(icon: true)).help("Keyboard shortcuts") }
-        }
-    }
-}
-
-struct TButton: ButtonStyle {
-    var icon = false
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.ui(13)).foregroundStyle(Palette.text)
-            .frame(minWidth: 28, minHeight: 28).padding(.horizontal, icon ? 0 : 10)
-            .background(RoundedRectangle(cornerRadius: 7).fill(configuration.isPressed ? Palette.lineSoft : Palette.field))
-            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Palette.line))
-            .contentShape(Rectangle())
+        }.padding(.bottom, 8)
     }
 }
 
@@ -447,7 +377,7 @@ struct Seg: View {
                     Text(o).font(.ui(small ? 12 : 13, weight: o == selected ? .medium : .regular))
                         .foregroundStyle(o == selected ? Palette.text : Palette.text2)
                         .padding(.horizontal, small ? 9 : 14).padding(.vertical, small ? 3 : 4)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(o == selected ? Palette.field : .clear).shadow(color: .black.opacity(o == selected ? 0.15 : 0), radius: 1, y: 1))
+                        .background(RoundedRectangle(cornerRadius: 8).fill(o == selected ? Palette.field : .clear).shadow(color: .black.opacity(o == selected ? 0.15 : 0), radius: 1, y: 1))
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain)
             }
@@ -459,17 +389,16 @@ struct AddBox: View {
     @ObservedObject var app: AppState
     @FocusState private var focused: Bool
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             Image(systemName: "plus").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.accent)
             TextField("Add: Dinner with Ana Friday 7pm", text: $app.addText)
                 .textFieldStyle(.plain).focused($focused)
                 .onSubmit { app.commitAdd() }
         }
-        .padding(.horizontal, 10).frame(height: 30)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(focused ? Palette.accent : Palette.line, lineWidth: focused ? 1.5 : 1))
-        .background(RoundedRectangle(cornerRadius: 10).fill(focused ? Palette.accentSoft : .clear).padding(-3))
+        .padding(.horizontal, 8)
+        .accessibilityLabel("Add an event")
         .onChange(of: focused) { _, f in app.addFocused = f }
+        .onDisappear { app.addFocused = false }  // it moves under the toolbar in a narrow window; a stale "focused" would turn the next Tab into a new event
         .onChange(of: app.addFocused) { _, f in if !f { focused = false } }
         .onChange(of: app.focusAdd) { _, _ in focused = true }
     }
@@ -483,18 +412,18 @@ struct PreviewCard: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("WHAT I UNDERSTOOD").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.bottom, 8)
             Understood(app: app, store: store, p: app.preview, pick: nil, menu: true)
-            Divider().overlay(Palette.line).padding(.top, 10)
-            HStack(spacing: 6) {
+            Divider().overlay(Palette.line).padding(.top, 8)
+            HStack(spacing: 8) {
                 Key("Return"); Text("add"); Key("Esc"); Text("cancel"); Key("Tab"); Text("edit details")
                 Spacer()
                 Button("Add") { app.commitAdd() }.buttonStyle(.plain)
                     .font(.ui(12, weight: .medium)).foregroundStyle(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 5).background(RoundedRectangle(cornerRadius: 6).fill(Palette.accent))
-            }.font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.top, 10)
+                    .padding(.horizontal, 12).padding(.vertical, 4).background(RoundedRectangle(cornerRadius: 8).fill(Palette.accent))
+            }.font(.ui(12)).foregroundStyle(Palette.text3).padding(.top, 8)
         }
-        .padding(.horizontal, 14).padding(.vertical, 12).frame(width: 380)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Palette.pop).shadow(color: .black.opacity(0.18), radius: 17, y: 14))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Palette.line))
+        .padding(.horizontal, 16).padding(.vertical, 12).frame(width: 380)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.pop).shadow(color: .black.opacity(0.18), radius: 17, y: 14))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.line))
     }
 
 }
@@ -512,7 +441,7 @@ struct Understood: View {
             row("When") { Text(whenText(p)) }
             if !p.place.isEmpty { row("Where") { Text(p.place) } }
             row("Calendar") {
-                let label = HStack(spacing: 6) {
+                let label = HStack(spacing: 8) {
                     Circle().fill(c?.color ?? .gray).frame(width: 8, height: 8)
                     Text(c?.title ?? "None")
                     Text(note).foregroundStyle(Palette.text3).fontWeight(.regular)
@@ -528,13 +457,13 @@ struct Understood: View {
                 row("Alert") { HStack(spacing: 4) { Text(alertText(m)); Text("(from -a\(code))").foregroundStyle(Palette.text3).fontWeight(.regular) } }
             }
             if let r = p.repeats { row("Repeat") { HStack(spacing: 4) { Text(r.text); Text(verbatim: "(from -r\(r.n)\(r.unit))").foregroundStyle(Palette.text3).fontWeight(.regular) } } }
-            row("Show as") { HStack(spacing: 6) { Mark(showAs: p.showAs, color: c?.color ?? .gray); Text(p.showAs.rawValue) } }
+            row("Show as") { HStack(spacing: 8) { Mark(showAs: p.showAs, color: c?.color ?? .gray); Text(p.showAs.rawValue) } }
         }
     }
 
     func row<V: View>(_ k: String, @ViewBuilder _ v: () -> V) -> some View {
         HStack(alignment: .center, spacing: 8) {
-            Text(k).foregroundStyle(Palette.text3).frame(width: 78, alignment: .leading)
+            Text(k).foregroundStyle(Palette.text3).frame(width: 80, alignment: .leading)
             v().fontWeight(.medium)
             Spacer(minLength: 0)
         }.padding(.vertical, 4)
@@ -549,62 +478,62 @@ struct QuickAddView: View {
     var body: some View {
         let list = app.quickSuggestions
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Image(systemName: "plus").font(.ui(16, weight: .semibold)).foregroundStyle(Palette.accent)
                 TextField("Lunch with Sam tomorrow 1pm /Personal -a15m", text: $app.quickText)
                     .textFieldStyle(.plain).font(.ui(18)).focused($focused)
                     .onSubmit { app.commitQuick() }
             }
-            .padding(.horizontal, 16).padding(.vertical, 14)
+            .padding(.horizontal, 16).padding(.vertical, 12)
             .overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
             if !list.isEmpty {
                 section("FROM YOUR PAST EVENTS")
                 ForEach(Array(list.enumerated()), id: \.element.id) { i, it in
                     let c = store.calendar(it.calendarID)
-                    HStack(spacing: 10) {
-                        Circle().fill(c?.color ?? .gray).frame(width: 9, height: 9)
+                    HStack(spacing: 12) {
+                        Circle().fill(c?.color ?? .gray).frame(width: 8, height: 8)
                         Text(it.title).fontWeight(.semibold).lineLimit(1)
                         Text(([it.place, c?.title ?? ""].filter { !$0.isEmpty } + ["last on " + dateText(it.start, "MMM d")]).joined(separator: " · "))
                             .font(.ui(12)).foregroundStyle(Palette.text2).lineLimit(1)
                         Spacer(minLength: 0)
                         if i == app.quickSel { Key("Tab") }
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 7)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
                     .background(i == app.quickSel ? Palette.accentSoft : .clear)
                     .contentShape(Rectangle()).onTapGesture { app.quickPick = it }
                 }
             }
             if !app.quickText.trimmingCharacters(in: .whitespaces).isEmpty {
                 section("WHAT I UNDERSTOOD")
-                Understood(app: app, store: store, p: app.quickPreview, pick: app.quickPick).padding(.horizontal, 16).padding(.bottom, 10)
+                Understood(app: app, store: store, p: app.quickPreview, pick: app.quickPick).padding(.horizontal, 16).padding(.bottom, 8)
             }
-            HStack(spacing: 14) {
+            HStack(spacing: 16) {
                 code(["/name"], "calendar"); code(["-a15m", "-a1h", "-a1d"], "alert before"); code(["-r1d", "-r1w", "-r1m"], "repeat")
             }
-            .font(.ui(11.5)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 9)
+            .font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading).overlay(alignment: .top) { Palette.line.frame(height: 1) }
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Key("Return"); Text("add"); Key("Tab"); Text("use past event"); Key("Esc"); Text("close")
                 Spacer()
                 if let err = app.quickError { Text(err).foregroundStyle(Palette.now) }
                 else { Text(app.quickTaken ? "Another app uses \(app.quickName). Change it in Settings" : "Shortcut can be changed in Settings") }
             }
-            .font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 10)
+            .font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 8)
             .background(Palette.bar).overlay(alignment: .top) { Palette.line.frame(height: 1) }
         }
         .font(.ui(13)).foregroundStyle(Palette.text)
         .frame(width: 640)
         .background(Palette.pop)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.black.opacity(0.08)))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.black.opacity(0.08)))
         .shadow(color: .black.opacity(0.38), radius: 40, y: 30)
-        .padding(.top, 10)
+        .padding(.top, 8)
         .onAppear { focused = true }
         .onChange(of: app.quickFocus) { _, _ in focused = true }
     }
 
     func section(_ t: String) -> some View {
-        Text(t).font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 6)
+        Text(t).font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
     }
 
     func code(_ codes: [String], _ what: String) -> some View {
@@ -644,7 +573,7 @@ struct QuickSettings: View {
                 Button(app.recordingKey ? "Press the new shortcut" : app.quickName) { record() }
             }
             Text(app.quickTaken || app.keyRefused ? "Another app already uses this shortcut. Pick a different one." : "Opens the add box on top of whatever app is in front. Use Control, Option or Command with a key; Esc cancels.")
-                .font(.ui(11.5)).foregroundStyle(app.quickTaken || app.keyRefused ? Palette.now : Palette.text3).fixedSize(horizontal: false, vertical: true)
+                .font(.ui(12)).foregroundStyle(app.quickTaken || app.keyRefused ? Palette.now : Palette.text3).fixedSize(horizontal: false, vertical: true)
         }
         .padding(20).frame(width: 440)
         .onDisappear { stop() }
@@ -682,21 +611,21 @@ struct StatusBar: View {
         // Too narrow for the key hints: only the Busy, Free, Maybe legend.
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 16) {
-                HStack(spacing: 5) { Key("N"); Text("new") }
-                HStack(spacing: 5) { Key("T"); Text("today") }
-                HStack(spacing: 5) { Key("1"); Text("to"); Key("5"); Text("day to year") }
-                HStack(spacing: 5) { Key("?"); Text("all shortcuts") }
+                HStack(spacing: 4) { Key("N"); Text("new") }
+                HStack(spacing: 4) { Key("T"); Text("today") }
+                HStack(spacing: 4) { Key("1"); Text("to"); Key("5"); Text("day to year") }
+                HStack(spacing: 4) { Key("?"); Text("all shortcuts") }
                 Spacer()
                 legend
             }
             HStack(spacing: 16) { Spacer(); legend }
         }
-        .font(.ui(11.5)).foregroundStyle(Palette.text3)
-        .padding(.horizontal, 14).frame(height: 30)
+        .font(.ui(12)).foregroundStyle(Palette.text3)
+        .padding(.horizontal, 16).frame(height: 32)
         .background(Palette.bar)
         .overlay(alignment: .top) { Palette.line.frame(height: 1) }
     }
-    var legend: some View { ForEach(ShowAs.allCases, id: \.self) { s in HStack(spacing: 5) { Mark(showAs: s, color: Palette.text3); Text(s.rawValue) } } }
+    var legend: some View { ForEach(ShowAs.allCases, id: \.self) { s in HStack(spacing: 4) { Mark(showAs: s, color: Palette.text3); Text(s.rawValue) } } }
 }
 
 struct ShortcutList: View {
@@ -710,10 +639,10 @@ struct ShortcutList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Keyboard shortcuts").font(.ui(15, weight: .semibold)).padding(.bottom, 12)
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 22), GridItem(.flexible())], spacing: 0) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 24), GridItem(.flexible())], spacing: 0) {
                 ForEach(rows, id: \.0) { r in
                     VStack(spacing: 0) {
-                        HStack { Text(r.0).lineLimit(1); Spacer(minLength: 6); Key(r.1) }.padding(.vertical, 5)
+                        HStack { Text(r.0).lineLimit(1); Spacer(minLength: 6); Key(r.1) }.padding(.vertical, 4)
                         Divider().overlay(Palette.lineSoft)
                     }
                 }
@@ -727,14 +656,14 @@ struct ToastView: View {
     @ObservedObject var app: AppState
     let toast: AppState.Toast
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Text("Deleted \u{201C}\(toast.text)\u{201D} from \(toast.calendar)")
             Button("Undo") { app.undo() }.buttonStyle(.plain).foregroundStyle(Palette.accent).fontWeight(.semibold)
             Key("Command Z")
         }
-        .padding(.horizontal, 14).padding(.vertical, 9)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Palette.pop).shadow(color: .black.opacity(0.18), radius: 12, y: 6))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Palette.line))
+        .padding(.horizontal, 16).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.pop).shadow(color: .black.opacity(0.18), radius: 12, y: 6))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Palette.line))
     }
 }
 
@@ -744,7 +673,7 @@ struct ConfirmDelete: View {
     let item: Item
     var body: some View {
         let c = store.calendar(item.calendarID)?.title ?? ""
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Delete \u{201C}\(item.title)\u{201D}?").font(.ui(15, weight: .semibold))
             Text("This removes it from your \(c) calendar on this Mac and on every device that syncs it. You can undo right after.")
                 .foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)
@@ -752,7 +681,7 @@ struct ConfirmDelete: View {
                 Spacer()
                 Button("Cancel") { app.confirmDelete = nil }.keyboardShortcut(.cancelAction)
                 Button("Delete", role: .destructive) { app.confirmDelete = nil; app.delete(item) }.keyboardShortcut(.defaultAction)
-            }.padding(.top, 6)
+            }.padding(.top, 4)
         }.padding(20).frame(width: 360).background(Palette.pop)
     }
 }

@@ -10,7 +10,7 @@ final class AppState: ObservableObject {
     let store: Store
     @Published var mode: Mode = Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .day { didSet { if store.access != .sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") }; reload() } }
     @Published var days: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() { didSet { if Look.saves { UserDefaults.standard.set(days, forKey: "weekDays") }; reload() } }
-    @Published var anchor: Date { didSet { reload() } }
+    @Published var anchor: Date { didSet { reload(); if Look.saves && store.access != .sample { UserDefaults.standard.set(anchor, forKey: "anchor"); UserDefaults.standard.set(Date(), forKey: "anchorSaved") } } }
     @Published var selectedID: String?
     @Published var panelOpen = false { didSet { if panelOpen { openTaskID = nil } } }
     // Phase 4 tasks: the task list (R) and one task's details share the right side with the event details.
@@ -55,7 +55,7 @@ final class AppState: ObservableObject {
     @Published var quickTaken = false  // another app already uses the shortcut
     @Published var keyRefused = false  // the shortcut just picked in Settings was taken, so the old one stays
     @Published var recordingKey = false  // Settings is waiting for a new shortcut
-    private var undoStack: [() -> Failure?] = []
+    @Published private var undoStack: [() -> Failure?] = []  // published: the Undo menu item greys out from it
     private var monitor: Any?
     private var timer: Timer?
 
@@ -64,7 +64,9 @@ final class AppState: ObservableObject {
     init(store: Store, today: Date = Date()) {
         self.store = store
         emails = EmailInbox(sample: store.access == .sample)
-        anchor = cal.startOfDay(for: today)
+        // Back to the date you were on, that same day; a new day opens on today, the view stays.
+        let saved = store.access == .sample || !Look.saves ? nil : UserDefaults.standard.object(forKey: "anchorSaved") as? Date
+        anchor = saved.map { cal.isDate($0, inSameDayAs: today) } == true ? UserDefaults.standard.object(forKey: "anchor") as? Date ?? cal.startOfDay(for: today) : cal.startOfDay(for: today)
         store.onError = { [weak self] in self?.error = $0 }
         now = today
         reload()
@@ -130,6 +132,14 @@ final class AppState: ObservableObject {
     var selected: Item? { selectedID.flatMap { id in store.items.first { $0.id == id } } }
     var openTask: ToDo? { openTaskID.flatMap { id in store.todos.first { $0.id == id } } }
     var sideOpen: Bool { panelOpen || tasksOpen || openTaskID != nil }
+    func closeSide() { panelOpen = false; tasksOpen = false; openTaskID = nil }
+    // Always has words: a toolbar subtitle that comes and goes changes the bar's height.
+    var subtitle: String {
+        let shown = store.calendars.allSatisfy { !store.hidden.contains($0.id) } ? "All calendars" : store.activeSet.map { $0.name + " set" } ?? "Some calendars"
+        return ((mode == .year ? [] : [weekLabel]) + [shown]).joined(separator: " · ")
+    }
+    func newSet() { openMain?(); editingSet = CalSet(name: "", calendars: store.calendars.map(\.id).filter { !store.hidden.contains($0) }) }
+    var canUndo: Bool { !undoStack.isEmpty }
     // Tasks in lists that are ticked in the sidebar: for the list (done ones only with "Show done") and for the calendar (ticked ones stay, struck through).
     var calendarTodos: [ToDo] { store.todos.filter { !store.hiddenLists.contains($0.listID) } }
     var shownTodos: [ToDo] { calendarTodos.filter { showDone || !$0.done } }
@@ -342,7 +352,7 @@ final class AppState: ObservableObject {
         if e.keyCode == 53 && showShortcuts { showShortcuts = false; return true }  // Esc on the shortcut list, which is its own window
         // The map is its own window too: Esc or a plain P closes it.
         if mapOpen, e.keyCode == 53 || (e.charactersIgnoringModifiers == "p" && e.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty) { mapOpen = false; return true }
-        if e.window?.title != "Dateline" { return false }  // Settings, or the main window is closed
+        if e.window?.identifier?.rawValue.hasPrefix("main") != true { return false }  // Settings, or the main window is closed
         let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
         let responder = NSApp.keyWindow?.firstResponder
         let typing = responder is NSText || responder is NSDatePicker
