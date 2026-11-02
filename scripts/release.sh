@@ -73,7 +73,10 @@ ditto -x -k "$ZIP" "$V"; VAPP="$V/Dateline.app"
 codesign --verify --deep --strict "$VAPP"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$VAPP/Contents/Info.plist")" = "$N" ] || { echo "Version check failed"; exit 1; }
 PUB=$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$VAPP/Contents/Info.plist")
-python3 -I - "$PUB" "$SIG" "$ZIP" <<'PY'
+# Its own Python for this check, kept beside the Sparkle tools, because a Homebrew Python upgrade loses installed packages.
+CHECK_PY="$SUPPORT/release-python/bin/python3"
+"$CHECK_PY" -c 'import cryptography' 2>/dev/null || { /usr/bin/python3 -m venv --clear "$SUPPORT/release-python"; "$CHECK_PY" -m pip install -q cryptography; }
+"$CHECK_PY" -I - "$PUB" "$SIG" "$ZIP" <<'PY'
 import sys, base64
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 Ed25519PublicKey.from_public_bytes(base64.b64decode(sys.argv[1])).verify(base64.b64decode(sys.argv[2]), open(sys.argv[3], "rb").read())
