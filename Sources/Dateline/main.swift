@@ -18,7 +18,7 @@ import AppKit
 let args = CommandLine.arguments
 if args.contains("--selftest") { exit(selftest()) }
 if let i = args.firstIndex(of: "--a4-code"), i + 3 < args.count { print(a4EngineCode(vault: args[i + 1], path: args[i + 2], day: args[i + 3].isEmpty ? nil : args[i + 3])); exit(0) }  // what the engine is sent, for the sandbox test
-if let i = args.firstIndex(of: "--a4-check"), i + 1 < args.count { exit(a4Check(args[i + 1])) }
+if let i = args.firstIndex(of: "--a4-check"), i + 1 < args.count { exit(a4Check(args[i + 1], projects: i + 2 < args.count ? args[i + 2] : nil)) }
 if let i = args.firstIndex(of: "--timing"), i + 1 < args.count { exit(MainActor.assumeIsolated { timingCheck(args[i + 1]) }) }
 if let i = args.firstIndex(of: "--timing-file"), i + 1 < args.count { exit(timingFile(args[i + 1])) }
 if args.contains("--assistant") { exit(assistantRelay()) }

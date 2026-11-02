@@ -1260,7 +1260,7 @@ struct AccountSettings: View {
     let dueSoon = cal.date(byAdding: .day, value: 3, to: cal.startOfDay(for: Date()))!.addingTimeInterval(11 * 3600)
     store.todos.removeAll { $0.a4 != nil }  // only the task below
     store.a4Calendar = c.id
-    store.todos.append(ToDo(id: "a4:/x", listID: "a4:H", title: "A4 check", due: dueSoon, timed: true, a4: A4Task(file: "/x")))
+    store.todos.append(ToDo(id: "a4:/x", listID: "a4:H", title: "A4 check", due: dueSoon, timed: true, a4: A4Task(file: "/x", sphere: "personal")))
     store.a4Apply(events: shown(), now: Date()); await settle()
     expect(shown().first { $0.title == "A4 check" }?.start == dueSoon && store.a4OnCalendar(store.todos.last!), "a task with a time reaches the server as an event")
     store.todos[store.todos.count - 1].due = dueSoon.addingTimeInterval(3600)

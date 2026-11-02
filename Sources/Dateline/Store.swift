@@ -136,7 +136,9 @@ final class Store: ObservableObject {
     var a4Fetch = 0  // only the newest read of the A4 folder is kept
     var a4Busy = 0  // a change on its way through Obsidian: a read now would undo what's on screen
     var a4Observer: Any?
-    @Published var a4Calendar: String? = UserDefaults.standard.string(forKey: "a4Calendar")  // where A4 tasks with a time go; nil keeps them as tasks
+    // Where A4 tasks with a time go, by their project's side of life; nil keeps that side as tasks.
+    @Published var a4Calendar: String? = UserDefaults.standard.string(forKey: "a4Calendar")  // personal
+    @Published var a4WorkCalendar: String? = UserDefaults.standard.string(forKey: "a4WorkCalendar")
     @Published var a4Links: [String: A4Link] = [:]  // by the note's path
     var a4Syncing = false
     var a4LastError: String?
