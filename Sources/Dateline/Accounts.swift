@@ -47,7 +47,6 @@ final class AccData {
     var loaded: Set<String> = []  // accounts read this launch: only these hide the Mac's own copy
     var chain: [String: Task<Void, Never>] = [:]
     var pending: [String: Int] = [:]
-    var failed: [String: Int] = [:]  // sends that failed, per account
     var tokens: [String: (String, Date)] = [:]
     var secrets: [String: String]?
     var goneEtag: [String: String] = [:]  // event address → the version a change still going out got, for a delete queued behind it
@@ -711,21 +710,11 @@ extension Store {
             guard let self else { return }
             guard !Task.isCancelled, self.accounts.contains(where: { $0.id == a.id }) else { return }  // the account was removed
             // A failed change shows its error; the sync once the queue is empty brings back what the account really has.
-            do { try await op(self) } catch { self.accData.failed[a.id, default: 0] += 1; self.onError?("\(c.title): " + ((error as? Failure)?.message ?? error.localizedDescription)) }
+            do { try await op(self) } catch { self.onError?("\(c.title): " + ((error as? Failure)?.message ?? error.localizedDescription)) }
             self.accData.pending[a.id] = max(0, self.accData.pending[a.id, default: 1] - 1)
             if self.accData.pending[a.id] == 0 { await self.sync(a.id) }
         }
         return accData.chain[a.id]!
-    }
-
-    // True once everything queued for this calendar's account has gone out without a failure. Call right after the change, before anything else runs.
-    func accSent(_ calendarID: String) -> Task<Bool, Never>? {
-        guard let (a, _) = accCal(calendarID), let chain = accData.chain[a.id] else { return nil }
-        let was = accData.failed[a.id, default: 0]
-        return Task { [weak self] in
-            await chain.value
-            return self?.accData.failed[a.id, default: 0] == was
-        }
     }
 
     @discardableResult private func davSend(_ a: Account, _ c: AccCal, href: String, new: Bool = false) -> Task<Void, Never> {
@@ -1267,6 +1256,20 @@ struct AccountSettings: View {
     let (from, to) = Store.accWindow()
     func shown() -> [Item] { store.accEvents(from: from, to: to) }
     func settle() async { while let t = store.accData.chain[a.id] { await t.value; if store.accData.chain[a.id] == t { break } } }
+    // A4 tasks with a time, through the pretend server: on, moved, off.
+    let dueSoon = cal.date(byAdding: .day, value: 3, to: cal.startOfDay(for: Date()))!.addingTimeInterval(11 * 3600)
+    store.todos.removeAll { $0.a4 != nil }  // only the task below
+    store.a4Calendar = c.id
+    store.todos.append(ToDo(id: "a4:/x", listID: "a4:H", title: "A4 check", due: dueSoon, timed: true, a4: A4Task(file: "/x")))
+    store.a4Apply(events: shown(), now: Date()); await settle()
+    expect(shown().first { $0.title == "A4 check" }?.start == dueSoon && store.a4OnCalendar(store.todos.last!), "a task with a time reaches the server as an event")
+    store.todos[store.todos.count - 1].due = dueSoon.addingTimeInterval(3600)
+    store.a4Apply(events: shown(), now: Date()); await settle()
+    expect(shown().first { $0.title == "A4 check" }?.start == dueSoon.addingTimeInterval(3600), "the task's new time reaches the server")
+    store.todos[store.todos.count - 1].timed = false
+    for _ in 0..<3 { store.a4Apply(events: shown(), now: Date()); await settle() }
+    expect(!shown().contains { $0.title == "A4 check" } && store.a4Links.isEmpty, "taking the time off removes the event from the server")
+    store.todos.removeLast(); store.a4Calendar = nil
     expect(shown().map(\.title) == ["Seed event"], "the server's event shows")
 
     let start = Date().addingTimeInterval(86400)
@@ -1274,19 +1277,6 @@ struct AccountSettings: View {
     else { print("FAIL: add refused"); return 1 }
     await settle()
     expect(Set(shown().map(\.title)) == ["Seed event", "Check event"] && store.accounts.first?.problem == nil, "an added event is on the server")
-    // Make it an event finishes the task only after the send worked.
-    guard case .success(let sentItem) = store.accAdd(Item(id: "", calendarID: c.id, title: "Sent check", start: start, end: start.addingTimeInterval(3600), allDay: false, place: "", notes: "", showAs: .busy), alertMinutes: nil, repeats: nil) else { print("FAIL: add refused"); return 1 }
-    let sentOK = await store.accSent(c.id)?.value
-    expect(sentOK == true, "a send that worked says so")
-    let keptPasswords = store.accData.secrets; store.accData.secrets = [:]
-    errors = []
-    guard case .success = store.accAdd(Item(id: "", calendarID: c.id, title: "Lost check", start: start, end: start.addingTimeInterval(3600), allDay: false, place: "", notes: "", showAs: .busy), alertMinutes: nil, repeats: nil) else { print("FAIL: add refused"); return 1 }
-    let sentBad = await store.accSent(c.id)?.value
-    expect(sentBad == false && !errors.isEmpty, "a send that failed says so")
-    store.accData.secrets = keptPasswords; errors = []
-    await settle()
-    store.delete(sentItem)
-    await settle()
     var moved = added; moved.title = "Check moved"
     expect(store.accUpdate(moved, old: added) == nil, "an edit is accepted")
     await settle()

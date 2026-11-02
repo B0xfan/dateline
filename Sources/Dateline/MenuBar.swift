@@ -93,7 +93,7 @@ struct MenuDrop: View {
     let close: () -> Void
 
     var body: some View {
-        let tasks = app.calendarTodos.filter { !$0.done && $0.due.map { cal.startOfDay(for: $0) <= cal.startOfDay(for: now) } == true }
+        let tasks = app.calendarTodos.filter { !$0.done && (!app.store.a4OnCalendar($0) || isOverdue($0, now: now)) && $0.due.map { cal.startOfDay(for: $0) <= cal.startOfDay(for: now) } == true }
         VStack(alignment: .leading, spacing: 0) {
             HStack { Text("Today · " + dateText(now, "EEE MMM d")).fontWeight(.semibold); Spacer(); Text("Week \(weekNumber(now))").foregroundStyle(Palette.text3) }
                 .padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 8)

@@ -136,6 +136,10 @@ final class Store: ObservableObject {
     var a4Fetch = 0  // only the newest read of the A4 folder is kept
     var a4Busy = 0  // a change on its way through Obsidian: a read now would undo what's on screen
     var a4Observer: Any?
+    @Published var a4Calendar: String? = UserDefaults.standard.string(forKey: "a4Calendar")  // where A4 tasks with a time go; nil keeps them as tasks
+    @Published var a4Links: [String: A4Link] = [:]  // by the note's path
+    var a4Syncing = false
+    var a4LastError: String?
 
     // Phase 7: subscribed and ready-made calendars (Subscribed.swift).
     @Published var subs: [Sub] = [] { didSet { save(subs, "subscriptions") } }
@@ -157,6 +161,7 @@ final class Store: ObservableObject {
         if let v: [CalSet] = load("calendarSets") { sets = v }
         if let v: [String] = load("recentEmoji") { recentEmoji = v }
         if let v: [String: Extra] = load("eventExtras") { extras = v }
+        if let v: [String: A4Link] = load("a4Links") { a4Links = v }
         loadAccounts()
         listenForChanges()
         loadSubs { self.requestAccess() }
@@ -166,6 +171,11 @@ final class Store: ObservableObject {
             Task { @MainActor in self.reloadA4() }
         }
     }
+
+    func saveA4Links() { save(a4Links, "a4Links") }
+    var a4CanSeeEvents: Bool { canRead || !accounts.isEmpty }
+    // Whether the events read just now could have included this calendar's: an account's are held in memory until its first sync.
+    func a4HasRead(_ id: String) -> Bool { isAcc(id) ? accCal(id).map { accData.loaded.contains($0.0.id) } == true : canRead }
 
     // Dateline's own saved data. Sample mode (every test and picture) keeps it in memory only.
     private func save<T: Encodable>(_ v: T, _ key: String) {

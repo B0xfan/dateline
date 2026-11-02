@@ -188,7 +188,7 @@ struct DayColumn: View {
                     }.allowsHitTesting(false).zIndex(3)
                 }
                 // Reminders with a time on this day (not overdue: those sit in today's Tasks row).
-                ForEach(app.calendarTodos.filter { t in t.timed && !isOverdue(t, now: app.now) && t.due.map { cal.isDate($0, inSameDayAs: day) } == true }) { t in
+                ForEach(app.calendarTodos.filter { t in t.timed && !isOverdue(t, now: app.now) && !store.a4OnCalendar(t) && t.due.map { cal.isDate($0, inSameDayAs: day) } == true }) { t in
                     TaskBlock(app: app, store: store, task: t)
                         .frame(width: w - 8, height: max(20, hourH / 2 - 2))
                         .offset(x: 4, y: CGFloat(t.due!.timeIntervalSince(day) / 3600) * hourH + 1)

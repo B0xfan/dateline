@@ -18,7 +18,7 @@ struct Parsed: Equatable {
     var calendarCode: String? = nil
     var alertMinutes: Int? = nil
     var repeats: Repeat? = nil
-    var notes = ""  // only set by Make Event from Email and Make it an event
+    var notes = ""  // only set by Make Event from Email and A4 tasks on the calendar
 }
 
 struct Repeat: Equatable {

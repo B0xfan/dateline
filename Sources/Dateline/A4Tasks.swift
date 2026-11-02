@@ -93,17 +93,6 @@ func a4When(_ d: Date, timed: Bool) -> String {
     return a4Day(d) + String(format: "T%02d:%02d", c.hour!, c.minute!)
 }
 
-// What "Make it an event" takes from a note: its whole text, and the minutes before that its first reminder rings (nil: no reminder). Offsets as A4's offsetMinutes; a ring after the time counts as at the time.
-func a4EventParts(_ text: String) -> (notes: String, lead: Int?)? {
-    guard let f = a4Front(text) else { return nil }
-    let notes = f.lines[(f.end + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-    let props = f.lines[1..<f.end].joined(separator: "\n")
-    guard let re = try? NSRegularExpression(pattern: "offset:\\s*[\"']?(-)?P(?:(\\d+)W)?(?:(\\d+)D)?(?:T(?:(\\d+)H)?(?:(\\d+)M)?)?"),
-          let m = re.firstMatch(in: props, range: NSRange(props.startIndex..., in: props)) else { return (notes, nil) }
-    func part(_ i: Int) -> Int { Range(m.range(at: i), in: props).flatMap { Int(props[$0]) } ?? 0 }
-    return (notes, Range(m.range(at: 1), in: props) == nil ? 0 : (part(2) * 7 + part(3)) * 1440 + part(4) * 60 + part(5))
-}
-
 // The time stamp A4 writes in dateModified: local time with its offset.
 func a4Stamp(_ d: Date) -> String {
     let f = DateFormatter()
@@ -118,6 +107,8 @@ func a4Project(_ link: String) -> String {
     let name = path.split(separator: "/").last.map(String.init) ?? path
     return name.hasSuffix(".md") ? String(name.dropLast(3)) : name
 }
+
+func a4Body(_ f: (lines: [String], end: Int)) -> String { f.lines[(f.end + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) }
 
 // One note as a task; nil for what A4 doesn't show as a task: no task tag, archived, kept for Someday, or finished over a week ago.
 // shortcut: a task finished through A4's engine leaves here when A4 files it in the Archive (about 5 minutes), because reopening one takes A4's own un-archive; read the Archive too if done tasks should stay the week.
@@ -141,7 +132,7 @@ func a4Read(_ text: String, file: String, now: Date) -> ToDo? {
     let name = (file as NSString).lastPathComponent
     let title = a4Value(f, "title")
     let project = a4List(f, "projects").first.map(a4Project) ?? "Inbox"
-    let body = f.lines[(f.end + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    let body = a4Body(f)
     let priority = a4Value(f, "priority")
     return ToDo(id: "a4:" + file, listID: "a4:" + project, title: title.isEmpty ? String(name.dropLast(3)) : title, due: when, timed: when != nil && minutes != nil, done: done || (repeating && a4List(f, "complete_instances").contains(String(raw.prefix(10)))), notes: String(body.prefix(2000)),
                 a4: A4Task(status: status.isEmpty ? "open" : status, priority: priority.isEmpty ? "normal" : priority, file: file, repeating: repeating))
@@ -191,6 +182,162 @@ func a4Changes(old: ToDo, new: ToDo, text: String, now: Date) -> [(String, Strin
     }
     if !set.isEmpty { set.append(("dateModified", a4Stamp(now))) }
     return set
+}
+
+// MARK: A4 tasks with a time, kept as real events on the calendar John picked (John, 2026-11-02)
+// Dateline does the copying, so it happens while Dateline is running. A repeating task stays a task. The link lives in Dateline, not the note.
+
+struct A4Link: Codable, Equatable {
+    var event: String
+    var calendar: String
+    var start: Date  // the last time task and event agreed, which tells which one moved
+    var title: String
+    var misses = 0  // reads in a row that should have held the event and didn't
+    var dismissed = false  // the event was deleted: the task shows as a task and no event comes back
+    var finished = false  // seen done, so its note leaving the folder is A4 filing it
+    var away = false  // its note has left the folder; if it comes back, so does the link
+    var pushed: Date? = nil  // where Dateline last sent the event, so a task changed again before they agree still counts as the task moving
+    var zone = TimeZone.current.identifier  // a note's time has no zone: away from this one, task and event would seem to differ, so they wait
+}
+
+enum A4Step: Equatable {
+    case create(ToDo)
+    case moveEvent(Item, to: Date, title: String)
+    case moveTask(ToDo, to: Date)
+    case dropEvent(Item)
+}
+
+let a4CreateCap = 20  // new events per pass, so a surprise in the folder can't flood a calendar
+let a4DropCap = 5  // events removed per pass: the one thing here that can't be undone
+
+// What to do to bring tasks and events together. Pure: covered by --selftest. If both moved, the note wins.
+// A move is recorded only once both sides agree, so one that fails to send is simply tried again.
+// `seen`: whether this read could have held a calendar's events; one that couldn't says nothing about a missing event.
+func a4Plan(tasks: [ToDo], links: [String: A4Link], events: [Item], calendarID: String?, now: Date, seen: (String) -> Bool = { _ in true }) -> (links: [String: A4Link], steps: [A4Step]) {
+    func wanted(_ t: ToDo) -> Bool { t.timed && t.a4?.repeating == false && !t.done }
+    var links = links, steps: [A4Step] = []
+    var byFile: [String: ToDo] = [:]
+    for t in tasks { if let f = t.a4?.file { byFile[f] = t } }
+    var newcomers = byFile.filter { links[$0.key] == nil && wanted($0.value) }
+    var claimed = Set(links.values.map(\.event)), drops = 0
+    for (file, was) in links.sorted(by: { $0.key < $1.key }) {
+        var l = was
+        guard let t = byFile[file] else {
+            // A renamed note keeps its Due, so it shows up as one new task at the same time, in the same read.
+            let same = newcomers.filter { $0.value.due == l.start }
+            if !l.away, !l.finished, same.count == 1, let n = same.first?.key {
+                links[file] = nil; links[n] = l; newcomers[n] = nil
+            } else if l.start < addDays(now, -90) {
+                links[file] = nil
+            } else {
+                l.away = true; links[file] = l  // filed or gone; the event stays, and the link in case the note comes back
+            }
+            continue
+        }
+        l.away = false
+        if t.a4?.repeating == true { links[file] = nil; continue }
+        if l.zone != TimeZone.current.identifier { links[file] = l; continue }
+        let own = events.first { $0.id == l.event }
+        let found = own ?? events.first { $0.title == l.title && $0.start == l.start && !claimed.contains($0.id) }  // moved to another calendar, it can have a new identifier
+        if !t.timed {
+            // Only after three reads, so a half-typed time saved by Obsidian doesn't cost the event. Unread calendar: wait.
+            if l.dismissed || t.done { links[file] = nil; continue }
+            if !seen(l.calendar) { links[file] = l; continue }
+            l.misses += 1
+            if l.misses < 3 || (found != nil && drops >= a4DropCap) { links[file] = l; continue }
+            if let found { steps.append(.dropEvent(found)); drops += 1 }
+            links[file] = nil; continue
+        }
+        if t.done { l.finished = true; links[file] = l; continue }
+        l.finished = false
+        if l.dismissed && own == nil { links[file] = l; continue }  // an undo or a late sync can bring it back
+        l.dismissed = false
+        guard let e = found else {
+            if seen(l.calendar), l.start > addDays(now, -59) { l.misses += 1 }  // the read goes back 60 days
+            if l.misses >= 3 { l.dismissed = true }
+            links[file] = l
+            continue
+        }
+        l.event = e.id; l.calendar = e.calendarID; l.misses = 0
+        claimed.insert(e.id)
+        if t.due == e.start { l.start = e.start; l.pushed = nil }
+        if t.title == e.title { l.title = e.title }
+        let taskMoved = t.due != e.start && (t.due != l.start || e.start == l.pushed), retitled = t.title != e.title && t.title != l.title
+        if taskMoved { l.pushed = t.due }
+        links[file] = l
+        if taskMoved || retitled {
+            steps.append(.moveEvent(e, to: taskMoved ? t.due! : e.start, title: retitled ? t.title : e.title))
+        } else if t.due != e.start && !e.allDay {
+            steps.append(.moveTask(t, to: e.start))
+        }
+    }
+    if let calendarID, seen(calendarID) {
+        var fresh: [ToDo] = []
+        for t in newcomers.values.filter({ $0.due! >= now }).sorted(by: { $0.id < $1.id }) {
+            // Already there (the links were lost): take it up rather than make a second one.
+            if let e = events.first(where: { $0.title == t.title && $0.start == t.due && !claimed.contains($0.id) }) {
+                links[t.a4!.file] = A4Link(event: e.id, calendar: e.calendarID, start: e.start, title: t.title); claimed.insert(e.id)
+            } else { fresh.append(t) }
+        }
+        steps += fresh.prefix(a4CreateCap).map(A4Step.create)
+    }
+    return (links, steps)
+}
+
+extension Store {
+    // Shows once: on the calendar as its event, not also as a task block.
+    func a4OnCalendar(_ t: ToDo) -> Bool {
+        guard let f = t.a4?.file, let l = a4Links[f] else { return false }
+        return !l.dismissed && !hidden.contains(l.calendar) && a4HasRead(l.calendar)  // only when the event can be on screen; else the task shows
+    }
+
+    func a4Pick(calendar: String?) {
+        a4Calendar = calendar
+        if access != .sample { UserDefaults.standard.set(calendar, forKey: "a4Calendar") }
+        reloadA4()
+    }
+
+    // Reads the events off the main thread, then brings them and the tasks together.
+    func a4Sync() {
+        guard a4On, a4Calendar != nil || !a4Links.isEmpty, access != .sample, a4CanSeeEvents, !a4Syncing, a4Busy == 0 else { return }
+        a4Syncing = true
+        let now = Date(), from = now.addingTimeInterval(-60 * 86400), to = now.addingTimeInterval(2 * 365 * 86400), read = canRead
+        Task {
+            let mac = read ? await source.eventsInBackground(from: from, to: to).map(decorated) : []
+            a4Syncing = false
+            a4Apply(events: mac + accEvents(from: from, to: to), now: Date())
+        }
+    }
+
+    func a4Apply(events: [Item], now: Date) {
+        let target = a4Calendar.flatMap { id in calendars.first { $0.id == id && $0.writable } }?.id
+        let plan = a4Plan(tasks: todos.filter { $0.a4 != nil }, links: a4Links, events: events, calendarID: target, now: now, seen: a4HasRead)
+        var links = plan.links, failure: Failure?
+        for step in plan.steps {
+            switch step {
+            case .create(let t):
+                var p = Parsed(start: t.due!, end: t.due!.addingTimeInterval(3600))
+                // No alert of its own: A4's reminders job rings for the task.
+                p.title = t.title; p.notes = (try? String(contentsOfFile: t.a4!.file, encoding: .utf8)).flatMap(a4Front).map(a4Body) ?? t.notes
+                switch add(p, calendarID: target) {
+                // shortcut: on Google or iCloud a send that fails later reads as a deleted event, so the task stays a task; wait for the send if that bites.
+                case .success(let e): links[t.a4!.file] = A4Link(event: e.id, calendar: e.calendarID, start: t.due!, title: t.title)
+                case .failure(let f): failure = f
+                }
+            case let .moveEvent(e, to, title):
+                var n = e; n.start = to; n.end = to.addingTimeInterval(e.end.timeIntervalSince(e.start)); n.title = title
+                if let f = update(n) { failure = f }
+            case let .moveTask(t, to):
+                var n = t; n.due = to
+                if let f = updateA4(n, old: t) { failure = f } else { links[t.a4!.file]?.start = to }  // the note is written, so they agree now
+            case .dropEvent(let e):
+                if let f = delete(e) { failure = f }
+            }
+        }
+        if links != a4Links { a4Links = links; saveA4Links() }
+        // Once per message: a failed step is tried again at every pass.
+        if failure?.message != a4LastError { a4LastError = failure?.message; if let failure { onError?("A4 tasks on the calendar: " + failure.message) } }
+    }
 }
 
 // MARK: A4's engine, through the running Obsidian (the same route as the task reminders job)
@@ -248,7 +395,7 @@ extension Store {
         let n = a4Fetch, on = a4On, folder = a4Folder
         Task.detached(priority: .utility) {
             let found = on ? a4Scan(folder, now: Date()) : []
-            await MainActor.run { if n == self.a4Fetch, self.a4Busy == 0 { self.showA4(found) } }
+            await MainActor.run { if n == self.a4Fetch, self.a4Busy == 0 { self.showA4(found); if !found.isEmpty { self.a4Sync() } } }
         }
     }
 
@@ -340,6 +487,8 @@ func a4Check(_ folder: String) -> Int32 {
     let files = (try? FileManager.default.contentsOfDirectory(atPath: folder))?.filter { $0.hasSuffix(".md") }.sorted() ?? []
     let tasks = a4Scan(folder, now: now)
     print("notes: \(files.count), shown as tasks: \(tasks.count), not done: \(tasks.filter { !$0.done }.count), with a date: \(tasks.filter { $0.due != nil }.count), repeating: \(tasks.filter { $0.a4?.repeating == true }.count), projects: \(Set(tasks.map(\.listID)).count)")
+    let becoming = a4Plan(tasks: tasks, links: [:], events: [], calendarID: "c", now: now).steps.compactMap { if case .create(let t) = $0 { return t.title } else { return nil } }
+    print("would become events: \(becoming.count)")
     for t in tasks {
         guard let a = t.a4, let text = try? String(contentsOfFile: a.file, encoding: .utf8) else { expect(false, "reads back: \(t.id)"); continue }
         expect(!t.title.isEmpty, "has a title: \(t.id)")
@@ -428,34 +577,81 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
     var later = appt; later.due = at(3, 15, 0)
     expect(!a4Changes(old: appt, new: later, text: "---\ndue: 2026-11-03T11:00\n---\n", now: now).contains { $0.0 == "reminders" }, "a4: changing a time adds no reminder")
     expect(sameClock(at(1, 11, 30), on: at(5, 0, 0)) == at(5, 11, 30), "the time stays when the day changes")
-    func lead(_ props: String) -> Int?? { a4EventParts("---\n\(props)\n---\n\nText") .map(\.lead) }
-    expect(lead("reminders:\n  - id: r\n    offset: PT0M") == .some(.some(0)) && lead("reminders:\n  - offset: \"-PT1H30M\"") == .some(.some(90)) && lead("reminders: [{id: r, offset: -P1D}]") == .some(.some(1440)) && lead("status: open") == .some(.none), "a4: a reminder's lead carries to the event")
-    expect(a4EventParts("---\ndue: x\n---\n\n" + String(repeating: "a", count: 3000))?.notes.count == 3000, "a4: the event gets the note's whole text")
+    // A4 tasks with a time, as real events.
+    func task(_ file: String, _ due: Date?, timed: Bool = true, done: Bool = false, repeating: Bool = false, title: String = "Vet") -> ToDo {
+        ToDo(id: "a4:" + file, listID: "a4:H", title: title, due: due, timed: timed, done: done, a4: A4Task(file: file, repeating: repeating))
+    }
+    func ev(_ start: Date, id: String = "e1", title: String = "Vet") -> Item { Item(id: id, calendarID: "c", title: title, start: start, end: start.addingTimeInterval(1800), allDay: false, place: "", notes: "", showAs: .busy) }
+    let dueAt = at(3, 11, 0), link = A4Link(event: "e1", calendar: "c", start: dueAt, title: "Vet")
+    func plan(_ ts: [ToDo], _ ls: [String: A4Link] = [:], _ es: [Item] = [], calendar: String? = "c") -> (links: [String: A4Link], steps: [A4Step]) { a4Plan(tasks: ts, links: ls, events: es, calendarID: calendar, now: now) }
+    let vetTask = task("/a", dueAt)
+    expect(plan([vetTask]).steps == [.create(vetTask)], "a4 link: a new task with a time makes an event")
+    expect(plan([vetTask], calendar: nil).steps.isEmpty, "a4 link: no calendar picked, no event")
+    expect(plan([task("/a", at(3, 11, 0), done: true), task("/b", at(3, 11, 0), repeating: true), task("/c", at(3, 0, 0), timed: false), task("/d", cal.date(byAdding: .day, value: -1, to: now)!)]).steps.isEmpty, "a4 link: done, repeating, no time and past tasks make none")
+    expect(plan((0..<30).map { task("/\($0)", dueAt) }).steps.count == a4CreateCap, "a4 link: new events per pass are capped")
+    expect(plan([vetTask], ["/a": link], [ev(dueAt)]).steps.isEmpty, "a4 link: nothing moved, nothing to do")
+    expect(plan([task("/a", at(4, 9, 0))], ["/a": link], [ev(dueAt)]).steps == [.moveEvent(ev(dueAt), to: at(4, 9, 0), title: "Vet")], "a4 link: the task moved, so the event follows")
+    expect(plan([vetTask], ["/a": link], [ev(at(4, 9, 0))]).steps == [.moveTask(vetTask, to: at(4, 9, 0))], "a4 link: the event moved, so the task follows")
+    expect(plan([task("/a", at(4, 9, 0))], ["/a": link], [ev(at(5, 9, 0))]).steps == [.moveEvent(ev(at(5, 9, 0)), to: at(4, 9, 0), title: "Vet")], "a4 link: both moved, the note wins")
+    expect(plan([task("/a", dueAt, title: "Vet visit")], ["/a": link], [ev(dueAt)]).steps == [.moveEvent(ev(dueAt), to: dueAt, title: "Vet visit")], "a4 link: a new title reaches the event")
+    expect(plan([vetTask], ["/a": link], [ev(dueAt, title: "My name")]).steps.isEmpty, "a4 link: a new title on the event stays")
+    let untimed = plan([task("/a", at(3, 0, 0), timed: false)], ["/a": link], [ev(dueAt)])
+    expect(untimed.steps.isEmpty && untimed.links["/a"]?.misses == 1, "a4 link: a time gone for one read leaves the event, in case it was half typed")
+    let threeReads = plan([task("/a", at(3, 0, 0), timed: false)], ["/a": { var m = link; m.misses = 2; return m }()], [ev(dueAt)])
+    expect(threeReads.steps == [.dropEvent(ev(dueAt))] && threeReads.links.isEmpty, "a4 link: the time stays off, the event goes")
+    let manyOff = Dictionary(uniqueKeysWithValues: (0..<9).map { ("/\($0)", A4Link(event: "e\($0)", calendar: "c", start: dueAt, title: "Vet", misses: 2)) })
+    expect(plan((0..<9).map { task("/\($0)", at(3, 0, 0), timed: false) }, manyOff, (0..<9).map { ev(dueAt, id: "e\($0)") }).steps.count == a4DropCap, "a4 link: events removed per pass are capped")
+    let pushedOnce = plan([task("/a", at(4, 9, 0))], ["/a": link], [ev(dueAt)]).links
+    expect(plan([vetTask], pushedOnce, [ev(at(4, 9, 0))]).steps == [.moveEvent(ev(at(4, 9, 0)), to: dueAt, title: "Vet")], "a4 link: a task changed back before they agree isn't overwritten")
+    expect(plan([task("/a", at(4, 9, 0))], pushedOnce, [ev(dueAt)]).steps == [.moveEvent(ev(dueAt), to: at(4, 9, 0), title: "Vet")], "a4 link: a send that failed is tried again, the note unchanged")
+    expect(plan([vetTask], [:], [ev(dueAt)]).steps.isEmpty && plan([vetTask], [:], [ev(dueAt)]).links["/a"]?.event == "e1", "a4 link: an event already there is taken up, not made twice")
+    expect(plan([vetTask, task("/b", dueAt)], ["/b": link], [ev(dueAt)]).steps == [.create(vetTask)], "a4 link: an event another task owns isn't taken")
+    expect(plan([task("/a", at(4, 9, 0))], ["/a": { var m = link; m.zone = "Asia/Tokyo"; return m }()], [ev(dueAt)]).steps.isEmpty, "a4 link: away from the note's time zone nothing moves")
+    expect(plan([vetTask], ["/a": { var m = link; m.dismissed = true; return m }()], [ev(dueAt)]).links["/a"]?.dismissed == false, "a4 link: an event that comes back is linked again")
+    expect(a4Plan(tasks: [vetTask], links: [:], events: [], calendarID: "c", now: now, seen: { _ in false }).steps.isEmpty, "a4 link: no event made on a calendar not read yet")
+    expect(plan([task("/a", dueAt, done: true)], ["/a": link], [ev(at(5, 9, 0))]).steps.isEmpty, "a4 link: a finished task's event is left alone")
+    let filed = plan([], ["/a": link], [ev(dueAt)])
+    expect(filed.steps.isEmpty && filed.links["/a"]?.away == true, "a4 link: a filed task leaves its event in place")
+    expect(plan([vetTask], filed.links, [ev(dueAt)]).steps.isEmpty && plan([vetTask], filed.links, [ev(dueAt)]).links["/a"]?.away == false, "a4 link: a note that comes back finds its event, not a second one")
+    let finishedLink = plan([task("/a", dueAt, done: true)], ["/a": link], [ev(dueAt)]).links
+    expect(plan([task("/new", dueAt, title: "Dentist")], finishedLink, [ev(dueAt)]).steps.count == 1 && plan([task("/new", dueAt, title: "Dentist")], finishedLink, [ev(dueAt)]).links["/new"] == nil, "a4 link: a new task at a finished task's time gets its own event")
+    expect(plan([task("/x", dueAt), task("/y", dueAt)], ["/a": link], [ev(dueAt)]).links["/a"] != nil, "a4 link: two new tasks at that time aren't taken for a rename")
+    expect(plan([task("/a", at(4, 9, 0))], ["/a": link], [ev(dueAt)]).links["/a"]?.start == dueAt, "a4 link: a move isn't recorded until the event has it, so a failed send is tried again")
+    expect(plan([task("/a", at(4, 9, 0))], ["/a": link], [ev(at(4, 9, 0))]).links["/a"]?.start == at(4, 9, 0), "a4 link: agreeing records the time")
+    expect(plan([task("/a", dueAt, title: "Vet visit")], ["/a": link], [ev(at(5, 9, 0))]).steps == [.moveEvent(ev(at(5, 9, 0)), to: at(5, 9, 0), title: "Vet visit")], "a4 link: a new title doesn't snap a moved event back")
+    expect(a4Plan(tasks: [vetTask], links: ["/a": link], events: [], calendarID: "c", now: now, seen: { _ in false }).links["/a"]?.misses == 0, "a4 link: a calendar not read yet counts no miss")
+    let renamed = plan([task("/new", dueAt)], ["/a": link], [ev(dueAt)])
+    expect(renamed.steps.isEmpty && renamed.links["/new"] == link, "a4 link: a renamed note keeps its event")
+    let otherCal = plan([vetTask], ["/a": link], [ev(dueAt, id: "e2")])
+    expect(otherCal.steps.isEmpty && otherCal.links["/a"]?.event == "e2", "a4 link: an event moved to another calendar stays linked")
+    var left = ["/a": link]
+    for _ in 0..<2 { left = plan([vetTask], left).links }
+    expect(left["/a"]?.dismissed == false && plan([vetTask], left).links["/a"]?.dismissed == true, "a4 link: a missing event counts as deleted after three reads")
+    var gone = link; gone.dismissed = true
+    expect(plan([vetTask], ["/a": gone]).steps.isEmpty, "a4 link: a deleted event doesn't come back")
+    expect(plan([vetTask], ["/a": { var m = link; m.misses = 2; return m }()], [ev(dueAt)]).links["/a"]?.misses == 0, "a4 link: finding it again resets the count")
     expect(a4Project("[[a/b/Home.md|H]]") == "Home" && a4Project("Plain") == "Plain", "a4: project names")
     expect(a4Stamp(now).hasPrefix("2026-10-31T09:00:00.000") && a4Stamp(now).count == 29, "a4: A4's time stamp")
     MainActor.assumeIsolated {
-        let made = AppState(store: Store(sample: true), today: now)
-        let vet = made.store.todos.first { $0.title == "Vet appointment" }!, calendar = made.store.calendars.first(where: \.writable)!
-        made.makeEvent(from: vet, calendar: calendar)
-        let event = made.store.items.first { $0.title == "Vet appointment" }
-        expect(event?.start == vet.due && event?.calendarID == calendar.id && event.map { $0.end.timeIntervalSince($0.start) } == 3600, "a4: a task with a time becomes an hour-long event on the chosen calendar")
-        expect(made.store.todos.first { $0.id == vet.id }?.done == true, "a4: making the event finishes the task")
-        made.undo()
-        expect(made.store.todos.first { $0.id == vet.id }?.done == false && !made.store.items.contains { $0.title == "Vet appointment" }, "a4: one undo takes back the event and the finish")
-        made.store.a4Busy = 1
-        made.makeEvent(from: vet, calendar: calendar)
-        expect(!made.store.items.contains { $0.title == "Vet appointment" }, "a4: no event while a change is still saving")
-        made.store.a4Busy = 0
-        made.makeEvent(from: vet, calendar: calendar)
-        made.store.a4Busy = 1; made.undo(); made.error = nil
-        expect(made.store.items.contains { $0.title == "Vet appointment" }, "a4: undo waits while a change is still saving")
-        made.store.a4Busy = 0; made.undo()
-        expect(!made.store.items.contains { $0.title == "Vet appointment" } && made.store.todos.first { $0.id == vet.id }?.done == false, "a4: and works when tried again")
-        var rule = vet; rule.a4?.repeating = true
-        made.makeEvent(from: rule, calendar: calendar)
-        var noTime = vet; noTime.timed = false
-        made.makeEvent(from: noTime, calendar: calendar)
-        expect(!made.store.items.contains { $0.title == "Vet appointment" }, "a4: a repeating task or one with no time makes no event")
+        // The whole round on sample calendars: event made, shown once, each side moves the other.
+        let linked = AppState(store: Store(sample: true), today: now)
+        let ls = linked.store, vet = ls.todos.first { $0.title == "Vet appointment" }!, target = ls.calendars.first { $0.writable && !ls.hidden.contains($0.id) }!
+        ls.a4Calendar = target.id
+        @MainActor func events() -> [Item] { ls.between(addDays(now, -60), addDays(now, 400)) }
+        ls.a4Apply(events: events(), now: addDays(vet.due!, -1))
+        @MainActor func theEvent() -> Item? { events().first { $0.title == "Vet appointment" } }
+        expect(theEvent()?.start == vet.due && theEvent()?.calendarID == target.id && ls.a4OnCalendar(vet), "a4 link: the event is made and the task shows once")
+        let firstCount = events().count
+        ls.a4Apply(events: events(), now: addDays(vet.due!, -1))
+        expect(events().count == firstCount, "a4 link: a second pass makes no second event")
+        var pushed = theEvent()!; pushed.start = addDays(pushed.start, 1); pushed.end = addDays(pushed.end, 1)
+        ls.update(pushed)
+        ls.a4Apply(events: events(), now: addDays(vet.due!, -1))
+        expect(ls.todos.first { $0.id == vet.id }?.due == pushed.start, "a4 link: moving the event moves the task")
+        var back = ls.todos.first { $0.id == vet.id }!; back.due = vet.due
+        ls.todos = ls.todos.map { $0.id == back.id ? back : $0 }
+        ls.a4Apply(events: events(), now: addDays(vet.due!, -1))
+        expect(theEvent()?.start == vet.due, "a4 link: moving the task moves the event")
         let d = UserDefaults.standard, before = (d.object(forKey: "a4On") as? Bool, d.string(forKey: "a4Folder"))
         let a = AppState(store: Store(sample: true), today: now)
         a.store.a4Set(on: false, folder: "/selftest")
@@ -524,14 +720,7 @@ struct A4TaskDetail: View {
                 Text("NOTE").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 16).padding(.bottom, 4)
                 Text(task.notes.isEmpty ? "No text in this note." : task.notes).font(.ui(13)).foregroundStyle(task.notes.isEmpty ? Palette.text3 : Palette.text2)
                     .lineLimit(8).fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 8) {
-                    Button("Open in Obsidian") { openInObsidian(info.file) }
-                    if task.timed && !info.repeating && !task.done {
-                        Menu("Make it an event") {
-                            ForEach(store.calendars.filter { $0.writable && !store.hidden.contains($0.id) }) { c in Button(c.title + "  (" + c.account + ")") { app.makeEvent(from: task, calendar: c) } }
-                        }.fixedSize().help("Puts it on a calendar as a real event for an hour and finishes this task in A4")
-                    }
-                }.padding(.top, 12)
+                Button("Open in Obsidian") { openInObsidian(info.file) }.padding(.top, 12)
                 Text("Saved in your A4 vault, so Obsidian sees each change. Change the title, the note's text and a repeating task's time in Obsidian.")
                     .font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
@@ -578,6 +767,12 @@ struct A4Settings: View {
                         if o.runModal() == .OK, let u = o.url { store.a4Set(folder: u.path) }
                     }
                 }
+                Picker("Put tasks with a time on", selection: Binding(get: { store.a4Calendar }, set: { store.a4Pick(calendar: $0) })) {
+                    Text("No calendar").tag(String?.none)
+                    ForEach(store.calendars.filter(\.writable)) { c in Text(c.title + "  (" + c.account + ")").tag(String?.some(c.id)) }
+                }.fixedSize().padding(.top, 8)
+                Text("Each A4 task with a date and time becomes a real event on that calendar, an hour long. Move the event and the task's Due follows; change the task and the event follows. Repeating tasks stay tasks. It happens while Dateline is running.")
+                    .font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
                 Text(FileManager.default.fileExists(atPath: store.a4Folder) || store.access == .sample
                      ? "Found \(count) tasks that aren't done. Tasks with a Due property show on the calendar; the rest sit under No date, by project."
                      : "That folder isn't on this Mac.")
