@@ -89,7 +89,8 @@ struct MainView: View {
             .toolbar { toolbar }
         }
         .inspector(isPresented: Binding(get: { app.openTask != nil || (panels.panelOpen && app.selected != nil) || panels.tasksOpen }, set: { if !$0 { app.closeSide() } })) {
-            Group {
+            // The sliver keeps a panel's scroll view off the top edge: touching it, the system draws the panel a toolbar's height below where its clicks land.
+            VStack(spacing: 0) { Color.clear.frame(height: 1); Group {
                 if let t = app.openTask {
                     if t.a4 != nil { A4TaskDetail(app: app, store: store, task: t).id(t.id) } else { TaskDetail(app: app, store: store, task: t).id(t.id) }
                 } else if panels.panelOpen, let it = app.selected {
@@ -97,7 +98,7 @@ struct MainView: View {
                 } else if panels.tasksOpen {
                     TaskList(app: app, store: store, panel: app.taskPanel)
                 }
-            }
+            } }
             .inspectorColumnWidth(min: 320, ideal: 320, max: 320)
         }
         .background(Palette.win)
