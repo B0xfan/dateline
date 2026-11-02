@@ -142,13 +142,15 @@ func a4Read(_ text: String, file: String, now: Date) -> ToDo? {
 // Each project note's side of life, by its name in lower case, as Obsidian's links ignore case.
 func a4Spheres(_ folder: String) -> [String: String] {
     guard FileManager.default.fileExists(atPath: folder), let walk = FileManager.default.enumerator(at: URL(fileURLWithPath: folder), includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { return [:] }  // a missing folder would otherwise walk from the current one
-    var found: [String: String] = [:]
+    var found: [String: String] = [:], unclear: Set<String> = []
     for case let u as URL in walk where u.pathExtension == "md" {
         guard let f = (try? String(contentsOf: u, encoding: .utf8)).flatMap(a4Front) else { continue }
-        let side = a4Value(f, "sphere")
-        if !side.isEmpty { found[u.deletingPathExtension().lastPathComponent.lowercased()] = side }
+        let side = a4Value(f, "sphere"), name = u.deletingPathExtension().lastPathComponent.lowercased()
+        if side.isEmpty { continue }
+        if let was = found[name], was != side { unclear.insert(name) }  // two notes, one name: no guessing
+        found[name] = side
     }
-    return found
+    return found.filter { !unclear.contains($0.key) }
 }
 
 // Every task in the folder. Project notes sit in the vault's Projects room unless told otherwise; `sides` false skips reading them when no calendar is picked.
@@ -659,12 +661,14 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
     try? "---\ntype: project\nsphere: work\n---\n".write(toFile: projectDir + "/client.md", atomically: true, encoding: .utf8)
     try? "---\nsphere: \"personal\"\n---\n".write(toFile: projectDir + "/Home.md", atomically: true, encoding: .utf8)
     try? "---\ntype: project\n---\n\nsphere: work in the text\n".write(toFile: projectDir + "/Unmarked.md", atomically: true, encoding: .utf8)
-    for (name, project) in [("a", "Client"), ("b", "Home"), ("c", "Unmarked"), ("d", "Nowhere")] {
+    try? "---\nsphere: work\n---\n".write(toFile: projectDir + "/Both.md", atomically: true, encoding: .utf8)
+    try? "---\nsphere: personal\n---\n".write(toFile: root + "/Projects/Both.md", atomically: true, encoding: .utf8)
+    for (name, project) in [("a", "Client"), ("b", "Home"), ("c", "Unmarked"), ("d", "Nowhere"), ("e", "Both")] {
         try? "---\nstatus: open\nprojects:\n  - \"[[x/\(project)]]\"\ntags:\n  - task\n---\n".write(toFile: taskDir + "/\(name).md", atomically: true, encoding: .utf8)
     }
     let sides = Dictionary(uniqueKeysWithValues: a4Scan(taskDir, now: now, projects: root + "/Projects").map { (($0.a4!.file as NSString).lastPathComponent, $0.a4!.sphere) })
     try? fm.removeItem(atPath: root)
-    expect(sides == ["a.md": "work", "b.md": "personal", "c.md": "", "d.md": ""], "a4 link: a task takes its project's side of life")
+    expect(sides == ["a.md": "work", "b.md": "personal", "c.md": "", "d.md": "", "e.md": ""], "a4 link: a task takes its project's side of life")
     expect(a4Project("[[a/b/Home.md|H]]") == "Home" && a4Project("Plain") == "Plain", "a4: project names")
     expect(a4Stamp(now).hasPrefix("2026-10-31T09:00:00.000") && a4Stamp(now).count == 29, "a4: A4's time stamp")
     MainActor.assumeIsolated {
