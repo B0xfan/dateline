@@ -10,7 +10,7 @@ const LIVE = process.env.HOME + '/Projects/A4/';
 // Picks its notes from the vault by what they are, read only; the sandbox works on copies.
 const pick = (test) => { const f = fs.readdirSync(LIVE + TASKS).filter((n) => n.endsWith('.md')).find((n) => test(fs.readFileSync(LIVE + TASKS + n, 'utf8'))); assert.ok(f, 'no suitable note'); return TASKS + f; };
 const ONE = pick((s) => /^status: open$/m.test(s) && /^  - task$/m.test(s) && !/^recurrence:/m.test(s));
-const REP = pick((s) => /^recurrence: \S/m.test(s) && /^scheduled: \S/m.test(s) && /^  - task$/m.test(s));
+const REP = pick((s) => /^recurrence: \S/m.test(s) && /^scheduled: \S/m.test(s) && /^  - task$/m.test(s) && !/^reminders:/m.test(s));
 const code = (v, p, d) => execFileSync(DL, ['--a4-code', v, p, d || '']).toString().trim();
 const wait = async (f, what) => { for (let i = 0; i < 100; i++) { if (await f()) return; await new Promise((r) => setTimeout(r, 200)); } throw new Error('timed out: ' + what); };
 (async () => {
@@ -51,6 +51,10 @@ const wait = async (f, what) => { for (let i = 0; i < 100; i++) { if (await f())
     fs.writeFileSync(p2 + '.tmp', read(REP).replace(/^priority: \S+/m, 'priority: high')); fs.renameSync(p2 + '.tmp', p2);
     await wait(() => page.evaluate((p) => app.metadataCache.getFileCache(app.vault.getAbstractFileByPath(p))?.frontmatter?.priority === 'high', REP), 'Obsidian sees the file change');
     console.log('a saved change reaches Obsidian');
+    // the one-line reminder Dateline writes with a first time
+    fs.writeFileSync(p2 + '.tmp', read(REP).replace(/^priority: \S+/m, 'priority: low\nreminders: [{id: rem_1, type: relative, relatedTo: due, offset: PT0M}]')); fs.renameSync(p2 + '.tmp', p2);
+    await wait(() => page.evaluate((p) => app.metadataCache.getFileCache(app.vault.getAbstractFileByPath(p))?.frontmatter?.reminders?.[0]?.offset === 'PT0M', REP), 'Obsidian reads the reminder');
+    console.log('the reminder line reads in Obsidian');
   });
   console.log('PASS');
 })().catch((e) => { console.error('FAIL', e.message); process.exit(1); });

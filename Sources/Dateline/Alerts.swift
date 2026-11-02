@@ -60,7 +60,7 @@ extension AppState {
         let due = Alerts.full && !screenLocked()
             ? fullScreenDue(soon, from: from, to: now, lead: Alerts.leadMinutes[Alerts.lead]) { id in store.calendar(id).map(Alerts.covers) ?? false } : []
         let leave = soon.contains { it in (it.leave ?? WorkWeek.leave) && drive[it.id].map { anyIn([it.start.addingTimeInterval(-Double($0) * 60)], from: from, to: now) } == true }
-        let tasks = store.todos.filter { !$0.done && $0.timed && $0.remind == .time }.compactMap(\.due)
+        let tasks = store.todos.filter { !$0.done && $0.timed && $0.remind == .time && $0.a4 == nil }.compactMap(\.due)  // A4's own reminders job rings for its tasks
         if !due.isEmpty { FullAlert.show(due, app: self) }
         else if anyIn(soon.flatMap(\.alerts), from: from, to: now) { Alerts.play("events") }
         else if leave { Alerts.play("leave") }

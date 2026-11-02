@@ -8,7 +8,7 @@ struct A4Task: Equatable {
     var priority = "normal"
     var file = ""  // the note's full path
     var repeating = false
-    var time = ""  // "T09:30" when the Due property holds a clock time; Dateline moves the day and keeps it
+    var ring = false  // a time just given in Dateline rings at that time, as a first time does in A4; an undo never sets this, so it can't wake a silenced task
     static let statuses = [("open", "Open"), ("in-progress", "In progress"), ("blocked", "Blocked"), ("done", "Done")]
     static let priorities = ["low", "normal", "high"]
     static let finished = ["done", "closed"]
@@ -72,6 +72,27 @@ func a4ParseDay(_ s: String) -> Date? {
     return cal.date(from: DateComponents(year: p[0], month: p[1], day: p[2]))
 }
 
+// The clock time in a stored date, in minutes: "2026-11-03T11:00" is 660. The same reading as A4's timeOf.
+func a4Minutes(_ s: String) -> Int? {
+    guard let r = s.range(of: "^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}", options: .regularExpression),
+          let h = Int(s[r].suffix(5).prefix(2)), let m = Int(s[r].suffix(2)), h <= 23, m <= 59 else { return nil }
+    return h * 60 + m
+}
+
+// A repeating task's time when its day has none: the clock in its rule's DTSTART. Midnight counts as none. The same reading as A4's ruleTimeOf.
+func a4RuleMinutes(_ rule: String) -> Int? {
+    guard let r = rule.range(of: "DTSTART(;[^:\\n]*)?[:=][0-9]{8}T[0-9]{4}", options: [.regularExpression, .caseInsensitive]),
+          let h = Int(rule[r].suffix(4).prefix(2)), let m = Int(rule[r].suffix(2)), h <= 23, m <= 59, h + m > 0 else { return nil }
+    return h * 60 + m
+}
+
+// A date as A4 stores it: the day, with the clock time when there is one.
+func a4When(_ d: Date, timed: Bool) -> String {
+    guard timed else { return a4Day(d) }
+    let c = cal.dateComponents([.hour, .minute], from: d)
+    return a4Day(d) + String(format: "T%02d:%02d", c.hour!, c.minute!)
+}
+
 // The time stamp A4 writes in dateModified: local time with its offset.
 func a4Stamp(_ d: Date) -> String {
     let f = DateFormatter()
@@ -99,16 +120,20 @@ func a4Read(_ text: String, file: String, now: Date) -> ToDo? {
     if done {
         guard let d = a4ParseDay(a4Value(f, "completedDate")), d >= addDays(cal.startOfDay(for: now), -7) else { return nil }
     }
-    let repeating = !a4Value(f, "recurrence").isEmpty
+    let rule = a4Value(f, "recurrence"), repeating = !rule.isEmpty
     // A repeating task's `scheduled` is its current occurrence, the day A4 Today shows it on.
-    let raw = repeating && !a4Value(f, "scheduled").isEmpty ? a4Value(f, "scheduled") : a4Value(f, "due")
+    let scheduled = a4Value(f, "scheduled"), due = a4Value(f, "due")
+    let raw = repeating && !scheduled.isEmpty ? scheduled : due
+    let minutes = repeating ? a4Minutes(scheduled) ?? a4RuleMinutes(rule) : a4Minutes(due)
+    let day = a4ParseDay(raw)
+    let when = day.map { d in minutes.flatMap { cal.date(bySettingHour: $0 / 60, minute: $0 % 60, second: 0, of: d) } ?? d }
     let name = (file as NSString).lastPathComponent
     let title = a4Value(f, "title")
     let project = a4List(f, "projects").first.map(a4Project) ?? "Inbox"
     let body = f.lines[(f.end + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     let priority = a4Value(f, "priority")
-    return ToDo(id: "a4:" + file, listID: "a4:" + project, title: title.isEmpty ? String(name.dropLast(3)) : title, due: a4ParseDay(raw), done: done || (repeating && a4List(f, "complete_instances").contains(String(raw.prefix(10)))), notes: String(body.prefix(2000)),
-                a4: A4Task(status: status.isEmpty ? "open" : status, priority: priority.isEmpty ? "normal" : priority, file: file, repeating: repeating, time: raw.count > 10 ? String(raw.dropFirst(10)) : ""))
+    return ToDo(id: "a4:" + file, listID: "a4:" + project, title: title.isEmpty ? String(name.dropLast(3)) : title, due: when, timed: when != nil && minutes != nil, done: done || (repeating && a4List(f, "complete_instances").contains(String(raw.prefix(10)))), notes: String(body.prefix(2000)),
+                a4: A4Task(status: status.isEmpty ? "open" : status, priority: priority.isEmpty ? "normal" : priority, file: file, repeating: repeating))
 }
 
 // Every task in the folder.
@@ -123,17 +148,28 @@ func a4Scan(_ folder: String, now: Date) -> [ToDo] {
 func a4Changes(old: ToDo, new: ToDo, text: String, now: Date) -> [(String, String?)] {
     guard let o = old.a4, let n = new.a4 else { return [] }
     var set: [(String, String?)] = []
-    if old.due != new.due {
-        let v = new.due.map { a4Day($0) + n.time } ?? ""
+    if old.due != new.due || old.timed != new.timed {
         if n.repeating, let f = a4Front(text) {
-            set.append(("scheduled", v))
+            // The day moves and whatever follows it stays, so a time from the rule isn't copied into the note.
+            set.append(("scheduled", new.due.map { a4Day($0) + a4Value(f, "scheduled").dropFirst(10) } ?? ""))
             // A repeating task's Due moves by the same days, so its gap from the current day survives a move and its undo.
             let due = a4Value(f, "due")
-            if let was = old.due, let now = new.due, let d = a4ParseDay(due), let by = cal.dateComponents([.day], from: was, to: now).day {
+            if let was = old.due, let now = new.due, let d = a4ParseDay(due), let by = cal.dateComponents([.day], from: cal.startOfDay(for: was), to: cal.startOfDay(for: now)).day {
                 set.append(("due", a4Day(addDays(d, by)) + due.dropFirst(10)))
             }
         } else {
-            set.append(("due", v))
+            // The same clock keeps what follows the day as written; only a new time is rebuilt.
+            let front = a4Front(text), stored = front.map { a4Value($0, "due") } ?? ""
+            let sameTime = old.timed == new.timed && (!new.timed || (old.due != nil && new.due != nil && sameClock(old.due!, on: new.due!) == new.due!))
+            set.append(("due", new.due.map { sameTime ? a4Day($0) + stored.dropFirst(10) : a4When($0, timed: new.timed) } ?? ""))
+            // What A4 does when a task gets a time: the half of the day follows it, and a first time rings at that time.
+            if new.timed, let d = new.due {
+                set.append(("planned_half", cal.component(.hour, from: d) < 13 ? "am" : "pm"))
+                // shortcut: any reminders value we can't read as plainly empty is left alone, so such a note gets no ring; send the change through A4's engine if that bites.
+                if n.ring, !old.timed, front.map({ ["", "[]"].contains(a4Value($0, "reminders")) && a4List($0, "reminders").isEmpty }) != false {
+                    set.append(("reminders", "[{id: rem_\(Int(now.timeIntervalSince1970 * 1000)), type: relative, relatedTo: due, offset: PT0M}]"))
+                }
+            }
             if new.due == nil { set += [("planned_day", nil), ("planned_half", nil), ("planned_order", nil)] }  // as A4's own unschedule, or the task stays on that day in Today
         }
     }
@@ -296,7 +332,7 @@ func a4Check(_ folder: String) -> Int32 {
     for t in tasks {
         guard let a = t.a4, let text = try? String(contentsOfFile: a.file, encoding: .utf8) else { expect(false, "reads back: \(t.id)"); continue }
         expect(!t.title.isEmpty, "has a title: \(t.id)")
-        var n = t; n.due = addDays(cal.startOfDay(for: now), 3); n.a4?.priority = a.priority == "high" ? "low" : "high"; n.a4?.status = a.status == "blocked" ? "open" : "blocked"
+        var n = t; n.due = addDays(t.timed ? t.due! : cal.startOfDay(for: now), 3); n.a4?.priority = a.priority == "high" ? "low" : "high"; n.a4?.status = a.status == "blocked" ? "open" : "blocked"
         let set = a4Changes(old: t, new: n, text: text, now: now)
         guard let edited = a4Edit(text, set) else { expect(false, "edits: \(t.id)"); continue }
         // Only the named property lines may differ.
@@ -307,7 +343,7 @@ func a4Check(_ folder: String) -> Int32 {
         }
         expect(others(text) == others(edited), "only its own lines change: \(t.id)")
         guard let back = a4Read(edited, file: a.file, now: now) else { expect(false, "still reads after a change: \(t.id)"); continue }
-        expect(back.due == n.due && back.a4?.priority == n.a4?.priority && back.a4?.status == n.a4?.status, "the change reads back: \(t.id)")
+        expect(back.due == n.due && back.timed == t.timed && back.a4?.priority == n.a4?.priority && back.a4?.status == n.a4?.status, "the change reads back: \(t.id)")
         expect(a4Edit(text, []) == text, "no change leaves every byte: \(t.id)")
         try? edited.write(toFile: a.file, atomically: true, encoding: .utf8)  // on the copy: the caller compares the folder afterwards
     }
@@ -319,8 +355,8 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
     let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 31, hour: 9))!
     let note = "---\nstatus: open\npriority: normal\ndue: 2026-10-25T09:30\nprojects:\n  - \"[[04 Inner World/Projects/Home|Home]]\"\ntags:\n  - task\n---\n\nFix it.\n---\nmore\n"
     let t = a4Read(note, file: "/v/Fix the gate.md", now: now)
-    expect(t?.title == "Fix the gate" && t?.listID == "a4:Home" && t?.a4?.time == "T09:30" && t?.notes == "Fix it.\n---\nmore" && t?.done == false, "a4: reads a note")
-    expect(t?.due == cal.date(from: DateComponents(year: 2026, month: 10, day: 25)) && isOverdue(t!, now: now) && taskRowDay(t!, now: now) == cal.startOfDay(for: now), "a4: an overdue task shows on today")
+    expect(t?.title == "Fix the gate" && t?.listID == "a4:Home" && t?.timed == true && t?.notes == "Fix it.\n---\nmore" && t?.done == false, "a4: reads a note")
+    expect(t?.due == cal.date(from: DateComponents(year: 2026, month: 10, day: 25, hour: 9, minute: 30)) && isOverdue(t!, now: now) && taskRowDay(t!, now: now) == cal.startOfDay(for: now), "a4: an overdue task shows on today")
     expect(a4Read("no properties", file: "/v/x.md", now: now) == nil && a4Read("---\nstatus: open\n---\n", file: "/v/x.md", now: now) == nil, "a4: a note that isn't a task is skipped")
     expect(a4Read("---\nstatus: someday\ntags: [task]\n---\n", file: "/v/x.md", now: now) == nil && a4Read("---\nstatus: open\ntags:\n  - task\n  - archived\n---\n", file: "/v/x.md", now: now) == nil, "a4: Someday and archived are skipped")
     expect(a4Read("---\nstatus: done\ncompletedDate: 2026-10-01\ntags: [task]\n---\n", file: "/v/x.md", now: now) == nil && a4Read("---\nstatus: done\ncompletedDate: 2026-10-30\ntags: [task]\n---\n", file: "/v/x.md", now: now)?.done == true, "a4: done tasks stay a week")
@@ -329,7 +365,7 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
     expect(a4Edit(note, [("due", "2026-11-02T09:30"), ("completedDate", "2026-10-31")]) == note.replacingOccurrences(of: "due: 2026-10-25T09:30", with: "due: 2026-11-02T09:30").replacingOccurrences(of: "  - task\n---", with: "  - task\ncompletedDate: 2026-10-31\n---"), "a4: an edit touches only its lines")
     expect(a4Edit("---\ndue: 2026-10-25\ncompletedDate: 2026-10-30\n---\n---\n", [("due", ""), ("completedDate", nil)]) == "---\ndue:\n---\n---\n", "a4: empties Due, removes the rest, leaves the text alone")
     expect(a4Edit("no block", [("due", "x")]) == nil, "a4: never edits a note with no properties")
-    var moved = t!; moved.due = cal.date(from: DateComponents(year: 2026, month: 11, day: 2))
+    var moved = t!; moved.due = cal.date(from: DateComponents(year: 2026, month: 11, day: 2, hour: 9, minute: 30))
     expect(a4Changes(old: t!, new: moved, text: note, now: now).first?.1 == "2026-11-02T09:30", "a4: moving the day keeps the clock time")
     var r2 = rep!; r2.due = cal.date(from: DateComponents(year: 2026, month: 11, day: 2))
     let shifted = a4Changes(old: rep!, new: r2, text: "---\ndue: 2026-10-25\nscheduled: 2026-10-31\n---\n", now: now)
@@ -339,6 +375,48 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
     expect(a4Edit("---\ndue: 2026-10-25\nplanned_day: 2026-10-25\nplanned_half: am\n---\n", a4Changes(old: t!, new: cleared, text: note, now: now))?.contains("planned_") == false, "a4: clearing Due takes the task off A4's planned day")
     var reopened = a4Read("---\nstatus: done\ncompletedDate: 2026-10-30\ntags: [task]\n---\n", file: "/v/x.md", now: now)!; let was = reopened; reopened.a4?.status = "open"; reopened.done = false
     expect(a4Changes(old: was, new: reopened, text: "", now: now).contains { $0.0 == "completedDate" && $0.1 == nil }, "a4: reopening removes the done day")
+    // A task with a clock time sits in the grid at that time; the time is read the way A4 reads it.
+    func at(_ d: Int, _ h: Int, _ m: Int) -> Date { cal.date(from: DateComponents(year: 2026, month: 11, day: d, hour: h, minute: m))! }
+    func read(_ props: String) -> ToDo? { a4Read("---\nstatus: open\n\(props)\ntags: [task]\n---\n", file: "/v/a.md", now: now) }
+    let appt = read("due: 2026-11-03T11:00")!
+    expect(appt.timed && appt.due == at(3, 11, 0) && taskRowDay(appt, now: now) == nil, "a4: a task with a time goes in the grid, not the Tasks row")
+    expect(read("due: \"2026-11-03T11:00:00.000-06:00\"")?.due == at(3, 11, 0), "a4: a quoted time with seconds reads as written")
+    let dayOnly = read("due: 2026-11-03")!
+    expect(!dayOnly.timed && taskRowDay(dayOnly, now: now) == at(3, 0, 0), "a4: a task with only a day stays in the Tasks row")
+    expect(read("due: 2026-11-03T25:00")?.timed == false && read("due: 2026-11-03T25:00")?.due == at(3, 0, 0), "a4: a broken time counts as no time")
+    expect(read("due: 2026-11-03T-1:00")?.timed == false, "a4: a time that isn't digits counts as no time")
+    expect(read("scheduled: 2026-11-03\nrecurrence: DTSTART:20261012T090000Z;FREQ=DAILY")?.due == at(3, 9, 0), "a4: a repeating task with no time on its day takes its rule's")
+    expect(read("scheduled: 2026-11-03T14:30\nrecurrence: DTSTART:20261012T090000Z;FREQ=DAILY")?.due == at(3, 14, 30), "a4: a repeating task's own time beats its rule's")
+    expect(read("scheduled: 2026-11-03\nrecurrence: DTSTART:20261012T000000Z;FREQ=DAILY")?.timed == false, "a4: a rule at midnight means no time")
+    var slot = appt; slot.due = at(4, 14, 15)
+    expect(a4Changes(old: appt, new: slot, text: "", now: now).first?.1 == "2026-11-04T14:15", "a4: a new day and time are written to Due")
+    var timedNow = dayOnly; timedNow.due = at(3, 9, 0); timedNow.timed = true
+    expect(a4Changes(old: dayOnly, new: timedNow, text: "", now: now).first?.1 == "2026-11-03T09:00", "a4: adding a time writes it")
+    let midnight = read("due: 2026-11-03T00:00")!; var noTime = midnight; noTime.timed = false
+    expect(midnight.timed && a4Changes(old: midnight, new: noTime, text: "", now: now).first?.1 == "2026-11-03", "a4: taking off a midnight time is a change")
+    let repText = "---\nstatus: open\ndue: 2026-11-01\nscheduled: 2026-11-03T11:00\nrecurrence: FREQ=DAILY\ntags: [task]\n---\n"
+    let repTimed = a4Read(repText, file: "/v/r.md", now: now)!; var repMoved = repTimed; repMoved.due = at(4, 11, 0)
+    let repSet = a4Changes(old: repTimed, new: repMoved, text: repText, now: now)
+    expect(repSet[0].1 == "2026-11-04T11:00" && repSet[1].1 == "2026-11-02", "a4: a repeating task moved a day keeps its time and the gap to its Due")
+    expect(a4Edit(repText, repSet).flatMap { a4Read($0, file: "/v/r.md", now: now) }?.due == at(4, 11, 0), "a4: a moved time reads back")
+    let ruleText = "---\nstatus: open\nscheduled: 2026-11-03\nrecurrence: DTSTART:20261012T090000Z;FREQ=DAILY\ntags: [task]\n---\n"
+    let ruleTask = a4Read(ruleText, file: "/v/r.md", now: now)!; var ruleMoved = ruleTask; ruleMoved.due = at(4, 9, 0)
+    expect(a4Changes(old: ruleTask, new: ruleMoved, text: ruleText, now: now).first?.1 == "2026-11-04", "a4: a time from the rule isn't copied into the note")
+    // A first time rings, as in A4; the half of the day follows the time.
+    let dayText = "---\nstatus: open\ndue: 2026-11-03\nplanned_half: am\ntags: [task]\n---\n"
+    var pm = dayOnly; pm.due = at(3, 14, 15); pm.timed = true; pm.a4?.ring = true
+    let pmNote = a4Edit(dayText, a4Changes(old: dayOnly, new: pm, text: dayText, now: now)) ?? ""
+    expect(pmNote.contains("due: 2026-11-03T14:15\n") && pmNote.contains("planned_half: pm\n") && pmNote.contains("relatedTo: due, offset: PT0M}]\n") && a4Read(pmNote, file: "/v/a.md", now: now) != nil, "a4: a first time rings and picks the half of the day")
+    let hasBell = "---\nstatus: open\ndue: 2026-11-03\nreminders:\n  - id: rem_1\n    type: absolute\ntags: [task]\n---\n"
+    expect(!a4Changes(old: dayOnly, new: pm, text: hasBell, now: now).contains { $0.0 == "reminders" }, "a4: a reminder already there is left alone")
+    var undone = pm; undone.a4?.ring = false
+    expect(!a4Changes(old: dayOnly, new: undone, text: dayText, now: now).contains { $0.0 == "reminders" }, "a4: an undo that brings a time back adds no ring")
+    expect(!a4Changes(old: dayOnly, new: pm, text: "---\ndue: 2026-11-03\nreminders: [\n  {id: x}\n]\n---\n", now: now).contains { $0.0 == "reminders" }, "a4: a reminder list over several lines is left alone")
+    let secs = read("due: 2026-11-03T11:00:00.000-06:00")!; var secsMoved = secs; secsMoved.due = at(4, 11, 0)
+    expect(a4Changes(old: secs, new: secsMoved, text: "---\ndue: 2026-11-03T11:00:00.000-06:00\n---\n", now: now).first?.1 == "2026-11-04T11:00:00.000-06:00", "a4: a move keeps the time as written")
+    var later = appt; later.due = at(3, 15, 0)
+    expect(!a4Changes(old: appt, new: later, text: "---\ndue: 2026-11-03T11:00\n---\n", now: now).contains { $0.0 == "reminders" }, "a4: changing a time adds no reminder")
+    expect(sameClock(at(1, 11, 30), on: at(5, 0, 0)) == at(5, 11, 30), "the time stays when the day changes")
     expect(a4Project("[[a/b/Home.md|H]]") == "Home" && a4Project("Plain") == "Plain", "a4: project names")
     expect(a4Stamp(now).hasPrefix("2026-10-31T09:00:00.000") && a4Stamp(now).count == 29, "a4: A4's time stamp")
     MainActor.assumeIsolated {
@@ -349,6 +427,11 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
         a.store.use(CalSet(name: "W", calendars: [], lists: []))
         expect(a.store.lists.filter { $0.account == a4Account }.allSatisfy { !a.store.hiddenLists.contains($0.id) }, "a4: a saved set never hides A4 projects")
         let s = a.store.todos.first { $0.a4 != nil && $0.due != nil }!
+        a.drop(taskID: s.id, at: at(4, 14, 15))
+        expect(a.store.todos.first { $0.id == s.id }.map { $0.timed && $0.due == at(4, 14, 15) } == true, "a4: a task dropped on the grid takes that time")
+        if let i = a.store.todos.firstIndex(where: { $0.id == s.id }) { a.store.todos[i].a4?.repeating = true }
+        a.drop(taskID: s.id, at: at(5, 9, 0))
+        expect(a.store.todos.first { $0.id == s.id }?.due == at(5, 14, 15), "a4: a repeating task dropped on the grid takes the day and keeps its time")
         var n = s; n.done = true; a.saveTask(n)
         expect(a.store.todos.first { $0.id == s.id }?.done == true && a.store.lists.filter { $0.account == a4Account }.allSatisfy { !$0.writable }, "a4: a sample tick stays in memory; no moving reminders into A4")
         if case .failure = a.store.addTask(ToDo(id: "", listID: "", title: "x"), listID: "a4-home") {} else { expect(false, "a4: new tasks can't go in an A4 list") }
@@ -376,10 +459,20 @@ struct A4TaskDetail: View {
                 row("Project") { HStack(spacing: 8) { Circle().fill(a4Color).frame(width: 8, height: 8); Text((store.taskList(task.listID)?.title ?? "").replacingOccurrences(of: "A4: ", with: "")) } }
                 row("Due") {
                     if let d = task.due {
-                        DatePicker("", selection: Binding(get: { d }, set: { task.due = cal.startOfDay(for: $0); app.saveTask(task) }), displayedComponents: .date).labelsHidden().datePickerStyle(.field)
-                        if !info.repeating { Button { task.due = nil; app.saveTask(task) } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Clear due").buttonStyle(.plain).foregroundStyle(Palette.text3).help("Clear the Due property") }
+                        DatePicker("", selection: Binding(get: { d }, set: { v in
+                            task.due = task.timed ? sameClock(d, on: v) : cal.startOfDay(for: v); save()
+                        }), displayedComponents: .date).labelsHidden().datePickerStyle(.field)
+                        if info.repeating {
+                            if task.timed { Text(timeText(d)) }
+                        } else if task.timed {
+                            DatePicker("", selection: Binding(get: { d }, set: { task.due = $0; save() }), displayedComponents: .hourAndMinute).labelsHidden()
+                            Button { task.timed = false; task.due = cal.startOfDay(for: d); save() } label: { Image(systemName: "clock.badge.xmark") }.accessibilityLabel("Take the time off").buttonStyle(.plain).foregroundStyle(Palette.text3).help("Keep the day, take the time off")
+                        } else {
+                            Button("add time") { task.timed = true; task.a4?.ring = true; task.due = cal.date(bySettingHour: 9, minute: 0, second: 0, of: d); save() }.buttonStyle(.plain).foregroundStyle(Palette.accent)
+                        }
+                        if !info.repeating { Button { task.due = nil; task.timed = false; save() } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Clear due").buttonStyle(.plain).foregroundStyle(Palette.text3).help("Clear the Due property") }
                     } else {
-                        Button("Add a date") { task.due = cal.startOfDay(for: app.now); app.saveTask(task) }.buttonStyle(.plain).foregroundStyle(Palette.accent)
+                        Button("Add a date") { task.due = cal.startOfDay(for: app.now); save() }.buttonStyle(.plain).foregroundStyle(Palette.accent)
                     }
                 }
                 row("Status") {
@@ -389,14 +482,14 @@ struct A4TaskDetail: View {
                 }
                 row("Priority") {
                     Menu {
-                        ForEach(A4Task.priorities, id: \.self) { p in Button(p.capitalized) { task.a4?.priority = p; app.saveTask(task) } }
+                        ForEach(A4Task.priorities, id: \.self) { p in Button(p.capitalized) { task.a4?.priority = p; save() } }
                     } label: { Text(info.priority.capitalized) }.menuStyle(.borderlessButton).fixedSize()
                 }
                 Text("NOTE").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 16).padding(.bottom, 4)
                 Text(task.notes.isEmpty ? "No text in this note." : task.notes).font(.ui(13)).foregroundStyle(task.notes.isEmpty ? Palette.text3 : Palette.text2)
                     .lineLimit(8).fixedSize(horizontal: false, vertical: true)
                 Button("Open in Obsidian") { openInObsidian(info.file) }.padding(.top, 12)
-                Text("Saved in your A4 vault, so Obsidian sees each change. Change the title and the note's text in Obsidian.")
+                Text("Saved in your A4 vault, so Obsidian sees each change. Change the title, the note's text and a repeating task's time in Obsidian.")
                     .font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
             .padding(16)
@@ -407,6 +500,9 @@ struct A4TaskDetail: View {
             if let fresh = list.first(where: { $0.id == task.id }), fresh != task { task = fresh }
         }
     }
+
+    // A refused save puts the panel back to what the note says, so a later edit can't carry the refused change along.
+    func save() { app.saveTask(task); if let fresh = store.todos.first(where: { $0.id == task.id }), fresh != task { task = fresh } }
 
     func setStatus(_ s: String) {
         if task.a4?.repeating == true && s == "done" { var n = task; n.done = true; app.saveTask(n); return }  // ticks today's occurrence; the task itself stays open
@@ -454,13 +550,14 @@ extension Store {
     func loadSampleA4(_ mon: Date) {
         let projects = [("a4-launch", "A4: Dateline launch"), ("a4-home", "A4: Home"), ("a4-reading", "A4: Reading Vault")]
         lists += projects.map { CalInfo(id: $0.0, title: $0.1, account: a4Account, color: a4Color, writable: false) }
-        func t(_ list: String, _ title: String, _ day: Int?, status: String = "open", priority: String = "normal", notes: String = "") {
-            todos.append(ToDo(id: "a4-\(title)", listID: list, title: title, due: day.map { addDays(mon, $0) }, notes: notes, a4: A4Task(status: status, priority: priority, file: "/sample/" + title + ".md")))
+        func t(_ list: String, _ title: String, _ day: Int?, hour: Int? = nil, status: String = "open", priority: String = "normal", notes: String = "") {
+            todos.append(ToDo(id: "a4-\(title)", listID: list, title: title, due: day.map { d in cal.date(byAdding: .hour, value: hour ?? 0, to: addDays(mon, d))! }, timed: hour != nil, notes: notes, a4: A4Task(status: status, priority: priority, file: "/sample/" + title + ".md")))
         }
         t("a4-launch", "Choose a license for Dateline", 0, priority: "high", notes: "Compare MIT and GPL, then add the file to the repo.")
         t("a4-home", "Pay the water bill", -2, status: "in-progress")
         t("a4-reading", "Answer buyer questions", 1)
         t("a4-launch", "Bring the GitHub page up to date", 3)
+        t("a4-home", "Vet appointment", 1, hour: 11)
         for s in ["Sign the app", "Check the code is safe to share"] { t("a4-launch", s, nil) }
         for s in ["Fix the gate latch", "Sort the garage", "Renew the car papers"] { t("a4-home", s, nil) }
     }

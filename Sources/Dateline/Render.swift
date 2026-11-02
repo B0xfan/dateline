@@ -108,6 +108,7 @@ private final class ShotWindow: NSWindow {
         shot("places-map", wait: 4) { $0.mode = .week; $0.days = 7; $0.panels.mapOpen = true }
         shot("task-list") { $0.mode = .week; $0.days = 5; $0.panels.tasksOpen = true }
         shot("a4-list") { $0.mode = .week; $0.days = 5; $0.panels.tasksOpen = true; $0.taskPanel.openLists = ["a4-launch"] }
+        shot("a4-timed") { a in a.mode = .week; a.days = 5; a.panels.openTaskID = "a4-Vet appointment" }
         shot("a4-details") { a in a.mode = .week; a.days = 5; a.panels.openTaskID = "a4-Choose a license for Dateline" }
         ok = save(A4Settings(store: Store(sample: true)).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/a4-settings-\(tag).png") && ok
         // Folded no-date lists (approved mockup): Groceries open past 20 tasks, so "Show all" shows; the others folded.

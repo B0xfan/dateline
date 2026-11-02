@@ -376,12 +376,12 @@ struct TaskDetail: View {
                 row("Due") {
                     if let d = task.due {
                         DatePicker("", selection: Binding(get: { d }, set: { v in
-                            task.due = task.timed ? cal.date(byAdding: cal.dateComponents([.hour, .minute], from: d), to: cal.startOfDay(for: v)) : cal.startOfDay(for: v); commit()
+                            task.due = task.timed ? sameClock(d, on: v) : cal.startOfDay(for: v); commit()
                         }), displayedComponents: .date).labelsHidden().datePickerStyle(.field)
                         if task.timed {
                             DatePicker("", selection: Binding(get: { d }, set: { task.due = $0; commit() }), displayedComponents: .hourAndMinute).labelsHidden()
                         } else {
-                            Button("add time") { task.timed = true; task.due = cal.date(byAdding: .hour, value: 9, to: cal.startOfDay(for: d)); commit() }.buttonStyle(.plain).foregroundStyle(Palette.accent)
+                            Button("add time") { task.timed = true; task.due = cal.date(bySettingHour: 9, minute: 0, second: 0, of: d); commit() }.buttonStyle(.plain).foregroundStyle(Palette.accent)
                         }
                         Button { task.due = nil; task.timed = false; commit() } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Clear due").buttonStyle(.plain).foregroundStyle(Palette.text3).help("No due date")
                     } else {

@@ -48,6 +48,12 @@ func startOfWeek(_ d: Date) -> Date {  // the day picked in Settings, Week
 
 func addDays(_ d: Date, _ n: Int) -> Date { cal.date(byAdding: .day, value: n, to: d)! }
 
+// `day` at the clock time of `from`, right on a day the clocks change too.
+func sameClock(_ from: Date, on day: Date) -> Date {
+    let c = cal.dateComponents([.hour, .minute], from: from)
+    return cal.date(bySettingHour: c.hour!, minute: c.minute!, second: 0, of: day) ?? day
+}
+
 // The 35 or 42 days the month grid shows, from the first day of the week.
 func monthGrid(_ d: Date) -> [Date] {
     let first = cal.date(from: cal.dateComponents([.year, .month], from: d))!
