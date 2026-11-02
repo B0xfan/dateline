@@ -334,6 +334,35 @@ final class AppState: ObservableObject {
         }
     }
 
+    // "Make it an event": a one-off A4 task with a time becomes a real event, and the task is finished so it doesn't show twice.
+    // Finished, not deleted: the note stays in A4's Archive. From then on the event and the note don't follow each other.
+    func makeEvent(from t: ToDo, calendar: CalInfo) {
+        guard t.timed, let start = t.due, t.a4?.repeating == false, !t.done else { return }
+        if store.a4Busy > 0 { error = "Still saving the last change to Obsidian. Try again in a moment."; return }
+        var p = Parsed(start: start, end: start.addingTimeInterval(3600))
+        p.title = t.title; p.notes = t.notes
+        // The note's whole text and its reminder's lead; the task on screen holds only part of the text.
+        if let parts = t.a4.flatMap({ try? String(contentsOfFile: $0.file, encoding: .utf8) }).flatMap(a4EventParts) { p.notes = parts.notes; p.alertMinutes = parts.lead }
+        guard let event = add(p, calendar: calendar) else { return }
+        undoStack.removeLast()  // one undo takes back both halves, below
+        let sent = store.accSent(calendar.id)  // Google and iCloud send after this returns; the task stays open until the event got there
+        func finish() {
+            guard store.items.contains(where: { $0.id == event.id }) else { return }  // undone meanwhile
+            var done = t; done.done = true; done.a4?.status = "done"
+            if let f = store.updateTask(done) { error = "The event is on \(calendar.title), but the task stayed open: " + f.message }
+        }
+        func back() -> Failure? {
+            if store.a4Busy > 0 { undoStack.append(back); return Failure("Still saving the last change to Obsidian. Undo again in a moment.") }  // A4's engine would write over this when it finishes
+            if let f = store.updateTask(t) { return f }  // the task first: if it can't reopen, the event stays
+            return store.delete(event, series: true)
+        }
+        undoStack.append(back)
+        panels.panelOpen = true
+        if let sent {
+            Task { if await sent.value { finish() } else { error = "The event didn't reach \(calendar.title), so the task stays open." } }
+        } else { finish() }
+    }
+
     // A task dropped on the day grid takes that day and time.
     func drop(taskID: String, at time: Date) {
         guard var t = store.todos.first(where: { $0.id == taskID }) else { return }

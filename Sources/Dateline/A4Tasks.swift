@@ -93,6 +93,17 @@ func a4When(_ d: Date, timed: Bool) -> String {
     return a4Day(d) + String(format: "T%02d:%02d", c.hour!, c.minute!)
 }
 
+// What "Make it an event" takes from a note: its whole text, and the minutes before that its first reminder rings (nil: no reminder). Offsets as A4's offsetMinutes; a ring after the time counts as at the time.
+func a4EventParts(_ text: String) -> (notes: String, lead: Int?)? {
+    guard let f = a4Front(text) else { return nil }
+    let notes = f.lines[(f.end + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    let props = f.lines[1..<f.end].joined(separator: "\n")
+    guard let re = try? NSRegularExpression(pattern: "offset:\\s*[\"']?(-)?P(?:(\\d+)W)?(?:(\\d+)D)?(?:T(?:(\\d+)H)?(?:(\\d+)M)?)?"),
+          let m = re.firstMatch(in: props, range: NSRange(props.startIndex..., in: props)) else { return (notes, nil) }
+    func part(_ i: Int) -> Int { Range(m.range(at: i), in: props).flatMap { Int(props[$0]) } ?? 0 }
+    return (notes, Range(m.range(at: 1), in: props) == nil ? 0 : (part(2) * 7 + part(3)) * 1440 + part(4) * 60 + part(5))
+}
+
 // The time stamp A4 writes in dateModified: local time with its offset.
 func a4Stamp(_ d: Date) -> String {
     let f = DateFormatter()
@@ -417,9 +428,34 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
     var later = appt; later.due = at(3, 15, 0)
     expect(!a4Changes(old: appt, new: later, text: "---\ndue: 2026-11-03T11:00\n---\n", now: now).contains { $0.0 == "reminders" }, "a4: changing a time adds no reminder")
     expect(sameClock(at(1, 11, 30), on: at(5, 0, 0)) == at(5, 11, 30), "the time stays when the day changes")
+    func lead(_ props: String) -> Int?? { a4EventParts("---\n\(props)\n---\n\nText") .map(\.lead) }
+    expect(lead("reminders:\n  - id: r\n    offset: PT0M") == .some(.some(0)) && lead("reminders:\n  - offset: \"-PT1H30M\"") == .some(.some(90)) && lead("reminders: [{id: r, offset: -P1D}]") == .some(.some(1440)) && lead("status: open") == .some(.none), "a4: a reminder's lead carries to the event")
+    expect(a4EventParts("---\ndue: x\n---\n\n" + String(repeating: "a", count: 3000))?.notes.count == 3000, "a4: the event gets the note's whole text")
     expect(a4Project("[[a/b/Home.md|H]]") == "Home" && a4Project("Plain") == "Plain", "a4: project names")
     expect(a4Stamp(now).hasPrefix("2026-10-31T09:00:00.000") && a4Stamp(now).count == 29, "a4: A4's time stamp")
     MainActor.assumeIsolated {
+        let made = AppState(store: Store(sample: true), today: now)
+        let vet = made.store.todos.first { $0.title == "Vet appointment" }!, calendar = made.store.calendars.first(where: \.writable)!
+        made.makeEvent(from: vet, calendar: calendar)
+        let event = made.store.items.first { $0.title == "Vet appointment" }
+        expect(event?.start == vet.due && event?.calendarID == calendar.id && event.map { $0.end.timeIntervalSince($0.start) } == 3600, "a4: a task with a time becomes an hour-long event on the chosen calendar")
+        expect(made.store.todos.first { $0.id == vet.id }?.done == true, "a4: making the event finishes the task")
+        made.undo()
+        expect(made.store.todos.first { $0.id == vet.id }?.done == false && !made.store.items.contains { $0.title == "Vet appointment" }, "a4: one undo takes back the event and the finish")
+        made.store.a4Busy = 1
+        made.makeEvent(from: vet, calendar: calendar)
+        expect(!made.store.items.contains { $0.title == "Vet appointment" }, "a4: no event while a change is still saving")
+        made.store.a4Busy = 0
+        made.makeEvent(from: vet, calendar: calendar)
+        made.store.a4Busy = 1; made.undo(); made.error = nil
+        expect(made.store.items.contains { $0.title == "Vet appointment" }, "a4: undo waits while a change is still saving")
+        made.store.a4Busy = 0; made.undo()
+        expect(!made.store.items.contains { $0.title == "Vet appointment" } && made.store.todos.first { $0.id == vet.id }?.done == false, "a4: and works when tried again")
+        var rule = vet; rule.a4?.repeating = true
+        made.makeEvent(from: rule, calendar: calendar)
+        var noTime = vet; noTime.timed = false
+        made.makeEvent(from: noTime, calendar: calendar)
+        expect(!made.store.items.contains { $0.title == "Vet appointment" }, "a4: a repeating task or one with no time makes no event")
         let d = UserDefaults.standard, before = (d.object(forKey: "a4On") as? Bool, d.string(forKey: "a4Folder"))
         let a = AppState(store: Store(sample: true), today: now)
         a.store.a4Set(on: false, folder: "/selftest")
@@ -488,7 +524,14 @@ struct A4TaskDetail: View {
                 Text("NOTE").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 16).padding(.bottom, 4)
                 Text(task.notes.isEmpty ? "No text in this note." : task.notes).font(.ui(13)).foregroundStyle(task.notes.isEmpty ? Palette.text3 : Palette.text2)
                     .lineLimit(8).fixedSize(horizontal: false, vertical: true)
-                Button("Open in Obsidian") { openInObsidian(info.file) }.padding(.top, 12)
+                HStack(spacing: 8) {
+                    Button("Open in Obsidian") { openInObsidian(info.file) }
+                    if task.timed && !info.repeating && !task.done {
+                        Menu("Make it an event") {
+                            ForEach(store.calendars.filter { $0.writable && !store.hidden.contains($0.id) }) { c in Button(c.title + "  (" + c.account + ")") { app.makeEvent(from: task, calendar: c) } }
+                        }.fixedSize().help("Puts it on a calendar as a real event for an hour and finishes this task in A4")
+                    }
+                }.padding(.top, 12)
                 Text("Saved in your A4 vault, so Obsidian sees each change. Change the title, the note's text and a repeating task's time in Obsidian.")
                     .font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
