@@ -97,7 +97,7 @@ func a4When(_ d: Date, timed: Bool) -> String {
 // The time stamp A4 writes in dateModified: local time with its offset.
 func a4Stamp(_ d: Date) -> String {
     let f = DateFormatter()
-    f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSxxxxx"
+    f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.timeZone = cal.timeZone; f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSxxxxx"  // the app's zone, so the cloud self-test (UTC) agrees with the Mac
     return f.string(from: d)
 }
 
