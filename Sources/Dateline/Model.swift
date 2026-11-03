@@ -1,5 +1,6 @@
 // What the window is showing and every action on it: views, the add box, selection, undo and the keyboard (B25).
 import SwiftUI
+import Intents
 import AppKit
 
 enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Month", quarter = "Quarter", year = "Year" }
@@ -368,6 +369,7 @@ final class AppState: ObservableObject {
         travelTimer?.tolerance = 30
         alertTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in Task { @MainActor in self?.checkAlerts() } }
         alertTimer?.tolerance = 2
+        if store.access != .sample, INFocusStatusCenter.default.authorizationStatus == .notDetermined { INFocusStatusCenter.default.requestAuthorization { _ in } }  // asks once, so a Focus can keep the full screen alert away
         MenuBar.shared.update(self)
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self else { return e }

@@ -1,6 +1,7 @@
 // Phase 6 (approved mockups, 2026-10-28): the full screen alert and the alert sounds. Saved on this Mac.
 import SwiftUI
 import AppKit
+import Intents
 
 enum Alerts {
     private static let d = UserDefaults.standard
@@ -49,6 +50,9 @@ func startWord(_ start: Date, now: Date) -> String {
 }
 
 func screenLocked() -> Bool { (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false }
+// A Focus counts only once John allowed Dateline to see it; a copy without Apple's Focus permission reads "not allowed" and keeps showing the alert.
+func focusOn() -> Bool { INFocusStatusCenter.default.authorizationStatus == .authorized && INFocusStatusCenter.default.focusStatus.isFocused == true }
+func quietNow() -> Bool { screenLocked() || focusOn() }
 
 extension AppState {
     // Every 10 seconds: what went off since the last look. One sound at a time, the full screen alert's first.
@@ -57,7 +61,7 @@ extension AppState {
         alertCheck = now
         guard from < now, store.access == .granted else { return }
         let soon = store.soon
-        let due = Alerts.full && !screenLocked()
+        let due = Alerts.full && !quietNow()
             ? fullScreenDue(soon, from: from, to: now, lead: Alerts.leadMinutes[Alerts.lead]) { id in store.calendar(id).map(Alerts.covers) ?? false } : []
         let leave = soon.contains { it in (it.leave ?? WorkWeek.leave) && drive[it.id].map { anyIn([it.start.addingTimeInterval(-Double($0) * 60)], from: from, to: now) } == true }
         let tasks = store.todos.filter { !$0.done && $0.timed && $0.remind == .time && $0.a4 == nil }.compactMap(\.due)  // A4's own reminders job rings for its tasks
@@ -102,9 +106,9 @@ final class FullAlert: NSPanel {
                 p.dismiss()
                 let ids = items.map(\.id)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 300) { MainActor.assumeIsolated {
-                    // the setting, the lock and the event may have changed in those 5 minutes
+                    // the setting, the lock, a Focus and the event may have changed in those 5 minutes
                     let still = app.store.soon.filter { ids.contains($0.id) }
-                    if Alerts.full && !screenLocked() && !still.isEmpty { show(still, app: app) }
+                    if Alerts.full && !quietNow() && !still.isEmpty { show(still, app: app) }
                 } }
             },
             open: { it in p.dismiss(); app.openEvent(it) }))
@@ -198,7 +202,7 @@ struct AlertSettings: View {
     var body: some View {
         HStack(alignment: .top, spacing: 28) {
             VStack(alignment: .leading, spacing: 16) {
-                row("Full screen alert") {
+                row("Full screen alert", "Stays away while the Mac is locked or a Focus is on.") {
                     Toggle("Cover the screen when an event starts", isOn: Binding(get: { Alerts.full }, set: { Alerts.full = $0; bump += 1 })).toggleStyle(.switch).controlSize(.small)
                 }
                 row("For these calendars", "Other calendars keep their normal Mac alerts. All-day events never cover the screen.") {
