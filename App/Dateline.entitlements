@@ -5,5 +5,9 @@
     <key>com.apple.application-identifier</key><string>LJZ32VB25F.com.johnhesch.dateline</string>
     <key>com.apple.developer.team-identifier</key><string>LJZ32VB25F</string>
     <key>com.apple.developer.usernotifications.communication</key><true/>
+    <!-- hardened runtime (needed for Apple's check): the Mac data Dateline asks for -->
+    <key>com.apple.security.personal-information.calendars</key><true/>
+    <key>com.apple.security.personal-information.addressbook</key><true/>
+    <key>com.apple.security.personal-information.location</key><true/>
 </dict>
 </plist>

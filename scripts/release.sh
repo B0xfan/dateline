@@ -36,10 +36,42 @@ OUT=build/release; APP="$OUT/Dateline.app"
 rm -rf "$OUT"; mkdir -p "$OUT"
 ditto build/Dateline.app "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" -c "Set :CFBundleVersion $N" "$APP/Contents/Info.plist"
+# Developer ID signing and Apple's check (notarizing) through Xcode's signed-in Apple account: the Developer ID certificate is held by Apple, so nothing goes in the keychain.
+# First sign locally with hardened runtime and Dateline's permissions (Xcode keeps both when it re-signs), then let Xcode re-sign with Developer ID, embed the
+# all-Macs profile (needed for the Focus permission) and send it to Apple; the checked, stapled app comes back into $APP.
 ID=AB33048703517BE9CB52B2E3781C8B1B00C8A64D
-security find-identity -v -p codesigning | grep -q "$ID" || ID=-
-codesign --force --sign "$ID" "$APP"   # the version change breaks the app's outer signature; Sparkle inside stays signed
+security find-identity -v -p codesigning | grep -q "$ID" || { echo "Apple Development identity missing: Xcode > Settings > Accounts"; exit 1; }
+SPK="$APP/Contents/Frameworks/Sparkle.framework"
+for part in "$SPK/Versions/B/Autoupdate" "$SPK/Versions/B/Updater.app" "$SPK"; do codesign --force --options runtime --timestamp=none --sign "$ID" "$part"; done
+codesign --force --options runtime --timestamp=none --entitlements App/Dateline.entitlements --sign "$ID" "$APP"
+AR="$OUT/Dateline.xcarchive"; mkdir -p "$AR/Products/Applications"; mv "$APP" "$AR/Products/Applications/"
+python3 -I - "$AR/Info.plist" "$VER" "$N" <<'PY2'
+import sys, plistlib, datetime
+out, ver, n = sys.argv[1:4]
+plistlib.dump({"ArchiveVersion": 2, "Name": "Dateline", "SchemeName": "Dateline", "CreationDate": datetime.datetime.now(datetime.timezone.utc),
+  "ApplicationProperties": {"ApplicationPath": "Applications/Dateline.app", "CFBundleIdentifier": "com.johnhesch.dateline",
+  "CFBundleShortVersionString": ver, "CFBundleVersion": n, "Team": "LJZ32VB25F", "Architectures": ["arm64"]}}, open(out, "wb"))
+PY2
+cat > "$OUT/export.plist" <<'EOP'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>method</key><string>developer-id</string><key>signingStyle</key><string>automatic</string>
+<key>teamID</key><string>LJZ32VB25F</string><key>destination</key><string>upload</string></dict></plist>
+EOP
+taskpolicy -b nice -n 19 xcodebuild -exportArchive -archivePath "$AR" -exportOptionsPlist "$OUT/export.plist" -exportPath "$OUT/upload" -allowProvisioningUpdates >"$OUT/export.log" 2>&1 \
+  || { tail -20 "$OUT/export.log"; echo "Sending to Apple's check failed (full log: $OUT/export.log)"; exit 1; }
+echo "Sent to Apple's check; waiting for the answer (usually a few minutes)..."
+for i in {1..60}; do   # up to 30 minutes
+  xcodebuild -exportNotarizedApp -archivePath "$AR" -exportPath "$OUT/notarized" >"$OUT/notarized.log" 2>&1 && break
+  grep -qi "invalid\|rejected" "$OUT/notarized.log" && { cat "$OUT/notarized.log"; echo "Apple's check refused the app"; exit 1; }
+  [ $i = 60 ] && { tail -5 "$OUT/notarized.log"; echo "No answer from Apple's check after 30 minutes"; exit 1; }
+  sleep 30
+done
+ditto "$OUT/notarized/Dateline.app" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
+xcrun stapler validate "$APP"
+spctl -a -vvv -t exec "$APP" 2>&1 | grep -q "source=Notarized Developer ID" || { spctl -a -vvv -t exec "$APP"; echo "Not accepted as a checked Developer ID app"; exit 1; }
+taskpolicy -b nice -n 19 "$APP/Contents/MacOS/Dateline" --selftest >/dev/null || { echo "The signed app does not open"; exit 1; }   # proves macOS accepts its permissions
 
 ZIP="$OUT/Dateline-$VER.zip"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"   # keeps the symlinks inside Sparkle.framework, which the signature needs
