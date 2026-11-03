@@ -1,7 +1,6 @@
 // What the window is showing and every action on it: views, the add box, selection, undo and the keyboard (B25).
 import SwiftUI
 import AppKit
-import Carbon.HIToolbox
 
 enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Month", quarter = "Quarter", year = "Year" }
 
@@ -37,19 +36,6 @@ enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Mont
     @Published var hideNoDate = false
     // Reminders lists left unfolded in the task list's No date part; kept across restarts.
     @Published var openLists = Set(UserDefaults.standard.stringArray(forKey: "openTaskLists") ?? []) { didSet { if Look.saves { UserDefaults.standard.set(Array(openLists), forKey: "openTaskLists") } } }
-}
-
-// Quick add from any app (Phase 2): its own text, the past event Tab picked, the highlighted suggestion, and its shortcut.
-@MainActor final class QuickBox: ObservableObject {
-    @Published var text = "" { didSet { if text != oldValue { pick = nil; sel = 0 } } }
-    @Published var pick: Item?
-    @Published var sel = 0
-    @Published var focus = 0
-    @Published var name = UserDefaults.standard.string(forKey: "quickName") ?? "Control Option Space"
-    @Published var error: String?  // why the last quick add failed, shown in the quick box
-    @Published var taken = false  // another app already uses the shortcut
-    @Published var keyRefused = false  // the shortcut just picked in Settings was taken, so the old one stays
-    @Published var recordingKey = false  // Settings is waiting for a new shortcut
 }
 
 // Redraws only what it wraps when `object` changes.
@@ -452,81 +438,4 @@ final class AppState: ObservableObject {
         }
         return true
     }
-
-    // The quick add shortcut, Control Option Space unless changed in Settings. Works while any app is in front.
-    func registerQuick() {
-        let d = UserDefaults.standard
-        let code = d.object(forKey: "quickCode") as? Int ?? kVK_Space, mods = d.object(forKey: "quickMods") as? Int ?? (controlKey | optionKey)
-        HotKey.action = { [weak self] in if let self { QuickPanel.toggle(self) } }
-        quick.taken = !HotKey.register(code: UInt32(code), mods: UInt32(mods))
-    }
-
-    func setQuickKey(_ e: NSEvent) {
-        let f = e.modifierFlags
-        let parts: [(Bool, String, Int)] = [(f.contains(.control), "Control", controlKey), (f.contains(.option), "Option", optionKey),
-                                            (f.contains(.shift), "Shift", shiftKey), (f.contains(.command), "Command", cmdKey)]
-        let on = parts.filter(\.0)
-        let key = e.keyCode == kVK_Space ? "Space" : (e.charactersIgnoringModifiers ?? "").uppercased()
-        let d = UserDefaults.standard, keys = ["quickCode", "quickMods", "quickName"], old = keys.map { d.object(forKey: $0) }
-        let name = (on.map(\.1) + [key]).joined(separator: " ")
-        zip(keys, [Int(e.keyCode), on.reduce(0) { $0 | $1.2 }, name] as [Any]).forEach { d.set($1, forKey: $0) }
-        registerQuick()
-        if quick.taken {
-            zip(keys, old).forEach { d.set($1, forKey: $0) }
-            registerQuick()
-            quick.keyRefused = true  // Settings says so; the old shortcut still works
-        } else { quick.name = name; quick.keyRefused = false }
-    }
-}
-
-// A system-wide shortcut through the Carbon hot key call: no Accessibility permission needed.
-@MainActor
-enum HotKey {
-    static var action: (() -> Void)?
-    private static var ref: EventHotKeyRef?
-    private static var installed = false
-
-    static func register(code: UInt32, mods: UInt32) -> Bool {
-        if !installed {
-            var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-            InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
-                DispatchQueue.main.async { MainActor.assumeIsolated { HotKey.action?() } }
-                return noErr
-            }, 1, &spec, nil, nil)
-            installed = true
-        }
-        if let ref { UnregisterEventHotKey(ref) }
-        ref = nil
-        return RegisterEventHotKey(code, mods, EventHotKeyID(signature: 0x444C4E45, id: 1), GetApplicationEventTarget(), 0, &ref) == noErr
-    }
-}
-
-// The floating quick add box. It takes typing without bringing Dateline to the front, and hides when you click elsewhere.
-final class QuickPanel: NSPanel {
-    static var shared: QuickPanel?
-
-    static func toggle(_ app: AppState) {
-        let p = shared ?? QuickPanel(app)
-        shared = p
-        if p.isVisible { p.orderOut(nil); return }
-        if let s = NSScreen.main { p.setFrameTopLeftPoint(NSPoint(x: s.frame.midX - p.frame.width / 2, y: s.visibleFrame.maxY - s.frame.height * 0.22)) }
-        app.quick.text = ""; app.quick.error = nil
-        app.quick.focus += 1
-        p.makeKeyAndOrderFront(nil)
-    }
-
-    init(_ app: AppState) {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 700, height: 560), styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
-        isFloatingPanel = true
-        level = .floating
-        backgroundColor = .clear
-        isOpaque = false
-        hasShadow = false  // the box draws its own
-        hidesOnDeactivate = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        contentView = NSHostingView(rootView: QuickAddView(app: app, store: app.store, quick: app.quick).frame(width: 700, height: 560, alignment: .top))
-    }
-
-    override var canBecomeKey: Bool { true }
-    override func resignKey() { super.resignKey(); orderOut(nil) }
 }

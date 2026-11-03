@@ -485,78 +485,6 @@ struct Understood: View {
     }
 }
 
-// The quick add box that opens over any app (approved Phase 2 mockup).
-struct QuickAddView: View {
-    @ObservedObject var app: AppState
-    @ObservedObject var store: Store
-    @ObservedObject var quick: QuickBox
-    @FocusState private var focused: Bool
-    var body: some View {
-        let list = app.quickSuggestions
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Image(systemName: "plus").font(.ui(16, weight: .semibold)).foregroundStyle(Palette.accent)
-                TextField("Lunch with Sam tomorrow 1pm /Personal -a15m", text: $quick.text)
-                    .textFieldStyle(.plain).font(.ui(18)).focused($focused)
-                    .onSubmit { app.commitQuick() }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
-            .overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
-            if !list.isEmpty {
-                section("FROM YOUR PAST EVENTS")
-                ForEach(Array(list.enumerated()), id: \.element.id) { i, it in
-                    let c = store.calendar(it.calendarID)
-                    HStack(spacing: 12) {
-                        Circle().fill(c?.color ?? .gray).frame(width: 8, height: 8)
-                        Text(it.title).fontWeight(.semibold).lineLimit(1)
-                        Text(([it.place, c?.title ?? ""].filter { !$0.isEmpty } + ["last on " + dateText(it.start, "MMM d")]).joined(separator: " · "))
-                            .font(.ui(12)).foregroundStyle(Palette.text2).lineLimit(1)
-                        Spacer(minLength: 0)
-                        if i == quick.sel { Key("Tab") }
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 8)
-                    .background(i == quick.sel ? Palette.accentSoft : .clear)
-                    .contentShape(Rectangle()).onTapGesture { quick.pick = it }
-                }
-            }
-            if !quick.text.trimmingCharacters(in: .whitespaces).isEmpty {
-                section("WHAT I UNDERSTOOD")
-                Understood(app: app, store: store, box: app.addBox, p: app.quickPreview, pick: quick.pick).padding(.horizontal, 16).padding(.bottom, 8)
-            }
-            HStack(spacing: 16) {
-                code(["/name"], "calendar"); code(["-a15m", "-a1h", "-a1d"], "alert before"); code(["-r1d", "-r1w", "-r1m"], "repeat")
-            }
-            .font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading).overlay(alignment: .top) { Palette.line.frame(height: 1) }
-            HStack(spacing: 8) {
-                Key("Return"); Text("add"); Key("Tab"); Text("use past event"); Key("Esc"); Text("close")
-                Spacer()
-                if let err = quick.error { Text(err).foregroundStyle(Palette.now) }
-                else { Text(quick.taken ? "Another app uses \(quick.name). Change it in Settings" : "Shortcut can be changed in Settings") }
-            }
-            .font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 8)
-            .background(Palette.bar).overlay(alignment: .top) { Palette.line.frame(height: 1) }
-        }
-        .font(.ui(13)).foregroundStyle(Palette.text)
-        .frame(width: 640)
-        .background(Palette.pop)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.black.opacity(0.08)))
-        .shadow(color: .black.opacity(0.38), radius: 40, y: 30)
-        .padding(.top, 8)
-        .onAppear { focused = true }
-        .onChange(of: quick.focus) { _, _ in focused = true }
-    }
-
-    func section(_ t: String) -> some View {
-        Text(t).font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
-    }
-
-    func code(_ codes: [String], _ what: String) -> some View {
-        HStack(spacing: 4) { ForEach(codes, id: \.self) { Text($0).fontWeight(.semibold).foregroundStyle(Palette.accent) }; Text(what) }
-    }
-}
-
 // Dateline, Settings (Command comma): the quick add shortcut, and the Look tab (Phase 3).
 struct SettingsView: View {
     @ObservedObject var app: AppState
@@ -575,42 +503,6 @@ struct SettingsView: View {
             AssistantSettings(app: app, a: Assistant.shared).tabItem { Label("Assistant", systemImage: "sparkles") }.tag("assistant")
             UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }.tag("updates")
         }
-    }
-}
-
-struct QuickSettings: View {
-    @ObservedObject var app: AppState
-    @ObservedObject var quick: QuickBox
-    @State private var monitor: Any?
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Quick add from any app")
-                Spacer()
-                Button(quick.recordingKey ? "Press the new shortcut" : quick.name) { record() }
-            }
-            Text(quick.taken || quick.keyRefused ? "Another app already uses this shortcut. Pick a different one." : "Opens the add box on top of whatever app is in front. Use Control, Option or Command with a key; Esc cancels.")
-                .font(.ui(12)).foregroundStyle(quick.taken || quick.keyRefused ? Palette.now : Palette.text3).fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(20).frame(width: 440)
-        .onDisappear { stop() }
-        .font(.ui(13))
-    }
-
-    func record() {
-        guard monitor == nil else { return }
-        quick.recordingKey = true
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
-            if e.keyCode != 53, !e.modifierFlags.intersection([.command, .option, .control]).isEmpty { app.setQuickKey(e) }
-            stop()
-            return nil
-        }
-    }
-
-    func stop() {
-        if let monitor { NSEvent.removeMonitor(monitor) }
-        monitor = nil
-        quick.recordingKey = false
     }
 }
 
