@@ -96,8 +96,10 @@ enum AccNet {
     nonisolated(unsafe) static var driveUpload = "https://www.googleapis.com/upload/drive/v3/files"
     nonisolated(unsafe) static var googleToken = URL(string: "https://oauth2.googleapis.com/token")!
     static let googleAuth = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
-    // Reuses Audrey Mail's Google key for now (John, Oct 30); a Dateline key goes in before it is ever sold.
-    nonisolated(unsafe) static var googleClientFile = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Audrey Mail/google_client.json")
+    // Dateline's own Google key, put inside the app by scripts/make-app.sh (kept out of this public repo). Audrey Mail's key is the
+    // fallback, so a Google sign-in made with it before (John's copy, Oct 30) keeps refreshing.
+    nonisolated(unsafe) static var googleClientFiles = [Bundle.main.resourceURL?.appendingPathComponent("google_client.json"),
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Audrey Mail/google_client.json")].compactMap { $0 }
 
     static func request(_ method: String, _ url: URL, auth: String, body: Data? = nil, headers: [String: String] = [:]) async throws -> (Data, HTTPURLResponse) {
         var r = URLRequest(url: url, timeoutInterval: 60)
@@ -382,11 +384,18 @@ func googleBody(_ it: Item, link: String, known: String = "") -> [String: Any] {
             "transparency": it.showAs == .free ? "transparent" : "opaque"]
 }
 
-func googleClient() throws -> (String, String) {
-    guard let d = try? Data(contentsOf: AccNet.googleClientFile), let root = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
-          let i = (root["installed"] ?? root["web"]) as? [String: Any], let id = i["client_id"] as? String, let secret = i["client_secret"] as? String
-    else { throw Failure("Google sign-in isn't set up on this Mac (Audrey Mail's Google key is missing).") }
+// The client id and secret from a key file as Google downloads it.
+func parseGoogleClient(_ d: Data) -> (String, String)? {
+    guard let root = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+          let i = (root["installed"] ?? root["web"]) as? [String: Any], let id = i["client_id"] as? String, let secret = i["client_secret"] as? String else { return nil }
     return (id, secret)
+}
+
+// Every Google key found, Dateline's own first.
+func googleClients() throws -> [(String, String)] {
+    let all = AccNet.googleClientFiles.compactMap { (try? Data(contentsOf: $0)).flatMap(parseGoogleClient) }
+    guard !all.isEmpty else { throw Failure("Google sign-in isn't set up in this copy of Dateline.") }
+    return all
 }
 
 private func b64url(_ d: Data) -> String { d.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "") }
@@ -412,7 +421,7 @@ func googleTokens(_ p: [String: String]) async throws -> (access: String, refres
 
 // Signs in through the browser and catches Google's answer on this Mac (127.0.0.1); returns the long-lived sign-in.
 func googleSignIn() async throws -> (refresh: String, access: String, expires: Date) {
-    let (id, secret) = try googleClient()
+    let (id, secret) = try googleClients()[0]
     let verifier = randomText(64), state = randomText(24)
     let challenge = b64url(Data(SHA256.hash(data: Data(verifier.utf8))))
     let catcher = try Catcher(state: state)
@@ -587,10 +596,16 @@ extension Store {
     private func googleToken(_ a: Account) async throws -> String {
         if let (t, exp) = accData.tokens[a.id], exp > Date() { return t }
         guard let r = secret(a.id) else { throw Failure("The Google sign-in is missing. Remove the account and add it again.") }
-        let (id, s) = try googleClient()
-        let t = try await googleTokens(["grant_type": "refresh_token", "refresh_token": r, "client_id": id, "client_secret": s])
-        accData.tokens[a.id] = (t.access, t.expires)
-        return t.access
+        // A sign-in refreshes only with the key it was made with, so each key is tried in turn.
+        var last: Error = Failure("Google sign-in isn't set up in this copy of Dateline.")
+        for (id, s) in try googleClients() {
+            do {
+                let t = try await googleTokens(["grant_type": "refresh_token", "refresh_token": r, "client_id": id, "client_secret": s])
+                accData.tokens[a.id] = (t.access, t.expires)
+                return t.access
+            } catch { last = error }
+        }
+        throw last
     }
 
     // Reads every calendar of every account (every 5 minutes, and after changes). Skipped while changes are still going out.
@@ -1335,6 +1350,8 @@ struct AccountSettings: View {
 
 func accountsSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int, Int) -> Date) {
     AccountSecrets.testMode = true
+    let key = parseGoogleClient(Data(#"{"installed":{"client_id":"1-abc.apps.googleusercontent.com","client_secret":"s1"}}"#.utf8))
+    expect(key?.0 == "1-abc.apps.googleusercontent.com" && key?.1 == "s1" && parseGoogleClient(Data("{}".utf8)) == nil, "accounts: a downloaded Google key file is read, a wrong one refused")
     let c = AccCal(id: "acc-1-0a1b2c", remote: "https://p1.example/cal/home/", title: "Home", color: "#FF0000", writable: true)
     let base = Item(id: "", calendarID: c.id, title: "Dinner, with Ana; 7", start: at(2026, 10, 30, 19, 0), end: at(2026, 10, 30, 21, 0), allDay: false,
                     place: "Casa Luna", notes: "Line one\nLine two", showAs: .busy)

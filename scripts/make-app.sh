@@ -7,6 +7,9 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks"
 cp "$(swift build -c release --show-bin-path)/Dateline" "$APP/Contents/MacOS/Dateline"
 cp App/Info.plist "$APP/Contents/Info.plist"
+# Dateline's own Google sign-in key (Google Cloud project "Dateline", Desktop client), kept out of this public repo; backup in Bitwarden.
+GKEY="$HOME/Library/Application Support/Dateline/google_client.json"
+[ -f "$GKEY" ] && { mkdir -p "$APP/Contents/Resources"; cp "$GKEY" "$APP/Contents/Resources/google_client.json"; }
 FW=$(find .build/artifacts -type d -name Sparkle.framework -path '*macos*' | head -1)
 [ -n "$FW" ] || { echo "Sparkle.framework not found under .build/artifacts: build first"; exit 1; }
 SPK="$APP/Contents/Frameworks/Sparkle.framework"

@@ -14,6 +14,7 @@ REPO="B0xfan/dateline"
 SUPPORT="$HOME/Library/Application Support/Dateline"
 KEY="$SUPPORT/update-signing.key"
 [ -f "$KEY" ] || { echo "Update key file missing: $KEY (backup: Bitwarden, 'Dateline update signing key')"; exit 1; }
+[ -f "$SUPPORT/google_client.json" ] || { echo "Dateline's Google key missing: $SUPPORT/google_client.json (without it Google sign-in fails on buyers' Macs)"; exit 1; }
 
 # Sparkle's signing tool, downloaded once and checked against a fixed fingerprint.
 TOOLS="$SUPPORT/sparkle-tools-2.10.0"; SIGN_UPDATE="$TOOLS/bin/sign_update"
