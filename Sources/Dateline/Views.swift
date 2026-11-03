@@ -54,6 +54,7 @@ struct MainView: View {
     @ObservedObject var store: Store
     @ObservedObject var panels: Panels
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     @State private var width: CGFloat = 1000  // the calendar's width: narrow toolbars use short words
 
@@ -63,6 +64,7 @@ struct MainView: View {
         } detail: {
             VStack(spacing: 0) {
                 if width < 700 { AddBox(app: app, box: app.addBox).frame(height: 32).padding(.horizontal, 8); Divider().overlay(Palette.line) }
+                TrialEndedStrip()
                 ZStack(alignment: .bottom) {
                     Group {
                         switch store.access {
@@ -116,8 +118,12 @@ struct MainView: View {
         .sheet(isPresented: Binding(get: { panels.reviewing != nil }, set: { if !$0 { panels.reviewing = nil } })) {
             if let p = app.emails.items.first(where: { $0.id == panels.reviewing }) { EmailReview(app: app, p: p) }
         }
-        .alert("Couldn't save", isPresented: Binding(get: { app.error != nil }, set: { if !$0 { app.error = nil } })) {
-            Button("OK") { app.error = nil }
+        .alert(app.error?.hasSuffix(License.endedMessage) == true ? "Adding and changing events is off" : "Couldn't save", isPresented: Binding(get: { app.error != nil }, set: { if !$0 { app.error = nil } })) {
+            if app.error?.hasSuffix(License.endedMessage) == true {
+                Button("Buy · \(License.price)") { License.shared.buy() }
+                Button("Enter key") { openLicense(openSettings) }
+                Button("Not now", role: .cancel) {}
+            } else { Button("OK") { app.error = nil } }
         } message: { Text(app.error ?? "") }
     }
 
@@ -205,6 +211,7 @@ struct Sidebar: View {
                     if Zones.card && !Zones.list.isEmpty { OnClock(clock: app.clock) { ZoneCard(now: $0) } }
                 }.padding(.horizontal, 12).padding(.vertical, 8)
             }
+            TrialCard()
             Divider().overlay(Palette.line)
             Text("Your data stays on this Mac").font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 8)
         }
@@ -390,12 +397,13 @@ struct Seg: View {
 struct AddBox: View {
     @ObservedObject var app: AppState
     @ObservedObject var box: AddText
+    @ObservedObject private var lic = License.shared
     @FocusState private var focused: Bool
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "plus").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.accent)
-            TextField("Add: Dinner with Ana Friday 7pm", text: $box.text)
-                .textFieldStyle(.plain).focused($focused)
+            Image(systemName: lic.canEdit ? "plus" : "lock").font(.ui(11, weight: .semibold)).foregroundStyle(lic.canEdit ? Palette.accent : Palette.text3)
+            TextField(lic.canEdit ? "Add: Dinner with Ana Friday 7pm" : "Adding is off", text: $box.text)
+                .textFieldStyle(.plain).focused($focused).disabled(!lic.canEdit)
                 .onSubmit { app.commitAdd() }
         }
         .padding(.horizontal, 8)
@@ -502,6 +510,7 @@ struct SettingsView: View {
             WeatherSettings(app: app).tabItem { Label("Weather", systemImage: "cloud.sun") }.tag("weather")
             AssistantSettings(app: app, a: Assistant.shared).tabItem { Label("Assistant", systemImage: "sparkles") }.tag("assistant")
             UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }.tag("updates")
+            LicenseSettings().tabItem { Label("License", systemImage: "key") }.tag("license")
         }
     }
 }

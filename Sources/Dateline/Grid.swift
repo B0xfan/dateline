@@ -531,6 +531,10 @@ struct DetailPanel: View {
     func commit() {
         let extrasOnly = store.items.first { $0.id == item.id }.map { sameInCalendar($0, item) } ?? false
         guard extrasOnly || store.calendar(item.calendarID)?.writable == true else { return }
+        if store.trialOver, let saved = store.items.first(where: { $0.id == item.id }) {
+            if saved != item { item = saved; app.error = License.endedMessage }
+            return
+        }
         app.save(item)
     }
 

@@ -326,9 +326,13 @@ final class Store: ObservableObject {
     }
     private func current(_ it: Item) -> Item { var it = it; it.id = resolve(it.id); return it }
 
+    // The ended trial holds every add, change and delete of an event; made-up calendars never are.
+    var trialOver: Bool { access != .sample && !License.shared.canEdit }
+
     // Adds a new event; returns the saved item, or an error message.
     @discardableResult
     func add(_ p: Parsed, calendarID: String?) -> Result<Item, Failure> {
+        if trialOver { return .failure(Failure(License.endedMessage)) }
         let calID = calendarID ?? defaultCalendarID ?? calendars.first(where: \.writable)?.id
         guard let calID else { return .failure(Failure("No calendar on this Mac can take new events.")) }
         let it = Item(id: "", calendarID: calID, title: p.title.isEmpty ? "New event" : p.title, start: p.start, end: p.end,
@@ -343,6 +347,7 @@ final class Store: ObservableObject {
     // Saves changes to an event (move, stretch, edits in the details panel). Repeating events change this occurrence only.
     @discardableResult
     func update(_ it: Item) -> Failure? {
+        if trialOver { fetch(); return Failure(License.endedMessage) }  // the fetch puts a dragged event back
         // Only Dateline's extras changed (also on read-only calendars and invites): nothing goes to the calendar.
         if let old = items.first(where: { $0.id == it.id }), sameInCalendar(old, it) { setExtras(it); fetch(); return nil }
         if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be changed.") }
@@ -365,6 +370,7 @@ final class Store: ObservableObject {
     // `series`: this and every later occurrence (undo of adding a repeating event).
     @discardableResult
     func delete(_ it: Item, series: Bool = false) -> Failure? {
+        if trialOver { return Failure(License.endedMessage) }
         if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be deleted. Remove the whole calendar from the sidebar instead.") }
         if isAcc(it.calendarID) {
             let oneTime = !accRepeats(it)

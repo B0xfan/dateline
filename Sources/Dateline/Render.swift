@@ -57,6 +57,7 @@ private final class ShotWindow: NSWindow {
         let tag = dark ? "dark" : "light"
         func shot(_ name: String, wait: Double = 0.2, width: CGFloat = 1380, _ setup: @escaping (AppState) -> Void) {
             if !only.isEmpty && !only.contains(name) { return }
+            License.shared.test = nil  // the bought look unless the picture is about the trial
             let app = AppState(store: Store(sample: true), today: today)
             app.taskPanel.openLists = []; app.sidebarOpen = true  // never the folds or sidebar saved on this Mac
             // shortcut: --late can't check the map and email pictures, sheets don't draw off-screen; they come out as the plain calendar.
@@ -71,6 +72,15 @@ private final class ShotWindow: NSWindow {
                 ok = saveWindow(MainView(app: app, store: app.store, panels: app.panels), dark: dark, wait: wait, width: width, to: "\(dir)/\(name)-\(tag).png", change: late ? { setup(app) } : nil) && ok
             }
         }
+        // The free trial (approved mockup trial-mockups.html): days left, the last day, and ended (calendar to look at only).
+        shot("trial-days") { $0.mode = .week; $0.days = 7; License.shared.test = .trial(daysLeft: 5) }
+        shot("trial-last") { $0.mode = .week; $0.days = 7; License.shared.test = .trial(daysLeft: 1) }
+        shot("trial-ended") { $0.mode = .week; $0.days = 7; License.shared.test = .ended }
+        for (n, st) in [("trial", License.Status.trial(daysLeft: 5)), ("ended", .ended), ("bought", .bought(serial: 586300))] where only.isEmpty || only.contains("license-\(n)") {
+            License.shared.test = st
+            ok = save(LicenseSettings().background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/license-\(n)-\(tag).png") && ok
+        }
+        License.shared.test = nil
         shot("day") { $0.mode = .day }
         shot("week") { $0.mode = .week; $0.days = 7 }
         shot("week5") { $0.mode = .week; $0.days = 5 }

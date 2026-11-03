@@ -10,6 +10,7 @@
 //   --timing-file <file.ics>  times reading and showing a subscribed calendar's file
 //   --follow-check    changes each part of the split window state after a hidden window has drawn; the window must follow
 //   --timing-ui       times window redraws on made-up calendars, in a hidden window
+//   --key-check         reads one buyer key on stdin and prints its number, or "bad" (checks scripts/keys.js and the app agree)
 //   --render <folder> [names]  draws the window on sample calendars to PNG files off-screen (no calendar access); names picks some of the main window pictures
 //     with --late after the names, each picture's state is set after the window has drawn, so a screen that fails to follow it shows up against the normal picture
 import SwiftUI
@@ -17,6 +18,7 @@ import AppKit
 
 let args = CommandLine.arguments
 if args.contains("--selftest") { exit(selftest()) }
+if args.contains("--key-check") { let n = keySerial(readLine() ?? ""); print(n.map(String.init) ?? "bad"); exit(n == nil ? 1 : 0) }
 if let i = args.firstIndex(of: "--a4-code"), i + 3 < args.count { print(a4EngineCode(vault: args[i + 1], path: args[i + 2], day: args[i + 3].isEmpty ? nil : args[i + 3])); exit(0) }  // what the engine is sent, for the sandbox test
 if let i = args.firstIndex(of: "--a4-check"), i + 1 < args.count { exit(a4Check(args[i + 1], projects: i + 2 < args.count ? args[i + 2] : nil)) }
 if let i = args.firstIndex(of: "--timing"), i + 1 < args.count { exit(MainActor.assumeIsolated { timingCheck(args[i + 1]) }) }

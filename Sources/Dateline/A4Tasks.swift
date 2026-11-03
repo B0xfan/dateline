@@ -333,6 +333,7 @@ extension Store {
     }
 
     func a4Apply(events: [Item], now: Date) {
+        if trialOver { return }  // paused, not half done: a note moved while the event can't follow would leave them apart
         let plan = a4Plan(tasks: todos.filter { $0.a4 != nil }, links: a4Links, events: events, calendarFor: a4Target, now: now, seen: a4HasRead)
         var links = plan.links, failure: Failure?
         for step in plan.steps {

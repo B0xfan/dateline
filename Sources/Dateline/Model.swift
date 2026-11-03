@@ -75,7 +75,7 @@ final class AppState: ObservableObject {
     // A new day changes what most views draw (today's mark, overdue tasks), so it redraws everything; a tick within the day doesn't.
     var now: Date {
         get { clock.now }
-        set { if !cal.isDate(newValue, inSameDayAs: clock.now) { objectWillChange.send() }; clock.now = newValue }
+        set { if !cal.isDate(newValue, inSameDayAs: clock.now) { objectWillChange.send() }; clock.now = newValue; License.shared.tick(newValue) }
     }
     @Published private var undoStack: [() -> Failure?] = []  // published: the Undo menu item greys out from it
     private var monitor: Any?
@@ -256,14 +256,16 @@ final class AppState: ObservableObject {
 
     // Option drag: `it` is the moved copy; the original stays where it was.
     func copy(_ it: Item) {
-        guard let c = store.duplicate(it) else { error = "Couldn't copy the event."; return }
+        guard let c = store.duplicate(it) else { error = store.trialOver ? License.endedMessage : "Couldn't copy the event."; return }
         undoStack.append { [weak self] in self?.store.delete(c) }
         selectedID = store.items.first { $0.title == c.title && $0.start == c.start }?.id ?? c.id
     }
 
     func newEvent(at start: Date) {
         var p = Parsed(start: start, end: start.addingTimeInterval(3600)); p.title = "New event"
-        guard case .success(let it) = store.add(p, calendarID: calendar(for: p, pick: nil).0?.id) else { return }
+        let added = store.add(p, calendarID: calendar(for: p, pick: nil).0?.id)
+        if case .failure(let f) = added, f.message == License.endedMessage { error = f.message }
+        guard case .success(let it) = added else { return }
         undoStack.append { [weak self] in self?.store.delete(it) }
         selectedID = store.items.first { $0.title == it.title && $0.start == it.start }?.id ?? it.id
         panels.panelOpen = true
