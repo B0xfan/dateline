@@ -603,7 +603,8 @@ extension Store {
                 let t = try await googleTokens(["grant_type": "refresh_token", "refresh_token": r, "client_id": id, "client_secret": s])
                 accData.tokens[a.id] = (t.access, t.expires)
                 return t.access
-            } catch { last = error }
+            } catch where (last as? Failure)?.message.hasPrefix("Google ended") != true { last = error }  // "ended" tells the person what to do, so a wrong-key answer never hides it
+            catch {}
         }
         throw last
     }
