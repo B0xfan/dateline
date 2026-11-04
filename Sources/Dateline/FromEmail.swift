@@ -6,6 +6,7 @@ import AppKit
 import UniformTypeIdentifiers
 #if canImport(FoundationModels)
 import FoundationModels
+import DatelineCore
 #endif
 
 // MARK: reading the email file

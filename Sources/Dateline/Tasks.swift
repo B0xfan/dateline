@@ -2,6 +2,7 @@
 import SwiftUI
 import CoreLocation
 import Contacts
+import DatelineCore
 
 // The Tasks row under the all-day row, one cell per day (approved mockup 1).
 struct TaskRow: View {

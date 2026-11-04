@@ -1,6 +1,7 @@
 // The day and week grid, the month grid and the event details panel.
 import SwiftUI
 import AppKit
+import DatelineCore
 
 var hourH: CGFloat { Look.hourHeight }
 let gutter: CGFloat = 52

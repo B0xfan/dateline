@@ -3,22 +3,23 @@
 import Foundation
 import SwiftUI
 
-struct Sub: Codable, Identifiable, Equatable {
-    var id = "sub-" + UUID().uuidString
-    var url: String  // https address; empty for a calendar worked out here (`kind`)
-    var kind: String? = nil  // "moon" or "sun": made on this Mac, no address
-    var name: String
-    var color: Int  // a place in Palette.tags
-    var hours = 24  // how often it updates
-    var alerts = false
-    var updated: Date? = nil
-    var problem: String? = nil  // why the last update failed; the last events stay
+public struct Sub: Codable, Identifiable, Equatable {
+    public var id = "sub-" + UUID().uuidString
+    public var url: String  // https address; empty for a calendar worked out here (`kind`)
+    public var kind: String? = nil  // "moon" or "sun": made on this Mac, no address
+    public var name: String
+    public var color: Int  // a place in Palette.tags
+    public var hours = 24  // how often it updates
+    public var alerts = false
+    public var updated: Date? = nil
+    public var problem: String? = nil  // why the last update failed; the last events stay
+    public init(id: String = "sub-" + UUID().uuidString, url: String, kind: String? = nil, name: String, color: Int, hours: Int = 24, alerts: Bool = false, updated: Date? = nil, problem: String? = nil) { self.id = id; self.url = url; self.kind = kind; self.name = name; self.color = color; self.hours = hours; self.alerts = alerts; self.updated = updated; self.problem = problem }
 }
 
-func isSub(_ calendarID: String) -> Bool { calendarID.hasPrefix("sub-") }
+public func isSub(_ calendarID: String) -> Bool { calendarID.hasPrefix("sub-") }
 
 // The events of one subscribed calendar between two dates, as Dateline items. A changed occurrence replaces the one it changes.
-func subItems(_ s: Sub, _ events: [ICalEvent], from a: Date, to b: Date) -> [Item] {
+public func subItems(_ s: Sub, _ events: [ICalEvent], from a: Date, to b: Date) -> [Item] {
     var changed: [String: Set<Date>] = [:]
     for e in events { if let r = e.recurrenceID { changed[e.uid, default: []].insert(r) } }
     var out: [Item] = []
@@ -37,7 +38,7 @@ func subItems(_ s: Sub, _ events: [ICalEvent], from a: Date, to b: Date) -> [Ite
 }
 
 // The calendars made on this Mac: one all-day line a day.
-@MainActor func madeItems(_ s: Sub, from a: Date, to b: Date) -> [Item] {
+@MainActor public func madeItems(_ s: Sub, from a: Date, to b: Date) -> [Item] {
     var out: [Item] = [], d = cal.startOfDay(for: a)
     while d < b {
         var title: String?
@@ -56,7 +57,7 @@ func subItems(_ s: Sub, _ events: [ICalEvent], from a: Date, to b: Date) -> [Ite
 }
 
 // webcal:// is how calendar links are often shared; it is plain https underneath.
-func subAddress(_ text: String) -> URL? {
+public func subAddress(_ text: String) -> URL? {
     var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
     if t.lowercased().hasPrefix("webcal://") { t = "https://" + t.dropFirst(9) }
     guard let u = URL(string: t), ["https", "http"].contains(u.scheme?.lowercased() ?? ""), u.host != nil else { return nil }
@@ -64,7 +65,7 @@ func subAddress(_ text: String) -> URL? {
 }
 
 // Downloads and reads a calendar; the file's text comes back so it can be kept for when the address stops working.
-func downloadCalendar(_ u: URL) async -> Result<(String, [ICalEvent]), Failure> {
+public func downloadCalendar(_ u: URL) async -> Result<(String, [ICalEvent]), Failure> {
     var req = URLRequest(url: u, timeoutInterval: 30)
     req.setValue("text/calendar", forHTTPHeaderField: "Accept")
     do {
@@ -78,7 +79,7 @@ func downloadCalendar(_ u: URL) async -> Result<(String, [ICalEvent]), Failure> 
 }
 
 // The kept copies of these calendars; one with no copy yet is left out.
-func readSubFiles(_ ids: [String], in folder: URL) -> [String: [ICalEvent]] {
+public func readSubFiles(_ ids: [String], in folder: URL) -> [String: [ICalEvent]] {
     var read: [String: [ICalEvent]] = [:]
     for id in ids {
         if let text = try? String(contentsOf: folder.appendingPathComponent(id + ".ics"), encoding: .utf8) { read[id] = parseICS(text) }
@@ -89,25 +90,25 @@ func readSubFiles(_ ids: [String], in folder: URL) -> [String: [ICalEvent]] {
 // MARK: the Store side
 
 extension Store {
-    static let subFolder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Dateline/Subscribed")
+    public static let subFolder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Dateline/Subscribed")
 
-    var subInfos: [CalInfo] { subs.map { CalInfo(id: $0.id, title: $0.name, account: "Subscribed", color: Palette.tags[$0.color % Palette.tags.count], writable: false) } }
+    public var subInfos: [CalInfo] { subs.map { CalInfo(id: $0.id, title: $0.name, account: "Subscribed", color: Palette.tags[$0.color % Palette.tags.count], writable: false) } }
 
-    func sub(_ id: String) -> Sub? { subs.first { $0.id == id } }
+    public func sub(_ id: String) -> Sub? { subs.first { $0.id == id } }
 
-    func subEvents(from a: Date, to b: Date) -> [Item] {
+    public func subEvents(from a: Date, to b: Date) -> [Item] {
         subs.flatMap { s in (s.kind == nil ? subItems(s, subParsed[s.id] ?? [], from: a, to: b) : madeItems(s, from: a, to: b)).map(decorated) }
     }
 
     // After a calendar is added, renamed, recolored or removed.
-    func subsChanged() {
+    public func subsChanged() {
         calendars = calendars.filter { !isSub($0.id) } + subInfos
         refetch()
     }
 
     // The files are read in the background, so a big one doesn't hold the window back. `ready` runs once they are in:
     // Apple Calendar is read after that, so there is no half-filled calendar and alerts never check without these events.
-    func loadSubs(then ready: @escaping @MainActor () -> Void) {
+    public func loadSubs(then ready: @escaping @MainActor () -> Void) {
         if let v: [Sub] = load("subscriptions") { subs = v }
         let ids = subs.filter { $0.kind == nil }.map(\.id), folder = Self.subFolder
         guard !ids.isEmpty else { ready(); return }
@@ -118,12 +119,12 @@ extension Store {
     }
 
     // What the launch read found. A download that finished first is newer, and a calendar removed meanwhile stays removed.
-    func adoptSubs(_ read: [String: [ICalEvent]]) {
+    public func adoptSubs(_ read: [String: [ICalEvent]]) {
         for (id, events) in read where sub(id) != nil && subParsed[id] == nil { subParsed[id] = events }
     }
 
     // Adds a calendar; `text`/`events` when the Subscribe window already downloaded it.
-    func subscribe(_ s: Sub, text: String? = nil, events: [ICalEvent]? = nil) {
+    public func subscribe(_ s: Sub, text: String? = nil, events: [ICalEvent]? = nil) {
         var s = s
         if let text, let events { keep(text, for: s.id); subParsed[s.id] = events; s.updated = Date() }
         subs.append(s)
@@ -131,7 +132,7 @@ extension Store {
         if s.kind == nil && text == nil { refreshSub(s.id) }
     }
 
-    func unsubscribe(_ id: String) {
+    public func unsubscribe(_ id: String) {
         subs.removeAll { $0.id == id }
         subParsed[id] = nil
         hidden.remove(id)
@@ -140,14 +141,14 @@ extension Store {
         subsChanged()
     }
 
-    func editSub(_ id: String, _ change: (inout Sub) -> Void) {
+    public func editSub(_ id: String, _ change: (inout Sub) -> Void) {
         guard let i = subs.firstIndex(where: { $0.id == id }) else { return }
         change(&subs[i])
         subsChanged()
     }
 
     // Every 5 minutes: the calendars whose time has come. A failed one tries again after an hour.
-    func refreshSubs() {
+    public func refreshSubs() {
         guard access != .sample else { return }
         let now = Date()
         for s in subs where s.kind == nil {
@@ -156,7 +157,7 @@ extension Store {
         }
     }
 
-    func refreshSub(_ id: String) {
+    public func refreshSub(_ id: String) {
         guard access != .sample, let s = sub(id), s.kind == nil else { return }
         subTried[id] = Date()
         guard let u = subAddress(s.url) else { editSub(id) { $0.problem = "The address is not a web address." }; return }
@@ -181,14 +182,14 @@ extension Store {
 
 // MARK: the ready-made list (free public addresses, each checked to work on 2026-10-28; moon and sun are worked out on this Mac)
 
-struct ReadyMade: Identifiable {
-    let name, about, group: String
-    var url = "", kind: String? = nil
-    let color: Int
-    var id: String { name }
+public struct ReadyMade: Identifiable {
+    public let name, about, group: String
+    public var url = "", kind: String? = nil
+    public let color: Int
+    public var id: String { name }
 }
 
-let readyMade = [
+public let readyMade = [
     ReadyMade(name: "Costa Rica holidays", about: "Public holidays and days off, in English", group: "Holidays",
               url: "https://calendar.google.com/calendar/ical/en.cr%23holiday%40group.v.calendar.google.com/public/basic.ics", color: 0),
     ReadyMade(name: "Feriados de Costa Rica", about: "The same holidays, in Spanish", group: "Holidays",
@@ -204,7 +205,7 @@ let readyMade = [
 // MARK: the Subscribe window (approved mockup: web address tab, ready-made tab)
 
 // The name the calendar gives itself (X-WR-CALNAME), if any.
-func calendarName(_ text: String) -> String? {
+public func calendarName(_ text: String) -> String? {
     text.split(whereSeparator: \.isNewline).lazy.compactMap { icsLine(String($0)) }.first { $0.0 == "X-WR-CALNAME" }
         .map { icsText($0.2).trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 }
 }
@@ -285,7 +286,7 @@ END:VEVENT\r
 END:VCALENDAR\r
 """
 
-func subSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int, Int) -> Date) {
+public func subSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int, Int) -> Date) {
     let ev = parseICS(sampleICS)
     expect(ev.count == 8, "8 events read (the time zone block and the alarm are not events)")
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dateline-selftest-" + UUID().uuidString)

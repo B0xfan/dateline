@@ -8,7 +8,18 @@ on:
         type: boolean
         default: false
 jobs:
+  # The shared DatelineCore package must keep compiling for the iPhone. No signing, nothing uploaded.
+  ios-core:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build DatelineCore for iOS
+        run: |
+          xcodebuild build -scheme DatelineCore -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
   build:
+    if: ${{ !inputs.quick }}
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -19,10 +30,6 @@ jobs:
       - name: Self-test (pure logic only, no calendar access)
         if: ${{ !inputs.quick }}
         run: .build/release/Dateline --selftest
-      - name: iPhone check (shared code)
-        run: |
-          xcrun --sdk iphonesimulator swiftc -typecheck -module-name DatelineShared -target arm64-apple-ios17.0-simulator \
-            -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" Sources/Dateline/Shared/*.swift
       - name: Package the app
         if: ${{ !inputs.quick }}
         run: |

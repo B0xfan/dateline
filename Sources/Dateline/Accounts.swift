@@ -9,6 +9,7 @@ import AppKit
 import Network
 import CryptoKit
 import UniformTypeIdentifiers
+import DatelineCore
 
 // The Attachments part of the event panel: the files, a drop area and Add…, or on a calendar from the Mac's settings, why not and where to sign in.
 struct AttachmentsBox: View {

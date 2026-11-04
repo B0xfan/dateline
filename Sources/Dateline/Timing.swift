@@ -3,6 +3,7 @@
 import Foundation
 import AppKit
 import SwiftUI
+import DatelineCore
 
 // --timing-ui: how long a window redraw takes on made-up calendars with 600 extra events, in a hidden window behind the desktop. Never touches real calendars or settings.
 @MainActor func timingUI() -> Int32 {

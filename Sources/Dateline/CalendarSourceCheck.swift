@@ -5,6 +5,7 @@ import Foundation
 import EventKit
 import SwiftUI
 import CoreLocation
+import DatelineCore
 
 @MainActor
 // Saving, undo and calendar changes, end to end through the store on the sample source: nothing touches a real calendar or saved setting.

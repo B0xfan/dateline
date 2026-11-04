@@ -2,22 +2,22 @@
 import Foundation
 
 // One VEVENT, as read from the file.
-struct ICalEvent: Equatable {
-    var uid = "", title = "", place = "", notes = ""
-    var start = Date(), end = Date()
-    var allDay = false, free = false, cancelled = false
-    var tz = TimeZone.current
-    var rule: [String: String]? = nil
-    var exdates: Set<Date> = []
-    var recurrenceID: Date? = nil  // set on a changed copy of one occurrence of a repeating event
-    var url = ""  // Phase 8 accounts: the event's web link, and its alerts as offsets from the start
-    var alarms: [TimeInterval] = []
-    var files: [Attach] = []
+public struct ICalEvent: Equatable {
+    public var uid = "", title = "", place = "", notes = ""
+    public var start = Date(), end = Date()
+    public var allDay = false, free = false, cancelled = false
+    public var tz = TimeZone.current
+    public var rule: [String: String]? = nil
+    public var exdates: Set<Date> = []
+    public var recurrenceID: Date? = nil  // set on a changed copy of one occurrence of a repeating event
+    public var url = ""  // Phase 8 accounts: the event's web link, and its alerts as offsets from the start
+    public var alarms: [TimeInterval] = []
+    public var files: [Attach] = []
 }
 
 // MARK: reading the file
 
-func parseICS(_ text: String) -> [ICalEvent] {
+public func parseICS(_ text: String) -> [ICalEvent] {
     var lines: [String] = []
     for raw in text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").split(separator: "\n") {
         if let f = raw.first, f == " " || f == "\t", !lines.isEmpty { lines[lines.count - 1] += raw.dropFirst() } else { lines.append(String(raw)) }
@@ -37,7 +37,7 @@ func parseICS(_ text: String) -> [ICalEvent] {
 }
 
 // "DTSTART;TZID="America/New_York":20261030T160000" → name, parameters, value. A colon inside quotes is not the split.
-func icsLine(_ l: String) -> (String, [String: String], String)? {
+public func icsLine(_ l: String) -> (String, [String: String], String)? {
     var quoted = false, split: String.Index?
     for i in l.indices { if l[i] == "\"" { quoted.toggle() } else if l[i] == ":" && !quoted { split = i; break } }
     guard let split else { return nil }
@@ -49,7 +49,7 @@ func icsLine(_ l: String) -> (String, [String: String], String)? {
     return (name, params, String(l[l.index(after: split)...]))
 }
 
-func icsText(_ v: String) -> String {
+public func icsText(_ v: String) -> String {
     // One pass, left to right, so an escaped backslash before an n stays a backslash and an n.
     var out = "", escaped = false
     for ch in v {
@@ -76,7 +76,7 @@ private func icsFormatter(_ tz: TimeZone, allDay: Bool) -> DateFormatter {
 }
 
 // A date or date-time value: (moment, all-day, its time zone). All-day dates are midnight here.
-func icsDate(_ v: String, _ params: [String: String]) -> (Date, Bool, TimeZone)? {
+public func icsDate(_ v: String, _ params: [String: String]) -> (Date, Bool, TimeZone)? {
     let allDay = params["VALUE"] == "DATE" || v.count == 8
     let utc = v.hasSuffix("Z")
     // shortcut: a TZID that is not a standard place name (some Outlook files) reads as this Mac's time zone; map Windows names if a real calendar needs it.
@@ -86,7 +86,7 @@ func icsDate(_ v: String, _ params: [String: String]) -> (Date, Bool, TimeZone)?
 }
 
 // "PT1H30M", "P1D", "-PT15M" → seconds.
-func icsDuration(_ s: String) -> TimeInterval {
+public func icsDuration(_ s: String) -> TimeInterval {
     var total = 0.0, num = ""
     for ch in s {
         if ch.isNumber { num.append(ch); continue }
@@ -130,7 +130,7 @@ private func icsEvent(_ props: [(String, [String: String], String)]) -> ICalEven
 // MARK: repeats
 
 // Every start of `e` that overlaps a..b (the first one is DTSTART). Repeats by day, week, month and year, with the usual parts.
-func occurrences(_ e: ICalEvent, from a: Date, to b: Date) -> [Date] {
+public func occurrences(_ e: ICalEvent, from a: Date, to b: Date) -> [Date] {
     let len = e.end.timeIntervalSince(e.start)
     func overlaps(_ d: Date) -> Bool { d < b && (d.addingTimeInterval(len) > a || (len == 0 && d >= a)) }
     // shortcut: rules by the hour or minute, or with BYSETPOS/BYWEEKNO/BYYEARDAY, show the first time only; add them if a real calendar needs one.

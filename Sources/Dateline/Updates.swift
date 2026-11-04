@@ -3,6 +3,7 @@
 import SwiftUI
 import Combine
 import Sparkle
+import DatelineCore
 
 final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
     static let shared = Updater()

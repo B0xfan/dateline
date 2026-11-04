@@ -3,7 +3,7 @@
 import Foundation
 import SwiftUI
 
-@MainActor func timingCheck(_ path: String) -> Int32 {
+@MainActor public func timingCheck(_ path: String) -> Int32 {
     guard AppleCalendar.hasEventAccess else {
         try? "no calendar access for this copy, nothing timed\n".write(toFile: path, atomically: true, encoding: .utf8)
         return 2
@@ -28,7 +28,7 @@ import SwiftUI
 }
 
 // --timing-file <file.ics>: how long a subscribed calendar's file takes to read and to show. Saves nothing.
-func timingFile(_ path: String) -> Int32 {
+public func timingFile(_ path: String) -> Int32 {
     guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { print("Can't read \(path)"); return 1 }
     func ms(_ work: () -> Int) -> String {
         var runs: [Double] = [], n = 0

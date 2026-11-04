@@ -9,61 +9,65 @@ import Network
 import CryptoKit
 import UniformTypeIdentifiers
 
-struct Account: Codable, Identifiable, Equatable {
-    var id = "acc-" + UUID().uuidString
-    var kind: String  // "icloud" or "google"
-    var email: String
-    var cals: [AccCal] = []
-    var synced: Date? = nil
-    var problem: String? = nil
-    var carried: Bool? = nil  // the Mac's choices were carried over to this account's calendars (once)
-    var name: String { kind == "google" ? "Google" : "iCloud" }
+public struct Account: Codable, Identifiable, Equatable {
+    public var id = "acc-" + UUID().uuidString
+    public var kind: String  // "icloud" or "google"
+    public var email: String
+    public var cals: [AccCal] = []
+    public var synced: Date? = nil
+    public var problem: String? = nil
+    public var carried: Bool? = nil  // the Mac's choices were carried over to this account's calendars (once)
+    public var name: String { kind == "google" ? "Google" : "iCloud" }
+    public init(id: String = "acc-" + UUID().uuidString, kind: String, email: String, cals: [AccCal] = [], synced: Date? = nil, problem: String? = nil, carried: Bool? = nil) { self.id = id; self.kind = kind; self.email = email; self.cals = cals; self.synced = synced; self.problem = problem; self.carried = carried }
 }
 
 // One calendar on an account. `id` is Dateline's calendar id; `remote` is the CalDAV address or Google's calendar id.
-struct AccCal: Codable, Equatable {
-    var id: String
-    var remote: String
-    var title: String
-    var color: String  // "#RRGGBB"
-    var writable: Bool
-    var defaultAlerts: [Int] = []  // Google: minutes before, used by events that keep the calendar's own alerts
+public struct AccCal: Codable, Equatable {
+    public var id: String
+    public var remote: String
+    public var title: String
+    public var color: String  // "#RRGGBB"
+    public var writable: Bool
+    public var defaultAlerts: [Int] = []  // Google: minutes before, used by events that keep the calendar's own alerts
+    public init(id: String, remote: String, title: String, color: String, writable: Bool, defaultAlerts: [Int] = []) { self.id = id; self.remote = remote; self.title = title; self.color = color; self.writable = writable; self.defaultAlerts = defaultAlerts }
 }
 
-func isAcc(_ calendarID: String) -> Bool { calendarID.hasPrefix("acc-") }
+public func isAcc(_ calendarID: String) -> Bool { calendarID.hasPrefix("acc-") }
 // Dateline's id for an account's calendar: the account's id and a short fingerprint of the calendar's address (never "|", which marks an occurrence).
-func calID(_ accountID: String, _ remote: String) -> String {
+public func calID(_ accountID: String, _ remote: String) -> String {
     accountID + "-" + SHA256.hash(data: Data(remote.utf8)).prefix(6).map { String(format: "%02x", $0) }.joined()
 }
 
 // What Dateline holds of one account's calendar between syncs.
-struct DavRes { var etag: String?; var text: String; var events: [ICalEvent] }
-struct GEv { var iid: String; var master: String?; var etag: String?; var item: Item }
+public struct DavRes { public var etag: String?; public var text: String; public var events: [ICalEvent]
+    public init(etag: String?, text: String, events: [ICalEvent]) { self.etag = etag; self.text = text; self.events = events } }
+public struct GEv { public var iid: String; public var master: String?; public var etag: String?; public var item: Item
+    public init(iid: String, master: String?, etag: String?, item: Item) { self.iid = iid; self.master = master; self.etag = etag; self.item = item } }
 
-final class AccData {
-    var dav: [String: [String: DavRes]] = [:]  // calendar id → event address → the event file
-    var google: [String: [GEv]] = [:]
-    var loaded: Set<String> = []  // accounts read this launch: only these hide the Mac's own copy
-    var chain: [String: Task<Void, Never>] = [:]
-    var pending: [String: Int] = [:]
-    var tokens: [String: (String, Date)] = [:]
-    var secrets: [String: String]?
-    var goneEtag: [String: String] = [:]  // event address → the version a change still going out got, for a delete queued behind it
+public final class AccData {
+    public var dav: [String: [String: DavRes]] = [:]  // calendar id → event address → the event file
+    public var google: [String: [GEv]] = [:]
+    public var loaded: Set<String> = []  // accounts read this launch: only these hide the Mac's own copy
+    public var chain: [String: Task<Void, Never>] = [:]
+    public var pending: [String: Int] = [:]
+    public var tokens: [String: (String, Date)] = [:]
+    public var secrets: [String: String]?
+    public var goneEtag: [String: String] = [:]  // event address → the version a change still going out got, for a delete queued behind it
 }
 
 // MARK: the private file
 
-enum AccountSecrets {
+public enum AccountSecrets {
     nonisolated(unsafe) static var testMode = false  // --selftest and --accounts-check: never the real file
-    static var url: URL { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Dateline/accounts.json") }
+    public static var url: URL { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Dateline/accounts.json") }
 
-    static func read() -> [String: String] {
+    public static func read() -> [String: String] {
         guard !testMode, let d = try? Data(contentsOf: url) else { return [:] }
         return (try? JSONDecoder().decode([String: String].self, from: d)) ?? [:]
     }
 
     // Only John's Mac account can read it (file 0600, folder 0700). Written whole: a crash leaves the old file or the new one.
-    static func write(_ v: [String: String]) throws {
+    public static func write(_ v: [String: String]) throws {
         guard !testMode else { return }
         let dir = url.deletingLastPathComponent(), fm = FileManager.default
         try fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -76,8 +80,8 @@ enum AccountSecrets {
 // MARK: talking to the servers
 
 // Follows a redirect, but a sign-in sent to one server is never carried on to another.
-final class KeepSignInHome: NSObject, URLSessionTaskDelegate {
-    func urlSession(_ s: URLSession, task: URLSessionTask, willPerformHTTPRedirection r: HTTPURLResponse, newRequest: URLRequest) async -> URLRequest? {
+public final class KeepSignInHome: NSObject, URLSessionTaskDelegate {
+    public func urlSession(_ s: URLSession, task: URLSessionTask, willPerformHTTPRedirection r: HTTPURLResponse, newRequest: URLRequest) async -> URLRequest? {
         var n = newRequest
         // Kept only for the same server, or a hop between Apple's own iCloud servers (caldav.icloud.com to p12-caldav.icloud.com).
         let from = task.originalRequest?.url, to = n.url
@@ -89,12 +93,12 @@ final class KeepSignInHome: NSObject, URLSessionTaskDelegate {
     }
 }
 
-enum AccNet {
+public enum AccNet {
     nonisolated(unsafe) static var icloudRoot = URL(string: "https://caldav.icloud.com/")!
     nonisolated(unsafe) static var googleAPI = "https://www.googleapis.com/calendar/v3"
     nonisolated(unsafe) static var driveUpload = "https://www.googleapis.com/upload/drive/v3/files"
     nonisolated(unsafe) static var googleToken = URL(string: "https://oauth2.googleapis.com/token")!
-    static let googleAuth = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
+    public static let googleAuth = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
     // Dateline's own Google key, put inside the app by scripts/make-app.sh (kept out of this public repo). Audrey Mail's key is the
     // fallback, so a Google sign-in made with it before (John's copy, Oct 30) keeps refreshing.
     #if os(macOS)
@@ -104,7 +108,7 @@ enum AccNet {
     nonisolated(unsafe) static var googleClientFiles = [Bundle.main.resourceURL?.appendingPathComponent("google_client.json")].compactMap { $0 }
     #endif
 
-    static func request(_ method: String, _ url: URL, auth: String, body: Data? = nil, headers: [String: String] = [:]) async throws -> (Data, HTTPURLResponse) {
+    public static func request(_ method: String, _ url: URL, auth: String, body: Data? = nil, headers: [String: String] = [:]) async throws -> (Data, HTTPURLResponse) {
         var r = URLRequest(url: url, timeoutInterval: 60)
         r.httpMethod = method
         r.setValue(auth, forHTTPHeaderField: "Authorization")
@@ -117,26 +121,26 @@ enum AccNet {
         return (d, h)
     }
 
-    static func basic(_ email: String, _ pw: String) -> String { "Basic " + Data("\(email):\(pw)".utf8).base64EncodedString() }
+    public static func basic(_ email: String, _ pw: String) -> String { "Basic " + Data("\(email):\(pw)".utf8).base64EncodedString() }
 }
 
 // A tiny reader for the servers' XML answers: names without their namespace, text, children.
-final class XNode {
-    let name: String; var text = ""; var kids: [XNode] = []; var attrs: [String: String] = [:]
-    init(_ n: String) { name = n }
-    func all(_ n: String) -> [XNode] { kids.flatMap { ($0.name == n ? [$0] : []) + $0.all(n) } }
-    func first(_ n: String) -> XNode? { all(n).first }
+public final class XNode {
+    public let name: String; var text = ""; var kids: [XNode] = []; var attrs: [String: String] = [:]
+    public init(_ n: String) { name = n }
+    public func all(_ n: String) -> [XNode] { kids.flatMap { ($0.name == n ? [$0] : []) + $0.all(n) } }
+    public func first(_ n: String) -> XNode? { all(n).first }
 }
 
-func parseXML(_ d: Data) -> XNode? {
+public func parseXML(_ d: Data) -> XNode? {
     final class P: NSObject, XMLParserDelegate {
-        var stack: [XNode] = [XNode("root")]
-        func parser(_ p: XMLParser, didStartElement e: String, namespaceURI: String?, qualifiedName q: String?, attributes a: [String: String] = [:]) {
+        public var stack: [XNode] = [XNode("root")]
+        public func parser(_ p: XMLParser, didStartElement e: String, namespaceURI: String?, qualifiedName q: String?, attributes a: [String: String] = [:]) {
             let n = XNode(e); n.attrs = a; stack.last!.kids.append(n); stack.append(n)
         }
-        func parser(_ p: XMLParser, didEndElement e: String, namespaceURI: String?, qualifiedName q: String?) { if stack.count > 1 { stack.removeLast() } }
-        func parser(_ p: XMLParser, foundCharacters s: String) { stack.last!.text += s }
-        func parser(_ p: XMLParser, foundCDATA c: Data) { stack.last!.text += String(data: c, encoding: .utf8) ?? "" }
+        public func parser(_ p: XMLParser, didEndElement e: String, namespaceURI: String?, qualifiedName q: String?) { if stack.count > 1 { stack.removeLast() } }
+        public func parser(_ p: XMLParser, foundCharacters s: String) { stack.last!.text += s }
+        public func parser(_ p: XMLParser, foundCDATA c: Data) { stack.last!.text += String(data: c, encoding: .utf8) ?? "" }
     }
     let x = XMLParser(data: d), p = P()
     x.shouldProcessNamespaces = true
@@ -145,7 +149,7 @@ func parseXML(_ d: Data) -> XNode? {
 }
 
 // The calendars in a CalDAV home's answer: event calendars only, never the inbox, outbox or task lists.
-func davCalendars(_ x: XNode, base: URL, accountID: String) -> [AccCal] {
+public func davCalendars(_ x: XNode, base: URL, accountID: String) -> [AccCal] {
     x.all("response").compactMap { r in
         guard let href = r.first("href")?.text.trimmingCharacters(in: .whitespacesAndNewlines), let u = URL(string: href, relativeTo: base)?.absoluteURL,
               r.first("resourcetype")?.first("calendar") != nil else { return nil }
@@ -161,7 +165,7 @@ func davCalendars(_ x: XNode, base: URL, accountID: String) -> [AccCal] {
 }
 
 // The events in a calendar-query answer: address, version and the event file.
-func davEvents(_ x: XNode, base: URL) -> [String: DavRes] {
+public func davEvents(_ x: XNode, base: URL) -> [String: DavRes] {
     var out: [String: DavRes] = [:]
     for r in x.all("response") {
         guard let href = r.first("href")?.text.trimmingCharacters(in: .whitespacesAndNewlines), let u = URL(string: href, relativeTo: base)?.absoluteURL,
@@ -178,7 +182,7 @@ let davProps = """
 """
 
 // Finds an iCloud account's calendars: who you are, where your calendars live, then the list.
-func icloudCalendars(email: String, password: String, accountID: String) async throws -> [AccCal] {
+public func icloudCalendars(email: String, password: String, accountID: String) async throws -> [AccCal] {
     let auth = AccNet.basic(email, password)
     func find(_ u: URL, _ prop: String, _ ns: String) async throws -> URL {
         let body = "<?xml version=\"1.0\"?><d:propfind xmlns:d=\"DAV:\" xmlns:c=\"\(ns)\"><d:prop><c:\(prop)/></d:prop></d:propfind>"
@@ -195,9 +199,9 @@ func icloudCalendars(email: String, password: String, accountID: String) async t
 }
 
 private let utcFormat: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = TimeZone(identifier: "UTC"); f.dateFormat = "yyyyMMdd'T'HHmmss'Z'"; return f }()
-func icsUTC(_ d: Date) -> String { utcFormat.string(from: d) }
+public func icsUTC(_ d: Date) -> String { utcFormat.string(from: d) }
 
-func davEventsIn(_ c: AccCal, auth: String, from a: Date, to b: Date) async throws -> [String: DavRes] {
+public func davEventsIn(_ c: AccCal, auth: String, from a: Date, to b: Date) async throws -> [String: DavRes] {
     let body = """
     <?xml version="1.0" encoding="UTF-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getetag/><c:calendar-data/></d:prop>\
     <c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="\(icsUTC(a))" end="\(icsUTC(b))"/></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>
@@ -254,7 +258,7 @@ private let icsOwned: Set<String> = ["DTSTART", "DTEND", "DURATION", "SUMMARY", 
                                      "X-APPLE-STRUCTURED-LOCATION"]
 private func propName(_ l: String) -> String { String(l.prefix { $0 != ":" && $0 != ";" }).uppercased() }
 
-func icsNew(uid: String, _ it: Item, link: String, alertMinutes: Int?, rule: String?) -> String {
+public func icsNew(uid: String, _ it: Item, link: String, alertMinutes: Int?, rule: String?) -> String {
     var l = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Dateline//EN", "BEGIN:VEVENT", "UID:" + uid, "DTSTAMP:" + icsUTC(Date())] + icsFields(it, link: link)
     if let rule { l.append("RRULE:" + rule) }
     if let m = alertMinutes { l += ["BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:Reminder", "TRIGGER:-PT\(m)M", "END:VALARM"] }
@@ -278,7 +282,7 @@ private func vevents(_ lines: [String]) -> [(range: Range<Int>, rid: Date?)] {
 }
 
 // Rewrites what Dateline shows of one event; `occurrence` = one occurrence of a repeating event, which gets (or keeps) its own changed copy.
-func icsPatch(_ text: String, occurrence: Date?, _ it: Item, link: String) -> String {
+public func icsPatch(_ text: String, occurrence: Date?, _ it: Item, link: String) -> String {
     var lines = icsUnfold(text)
     let evs = vevents(lines)
     func rewrite(_ r: Range<Int>) {
@@ -314,7 +318,7 @@ func icsPatch(_ text: String, occurrence: Date?, _ it: Item, link: String) -> St
 }
 
 // Takes one occurrence out of a repeating event (and drops its changed copy, if any).
-func icsDropOccurrence(_ text: String, _ occ: Date) -> String {
+public func icsDropOccurrence(_ text: String, _ occ: Date) -> String {
     var lines = icsUnfold(text)
     if let own = vevents(lines).first(where: { $0.rid == occ }) { lines.removeSubrange(own.range) }
     guard let main = vevents(lines).first(where: { $0.rid == nil }) else { return icsJoin(lines) }
@@ -324,7 +328,7 @@ func icsDropOccurrence(_ text: String, _ occ: Date) -> String {
 }
 
 // Dateline items from one CalDAV calendar. One-time events keep the plain id; a repeating one's occurrences add their original start.
-func davItems(_ c: AccCal, _ res: [String: DavRes], from a: Date, to b: Date) -> [Item] {
+public func davItems(_ c: AccCal, _ res: [String: DavRes], from a: Date, to b: Date) -> [Item] {
     var out: [Item] = []
     for r in res.values {
         var changed = Set<Date>()
@@ -350,7 +354,7 @@ func davItems(_ c: AccCal, _ res: [String: DavRes], from a: Date, to b: Date) ->
 private let isoFormat = ISO8601DateFormatter()
 private let dayFormat: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"; return f }()
 
-func googleItem(_ c: AccCal, _ j: [String: Any]) -> GEv? {
+public func googleItem(_ c: AccCal, _ j: [String: Any]) -> GEv? {
     guard let iid = j["id"] as? String, (j["status"] as? String) != "cancelled",
           let s = j["start"] as? [String: Any], let e = j["end"] as? [String: Any] else { return nil }
     let iso = isoFormat
@@ -375,7 +379,7 @@ func googleItem(_ c: AccCal, _ j: [String: Any]) -> GEv? {
 }
 
 // `known`: the link the event already had from Google (its Meet link), which is never copied into the notes.
-func googleBody(_ it: Item, link: String, known: String = "") -> [String: Any] {
+public func googleBody(_ it: Item, link: String, known: String = "") -> [String: Any] {
     func when(_ d: Date) -> [String: Any] {
         if it.allDay { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = cal.timeZone; f.dateFormat = "yyyy-MM-dd"; return ["date": f.string(from: d), "dateTime": NSNull()] }
         return ["dateTime": ISO8601DateFormatter().string(from: d), "timeZone": cal.timeZone.identifier, "date": NSNull()]
@@ -388,14 +392,14 @@ func googleBody(_ it: Item, link: String, known: String = "") -> [String: Any] {
 }
 
 // The client id and secret from a key file as Google downloads it.
-func parseGoogleClient(_ d: Data) -> (String, String)? {
+public func parseGoogleClient(_ d: Data) -> (String, String)? {
     guard let root = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
           let i = (root["installed"] ?? root["web"]) as? [String: Any], let id = i["client_id"] as? String, let secret = i["client_secret"] as? String else { return nil }
     return (id, secret)
 }
 
 // Every Google key found, Dateline's own first.
-func googleClients() throws -> [(String, String)] {
+public func googleClients() throws -> [(String, String)] {
     let all = AccNet.googleClientFiles.compactMap { (try? Data(contentsOf: $0)).flatMap(parseGoogleClient) }
     guard !all.isEmpty else { throw Failure("Google sign-in isn't set up in this copy of Dateline.") }
     return all
@@ -404,13 +408,13 @@ func googleClients() throws -> [(String, String)] {
 private func b64url(_ d: Data) -> String { d.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "") }
 private func randomText(_ n: Int) -> String { var b = [UInt8](repeating: 0, count: n); _ = SecRandomCopyBytes(kSecRandomDefault, n, &b); return b64url(Data(b)) }
 
-func formBody(_ p: [String: String]) -> Data {
+public func formBody(_ p: [String: String]) -> Data {
     var ok = CharacterSet.alphanumerics; ok.insert(charactersIn: "-._~")
     return Data(p.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: ok) ?? "")" }.joined(separator: "&").utf8)
 }
 
 // Google's answer to a sign-in or a refresh.
-func googleTokens(_ p: [String: String]) async throws -> (access: String, refresh: String?, expires: Date) {
+public func googleTokens(_ p: [String: String]) async throws -> (access: String, refresh: String?, expires: Date) {
     var r = URLRequest(url: AccNet.googleToken); r.httpMethod = "POST"
     r.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type"); r.httpBody = formBody(p)
     let (d, resp): (Data, URLResponse)
@@ -423,7 +427,7 @@ func googleTokens(_ p: [String: String]) async throws -> (access: String, refres
 }
 
 // Signs in through the browser and catches Google's answer on this Mac (127.0.0.1); returns the long-lived sign-in.
-func googleSignIn() async throws -> (refresh: String, access: String, expires: Date) {
+public func googleSignIn() async throws -> (refresh: String, access: String, expires: Date) {
     let (id, secret) = try googleClients()[0]
     let verifier = randomText(64), state = randomText(24)
     let challenge = b64url(Data(SHA256.hash(data: Data(verifier.utf8))))
@@ -447,15 +451,15 @@ func googleSignIn() async throws -> (refresh: String, access: String, expires: D
 }
 
 // One-shot listener on 127.0.0.1 for Google's redirect (the same way Audrey Mail signs in). A wrong `state` can't end it.
-final class Catcher: @unchecked Sendable {
+public final class Catcher: @unchecked Sendable {
     private let l: NWListener, q = DispatchQueue(label: "catcher"), state: String
     private var done: CheckedContinuation<[String: String], Error>?, ready: CheckedContinuation<UInt16, Error>?
-    init(state: String) throws {
+    public init(state: String) throws {
         self.state = state
         let p = NWParameters.tcp; p.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
         l = try NWListener(using: p)
     }
-    func start() async throws -> UInt16 {
+    public func start() async throws -> UInt16 {
         try await withCheckedThrowingContinuation { c in
             q.async {
                 self.ready = c
@@ -471,7 +475,7 @@ final class Catcher: @unchecked Sendable {
             }
         }
     }
-    func wait() async throws -> [String: String] {
+    public func wait() async throws -> [String: String] {
         try await withCheckedThrowingContinuation { c in
             q.async {
                 self.done = c
@@ -495,7 +499,7 @@ final class Catcher: @unchecked Sendable {
     }
 }
 
-func googleJSON(_ method: String, _ path: String, token: String, body: [String: Any]? = nil) async throws -> [String: Any] {
+public func googleJSON(_ method: String, _ path: String, token: String, body: [String: Any]? = nil) async throws -> [String: Any] {
     guard let u = URL(string: AccNet.googleAPI + path) else { throw Failure("A Google address is broken.") }
     let (d, h) = try await AccNet.request(method, u, auth: "Bearer " + token, body: body.flatMap { try? JSONSerialization.data(withJSONObject: $0) },
                                           headers: body == nil ? [:] : ["Content-Type": "application/json"])
@@ -511,7 +515,7 @@ func googleJSON(_ method: String, _ path: String, token: String, body: [String: 
 
 private func pathPart(_ s: String) -> String { s.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? s }
 
-func googleCalendars(token: String, accountID: String) async throws -> (email: String, cals: [AccCal]) {
+public func googleCalendars(token: String, accountID: String) async throws -> (email: String, cals: [AccCal]) {
     let j = try await googleJSON("GET", "/users/me/calendarList?maxResults=250", token: token)
     let items = j["items"] as? [[String: Any]] ?? []
     let email = items.first { $0["primary"] as? Bool == true }?["id"] as? String ?? ""
@@ -525,7 +529,7 @@ func googleCalendars(token: String, accountID: String) async throws -> (email: S
     return (email, cals)
 }
 
-func googleEventsIn(_ c: AccCal, token: String, from a: Date, to b: Date) async throws -> [GEv] {
+public func googleEventsIn(_ c: AccCal, token: String, from a: Date, to b: Date) async throws -> [GEv] {
     var out: [GEv] = [], page: String? = nil
     let iso = ISO8601DateFormatter()
     repeat {
@@ -538,7 +542,7 @@ func googleEventsIn(_ c: AccCal, token: String, from a: Date, to b: Date) async 
     return out
 }
 
-func hexColor(_ s: String) -> Color {
+public func hexColor(_ s: String) -> Color {
     let h = s.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
     guard h.count >= 6, let v = UInt32(h.prefix(6), radix: 16) else { return Palette.personal }
     return Color(red: Double(v >> 16 & 255) / 255, green: Double(v >> 8 & 255) / 255, blue: Double(v & 255) / 255)
@@ -548,24 +552,24 @@ func hexColor(_ s: String) -> Color {
 
 extension Store {
     // The window of events kept from each account: a year back, two years ahead.
-    static func accWindow() -> (Date, Date) { let n = Date(); return (n.addingTimeInterval(-366 * 86400), n.addingTimeInterval(731 * 86400)) }
+    public static func accWindow() -> (Date, Date) { let n = Date(); return (n.addingTimeInterval(-366 * 86400), n.addingTimeInterval(731 * 86400)) }
 
-    var accInfos: [CalInfo] {
+    public var accInfos: [CalInfo] {
         accounts.flatMap { a in a.cals.map { CalInfo(id: $0.id, title: $0.title, account: a.email.isEmpty ? a.name : a.email, color: hexColor($0.color), writable: $0.writable) } }
     }
 
-    func accCal(_ id: String) -> (Account, AccCal)? {
+    public func accCal(_ id: String) -> (Account, AccCal)? {
         for a in accounts { if let c = a.cals.first(where: { $0.id == id }) { return (a, c) } }
         return nil
     }
 
     // A calendar on the Mac that an account here already shows: hidden, so nothing shows twice.
     // shortcut: one iCloud account is assumed (the Mac's is called "iCloud"); match by Apple ID if two ever sign in.
-    func shownHere(_ account: String, calDAV: Bool) -> Bool {
+    public func shownHere(_ account: String, calDAV: Bool) -> Bool {
         accounts.contains { a in accData.loaded.contains(a.id) && (a.kind == "google" ? account.caseInsensitiveCompare(a.email) == .orderedSame : account == "iCloud" && calDAV) }
     }
 
-    func accEvents(from a: Date, to b: Date) -> [Item] {
+    public func accEvents(from a: Date, to b: Date) -> [Item] {
         accounts.flatMap { acc in
             acc.cals.flatMap { c -> [Item] in
                 acc.kind == "google" ? (accData.google[c.id] ?? []).map(\.item).filter { $0.end > a && $0.start < b } : davItems(c, accData.dav[c.id] ?? [:], from: a, to: b)
@@ -573,7 +577,7 @@ extension Store {
         }.map(decorated)
     }
 
-    func loadAccounts() {
+    public func loadAccounts() {
         if let v: [Account] = load("accounts") { accounts = v }
         refreshAccounts()
     }
@@ -594,7 +598,7 @@ extension Store {
         change(&accounts[i])
     }
 
-    func accountsChanged() {
+    public func accountsChanged() {
         if canRead { reloadCalendars() } else { calendars = accInfos + subInfos; refetch() }
     }
 
@@ -616,12 +620,12 @@ extension Store {
 
     // Reads every calendar of every account (every 5 minutes, and after changes). Skipped while changes are still going out.
     // shortcut: each read downloads the whole window again; add CalDAV ctags / Google sync tokens if it ever feels slow.
-    func refreshAccounts() {
+    public func refreshAccounts() {
         guard access != .sample else { return }
         for a in accounts where accData.pending[a.id, default: 0] == 0 { Task { await sync(a.id) } }
     }
 
-    func sync(_ id: String) async {
+    public func sync(_ id: String) async {
         guard let a = accounts.first(where: { $0.id == id }) else { return }
         let (from, to) = Self.accWindow()
         do {
@@ -674,7 +678,7 @@ extension Store {
         if let f = Alerts.fullCalendars { Alerts.fullCalendars = f.union(f.compactMap { map[$0] }) }
     }
 
-    func addICloud(email: String, password: String) async -> Failure? {
+    public func addICloud(email: String, password: String) async -> Failure? {
         let e = email.trimmingCharacters(in: .whitespaces), pw = password.trimmingCharacters(in: .whitespaces)
         if accounts.contains(where: { $0.kind == "icloud" && $0.email.caseInsensitiveCompare(e) == .orderedSame }) { return Failure("\(e) is already signed in.") }
         let a = Account(kind: "icloud", email: e)
@@ -691,7 +695,7 @@ extension Store {
         return nil
     }
 
-    func addGoogle() async -> Failure? {
+    public func addGoogle() async -> Failure? {
         var a = Account(kind: "google", email: "")
         do {
             let s = try await googleSignIn()
@@ -706,7 +710,7 @@ extension Store {
         return nil
     }
 
-    func removeAccount(_ id: String) {
+    public func removeAccount(_ id: String) {
         guard let a = accounts.first(where: { $0.id == id }) else { return }
         try? setSecret(id, nil)
         accData.chain[id]?.cancel(); accData.chain[id] = nil; accData.pending[id] = nil
@@ -772,11 +776,11 @@ extension Store {
         return (href, occ, repeating)
     }
 
-    func accRepeats(_ it: Item) -> Bool {
+    public func accRepeats(_ it: Item) -> Bool {
         accCal(it.calendarID)?.0.kind == "google" ? (accData.google[it.calendarID]?.first { $0.item.id == it.id }?.master != nil) : (davRef(it)?.repeating ?? false)
     }
 
-    func accAdd(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure> {
+    public func accAdd(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure> {
         guard let (a, c) = accCal(it.calendarID) else { return .failure(Failure("That calendar is gone.")) }
         guard c.writable else { return .failure(Failure("\(c.title) can't take new events.")) }
         let rule = repeats.map { r in "FREQ=" + ["d": "DAILY", "w": "WEEKLY", "m": "MONTHLY", "y": "YEARLY"][r.unit]! + (r.n > 1 ? ";INTERVAL=\(r.n)" : "") }
@@ -802,7 +806,7 @@ extension Store {
         return .success(it)
     }
 
-    func accUpdate(_ it: Item, old: Item?) -> Failure? {
+    public func accUpdate(_ it: Item, old: Item?) -> Failure? {
         let from = old?.calendarID ?? it.calendarID
         if from != it.calendarID { return Failure("Moving an event to a calendar on another account isn't ready yet. Option-drag a copy to it, then delete this one.") }
         guard let (a, c) = accCal(it.calendarID) else { return Failure("That calendar is gone.") }
@@ -821,7 +825,7 @@ extension Store {
         return nil
     }
 
-    func accDelete(_ it: Item, series: Bool) -> Failure? {
+    public func accDelete(_ it: Item, series: Bool) -> Failure? {
         guard let (a, c) = accCal(it.calendarID) else { return Failure("That calendar is gone.") }
         guard c.writable else { return Failure("\(c.title) is read-only.") }
         if a.kind == "google" {
@@ -859,23 +863,23 @@ extension Store {
 // iCloud keeps the files itself (managed attachments, RFC 8607); Google keeps them in the account's Drive and the event links to them.
 // A repeating event's file goes on the whole series, as Apple Calendar does.
 
-let attachLimit = 100_000_000  // Dateline's own cap, so a stray video never sits whole in memory
+public let attachLimit = 100_000_000  // Dateline's own cap, so a stray video never sits whole in memory
 
-func icsDropAttach(_ text: String, _ url: String) -> String {
+public func icsDropAttach(_ text: String, _ url: String) -> String {
     icsJoin(icsUnfold(text).filter { !(propName($0) == "ATTACH" && $0.hasSuffix(":" + url)) })
 }
 
 // The file name for iCloud; a name with accents also goes in the standard's UTF-8 form.
-func attachDisposition(_ name: String) -> String {
+public func attachDisposition(_ name: String) -> String {
     let plain = String(String.UnicodeScalarView(name.unicodeScalars.map { $0.isASCII && $0.value >= 32 && $0 != "\"" && $0 != "\\" ? $0 : "_" }))
     return "attachment;filename=\"\(plain)\"" + (plain == name ? "" : ";filename*=UTF-8''" + pathPart(name))
 }
 
 // The Mac account an attachments hint names, or nil when signing in here can't help (a calendar on the Mac only, Exchange and the like).
 // shortcut: any source named with an email reads as Google; check the source type if an Exchange user ever sees the wrong name.
-func macAccountKind(_ account: String) -> String? { account.hasPrefix("iCloud") ? "iCloud" : account.contains("@") || account.hasPrefix("Google") ? "Google" : nil }
+public func macAccountKind(_ account: String) -> String? { account.hasPrefix("iCloud") ? "iCloud" : account.contains("@") || account.hasPrefix("Google") ? "Google" : nil }
 
-func driveUpload(token: String, name: String, type: String, data: Data) async throws -> [String: Any] {
+public func driveUpload(token: String, name: String, type: String, data: Data) async throws -> [String: Any] {
     // Resumable, sent in one go: Drive takes only 5 MB in a single multipart request.
     guard let u = URL(string: AccNet.driveUpload + "?uploadType=resumable&fields=id,webViewLink") else { throw Failure("A Google address is broken.") }
     let meta = try JSONSerialization.data(withJSONObject: ["name": name])
@@ -896,7 +900,7 @@ func driveUpload(token: String, name: String, type: String, data: Data) async th
 }
 
 extension Store {
-    func accAttach(_ it: Item, _ file: URL) async {
+    public func accAttach(_ it: Item, _ file: URL) async {
         guard let (a, c) = accCal(it.calendarID), c.writable else { return }
         let name = file.lastPathComponent
         let type = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
@@ -918,7 +922,7 @@ extension Store {
         }
     }
 
-    func accDetach(_ it: Item, _ f: Attach) async {
+    public func accDetach(_ it: Item, _ f: Attach) async {
         guard let (a, c) = accCal(it.calendarID), c.writable else { return }
         if a.kind == "google" {
             guard let ev = accData.google[c.id]?.first(where: { $0.item.id == it.id }) else { return }
@@ -938,7 +942,7 @@ extension Store {
     }
 
     // The file to open or save; nil = a link to open in the browser (Google Drive, or a server other than the account's own).
-    func accFetch(_ it: Item, _ f: Attach) async throws -> Data? {
+    public func accFetch(_ it: Item, _ f: Attach) async throws -> Data? {
         guard let (a, c) = accCal(it.calendarID), a.kind == "icloud", let u = URL(string: f.url), let host = u.host, let cal = URL(string: c.remote) else { return nil }
         // The password goes only to the account's own servers, never to a link someone else put in the event.
         guard (host == cal.host && u.scheme == cal.scheme) || (f.id != nil && u.scheme == "https" && host.hasSuffix(".icloud.com")), let pw = secret(a.id) else { return nil }
@@ -989,7 +993,7 @@ extension Store {
 }
 
 // The iCloud network code end to end against scripts/caldav-standin.py: sign in, read, add, change, delete. Never saves a setting or a password.
-@MainActor func accountsCheck(server: String) async -> Int32 {
+@MainActor public func accountsCheck(server: String) async -> Int32 {
     AccountSecrets.testMode = true
     AccNet.icloudRoot = URL(string: server)!
     var fails = 0
@@ -1083,7 +1087,7 @@ extension Store {
     return fails == 0 ? 0 : 1
 }
 
-func accountsSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int, Int) -> Date) {
+public func accountsSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int, Int) -> Date) {
     AccountSecrets.testMode = true
     let key = parseGoogleClient(Data(#"{"installed":{"client_id":"1-abc.apps.googleusercontent.com","client_secret":"s1"}}"#.utf8))
     expect(key?.0 == "1-abc.apps.googleusercontent.com" && key?.1 == "s1" && parseGoogleClient(Data("{}".utf8)) == nil, "accounts: a downloaded Google key file is read, a wrong one refused")
@@ -1161,7 +1165,7 @@ func accountsSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int,
 }
 
 // Marked as downloaded, so a program attached by someone else gets the Mac's usual "downloaded from the internet" check before it runs.
-func quarantine(_ u: URL) throws {
+public func quarantine(_ u: URL) throws {
     var v = URLResourceValues(); v.quarantineProperties = [kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload as String]
     var u = u; try u.setResourceValues(v)
 }

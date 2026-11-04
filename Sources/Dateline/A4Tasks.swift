@@ -2,6 +2,7 @@
 // A change goes into the note itself, touching only the lines it changes. Finishing a task goes through A4's own task engine in the running Obsidian, because only that files it in the Archive and moves a repeating task on.
 // Sample mode (every test and picture) keeps made-up tasks in memory and never reads the vault.
 import SwiftUI
+import DatelineCore
 
 func a4Selftest(_ expect: (Bool, String) -> Void) {
     let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 31, hour: 9))!

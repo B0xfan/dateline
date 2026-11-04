@@ -2,6 +2,7 @@
 import SwiftUI
 import Intents
 import AppKit
+import DatelineCore
 
 enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Month", quarter = "Quarter", year = "Year" }
 

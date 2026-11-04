@@ -2,6 +2,7 @@
 import SwiftUI
 import AppKit
 import Combine
+import DatelineCore
 
 func selftest() -> Int32 {
     WorkWeek.reset()  // the mockup's week: Monday first, Mon to Fri, 8 AM to 6 PM

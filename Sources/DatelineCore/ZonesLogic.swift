@@ -2,24 +2,24 @@
 import SwiftUI
 import CoreLocation
 
-struct Zone: Codable, Identifiable, Equatable {
-    var id = UUID().uuidString
-    var nick = ""
-    var tz: String  // "America/New_York"; the Mac moves the clock for summer time
-    var place: String  // "New York, United States"
-    var city: String { place.components(separatedBy: ",").first ?? place }
+public struct Zone: Codable, Identifiable, Equatable {
+    public var id = UUID().uuidString
+    public var nick = ""
+    public var tz: String  // "America/New_York"; the Mac moves the clock for summer time
+    public var place: String  // "New York, United States"
+    public var city: String { place.components(separatedBy: ",").first ?? place }
 }
 
-enum Zones {
+public enum Zones {
     private static let d = UserDefaults.standard
-    static var list = d.data(forKey: "timeZones").flatMap { try? JSONDecoder().decode([Zone].self, from: $0) } ?? [] {
+    public static var list = d.data(forKey: "timeZones").flatMap { try? JSONDecoder().decode([Zone].self, from: $0) } ?? [] {
         didSet { if Look.saves, let v = try? JSONEncoder().encode(list) { d.set(v, forKey: "timeZones") } }
     }
-    static var card = d.object(forKey: "zoneCard") as? Bool ?? true { didSet { if Look.saves { d.set(card, forKey: "zoneCard") } } }
-    static let most = 6
+    public static var card = d.object(forKey: "zoneCard") as? Bool ?? true { didSet { if Look.saves { d.set(card, forKey: "zoneCard") } } }
+    public static let most = 6
 
     // The mockup's places, for the off-screen pictures; never saved.
-    static func reset() {
+    public static func reset() {
         Look.saves = false; card = true
         list = [Zone(nick: "Mom", tz: "America/New_York", place: "New York, United States"),
                 Zone(tz: "Europe/London", place: "London, United Kingdom"), Zone(tz: "Asia/Tokyo", place: "Tokyo, Japan")]
@@ -27,25 +27,25 @@ enum Zones {
 }
 
 // How far a place is from here: "2 h ahead", "5 h 30 min behind", "same time".
-func zoneDiff(_ tz: TimeZone, at now: Date, here: TimeZone = cal.timeZone) -> String {
+public func zoneDiff(_ tz: TimeZone, at now: Date, here: TimeZone = cal.timeZone) -> String {
     let s = tz.secondsFromGMT(for: now) - here.secondsFromGMT(for: now)
     guard s != 0 else { return "same time" }
     return span(TimeInterval(abs(s))) + (s > 0 ? " ahead" : " behind")
 }
 
 // "+2 h", "-5 h 30 min", "+0 h" for the Settings rows.
-func zoneOffset(_ tz: TimeZone, at now: Date, here: TimeZone = cal.timeZone) -> String {
+public func zoneOffset(_ tz: TimeZone, at now: Date, here: TimeZone = cal.timeZone) -> String {
     let s = tz.secondsFromGMT(for: now) - here.secondsFromGMT(for: now)
     return (s < 0 ? "-" : "+") + (s == 0 ? "0 h" : span(TimeInterval(abs(s))))
 }
 
 // The Mac's own name for its zone's place: "America/Costa_Rica" is "Costa Rica".
-func zoneCity(_ id: String) -> String { (id.split(separator: "/").last.map(String.init) ?? id).replacingOccurrences(of: "_", with: " ") }
+public func zoneCity(_ id: String) -> String { (id.split(separator: "/").last.map(String.init) ?? id).replacingOccurrences(of: "_", with: " ") }
 
-func zoneTime(_ d: Date, _ tz: TimeZone, _ format: String) -> String { dateText(d, format, in: tz) }
+public func zoneTime(_ d: Date, _ tz: TimeZone, _ format: String) -> String { dateText(d, format, in: tz) }
 
 // A typed city, through Apple Maps ("Lisbon, Portugal"); offline, a Mac zone named after it ("Lisbon" is Europe/Lisbon).
-func findZone(_ text: String) async -> Zone? {
+public func findZone(_ text: String) async -> Zone? {
     let q = text.trimmingCharacters(in: .whitespaces)
     guard !q.isEmpty else { return nil }
     if let p = try? await CLGeocoder().geocodeAddressString(q).first, let tz = p.timeZone {

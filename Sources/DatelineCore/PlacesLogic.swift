@@ -6,31 +6,32 @@ import MapKit
 import CoreLocation
 import UserNotifications
 
-struct Geo: Codable, Equatable, Hashable {
-    var lat: Double, lon: Double
-    var coord: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: lat, longitude: lon) }
-    var location: CLLocation { CLLocation(latitude: lat, longitude: lon) }
+public struct Geo: Codable, Equatable, Hashable {
+    public var lat: Double, lon: Double
+    public var coord: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: lat, longitude: lon) }
+    public var location: CLLocation { CLLocation(latitude: lat, longitude: lon) }
+    public init(lat: Double, lon: Double) { self.lat = lat; self.lon = lon }
 }
 
 // Where the drive to an event starts.
 // Saved by name, so the shown words can change without losing saved events.
-enum From: String, Codable, CaseIterable {
+public enum From: String, Codable, CaseIterable {
     case here, home, work, before
-    var label: String { ["here": "Where I am then", "home": "Home", "work": "Work", "before": "The event before"][rawValue]! }
+    public var label: String { ["here": "Where I am then", "home": "Home", "work": "Work", "before": "The event before"][rawValue]! }
 }
 
-let tamarindo = Geo(lat: 10.30, lon: -85.84)  // the mockups' town, for the pictures and the self-checks
+public let tamarindo = Geo(lat: 10.30, lon: -85.84)  // the mockups' town, for the pictures and the self-checks
 
 // MARK: where you are
 
 // The Mac's location, asked for once (the Mac shows its own permission box). The last one is kept, so sun times work offline.
 @MainActor
-final class Here: NSObject, ObservableObject, CLLocationManagerDelegate {
-    static let shared = Here()
-    @Published var spot: Geo? = (UserDefaults.standard.array(forKey: "lastSpot") as? [Double]).flatMap { $0.count == 2 ? Geo(lat: $0[0], lon: $0[1]) : nil }
+public final class Here: NSObject, ObservableObject, CLLocationManagerDelegate {
+    public static let shared = Here()
+    @Published public var spot: Geo? = (UserDefaults.standard.array(forKey: "lastSpot") as? [Double]).flatMap { $0.count == 2 ? Geo(lat: $0[0], lon: $0[1]) : nil }
     private var manager: CLLocationManager?
 
-    func start() {
+    public func start() {
         guard manager == nil else { return }
         let m = CLLocationManager()
         m.delegate = self
@@ -40,24 +41,24 @@ final class Here: NSObject, ObservableObject, CLLocationManagerDelegate {
         m.requestLocation()
     }
 
-    func refresh() { manager?.requestLocation() }
+    public func refresh() { manager?.requestLocation() }
 
-    nonisolated func locationManager(_ m: CLLocationManager, didUpdateLocations list: [CLLocation]) {
+    public nonisolated func locationManager(_ m: CLLocationManager, didUpdateLocations list: [CLLocation]) {
         guard let c = list.last?.coordinate else { return }
         Task { @MainActor in
             self.spot = Geo(lat: c.latitude, lon: c.longitude)
             UserDefaults.standard.set([c.latitude, c.longitude], forKey: "lastSpot")
         }
     }
-    nonisolated func locationManager(_ m: CLLocationManager, didFailWithError error: Error) {}  // no fix: the last saved spot stays
-    nonisolated func locationManagerDidChangeAuthorization(_ m: CLLocationManager) {
+    public nonisolated func locationManager(_ m: CLLocationManager, didFailWithError error: Error) {}  // no fix: the last saved spot stays
+    public nonisolated func locationManagerDidChangeAuthorization(_ m: CLLocationManager) {
         if m.authorizationStatus == .authorizedAlways { m.requestLocation() }  // on the Mac, "allowed" reads as always
     }
 }
 
-func distanceText(_ meters: Double) -> String { meters < 1000 ? "\(Int(meters / 10) * 10) m" : String(format: "%.1f km", meters / 1000) }
+public func distanceText(_ meters: Double) -> String { meters < 1000 ? "\(Int(meters / 10) * 10) m" : String(format: "%.1f km", meters / 1000) }
 
-func openInMaps(_ g: Geo, name: String, directions: Bool) {
+public func openInMaps(_ g: Geo, name: String, directions: Bool) {
     let m = MKMapItem(placemark: MKPlacemark(coordinate: g.coord))
     m.name = name
     m.openInMaps(launchOptions: directions ? [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving] : nil)
@@ -70,7 +71,7 @@ private func julian(_ t: Date) -> Double { t.timeIntervalSince1970 / 86400 + 244
 private func date(julian j: Double) -> Date { Date(timeIntervalSince1970: (j - 2440587.5) * 86400) }
 
 // Sunrise and sunset on `day` (the sunrise equation, to about a minute). Nil when the sun stays up or down all day.
-func sunTimes(_ day: Date, at g: Geo) -> (rise: Date, set: Date)? {
+public func sunTimes(_ day: Date, at g: Geo) -> (rise: Date, set: Date)? {
     let noon = julian(cal.startOfDay(for: day).addingTimeInterval(12 * 3600))
     let n = (noon - 2451545 + g.lon / 360).rounded()  // the solar noon nearest this day's local noon
     let j = n - g.lon / 360
@@ -86,7 +87,7 @@ func sunTimes(_ day: Date, at g: Geo) -> (rise: Date, set: Date)? {
 }
 
 // How far the moon is ahead of the sun, 0 to 360 degrees (0 new, 90 half, 180 full, 270 half). Main terms only, to within an hour or so.
-func moonAngle(_ t: Date) -> Double {
+public func moonAngle(_ t: Date) -> Double {
     let d = julian(t) - 2451545
     let g = 357.528 + 0.9856003 * d, mm = 134.963 + 13.064993 * d, dd = 297.850 + 12.190749 * d, f = 93.272 + 13.229350 * d
     let sun = 280.460 + 0.9856474 * d + 1.915 * sin(g * rad) + 0.020 * sin(2 * g * rad)
@@ -96,13 +97,13 @@ func moonAngle(_ t: Date) -> Double {
     return a < 0 ? a + 360 : a
 }
 
-enum MoonDay {
+public enum MoonDay {
     case new, firstHalf, full, lastHalf
-    var name: String { self == .new ? "New moon" : self == .full ? "Full moon" : "Half moon" }
+    public var name: String { self == .new ? "New moon" : self == .full ? "Full moon" : "Half moon" }
 }
 
 // The moon phase that happens during `day` (local time), if any.
-func moonDay(_ day: Date) -> MoonDay? {
+public func moonDay(_ day: Date) -> MoonDay? {
     let a = moonAngle(cal.startOfDay(for: day)), b = moonAngle(addDays(cal.startOfDay(for: day), 1))
     for (target, p) in [(0.0, MoonDay.new), (90, .firstHalf), (180, .full), (270, .lastHalf)] {
         var x = a - target; if x > 180 { x -= 360 }; if x <= -180 { x += 360 }
@@ -112,7 +113,8 @@ func moonDay(_ day: Date) -> MoonDay? {
     return nil
 }
 
-final class Trips {
+public final class Trips {
+    public init() {}
     private struct Check { let minutes: Int?; let at: Date; let start: Date; let geo: Geo; let origin: Geo }
     private var checks: [String: Check] = [:]
     private var spots: [Bool: Geo] = [:]  // Home (false) and Work (true) from Contacts, read once per run of the app
@@ -121,7 +123,7 @@ final class Trips {
 
     // `list`: the events to plan, soonest first. `all`: every coming event, for "the event before".
     // Returns true when a call came in during this round, so the caller plans again with the newest events.
-    func run(_ list: [Item], all: [Item], store: Store, done: @escaping ([String: Int]) -> Void) async -> Bool {
+    public func run(_ list: [Item], all: [Item], store: Store, done: @escaping ([String: Int]) -> Void) async -> Bool {
         guard !running else { again = true; return false }
         running = true; again = false; defer { running = false }
         let now = Date()
@@ -200,10 +202,10 @@ final class Trips {
 }
 
 // The buttons on the leave alert: Directions opens Apple Maps, In 5 min shows it again, Dismiss closes it.
-final class LeaveAlerts: NSObject, UNUserNotificationCenterDelegate {
-    static let shared = LeaveAlerts()
+public final class LeaveAlerts: NSObject, UNUserNotificationCenterDelegate {
+    public static let shared = LeaveAlerts()
 
-    func install() {
+    public func install() {
         let c = UNUserNotificationCenter.current()
         c.delegate = self
         c.setNotificationCategories([UNNotificationCategory(identifier: "leave", actions: [
@@ -214,9 +216,9 @@ final class LeaveAlerts: NSObject, UNUserNotificationCenterDelegate {
     }
 
     // Shown as a banner even when Dateline is the app in front.
-    func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .sound] }
+    public func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .sound] }
 
-    func userNotificationCenter(_ c: UNUserNotificationCenter, didReceive r: UNNotificationResponse) async {
+    public func userNotificationCenter(_ c: UNUserNotificationCenter, didReceive r: UNNotificationResponse) async {
         let n = r.notification.request
         switch r.actionIdentifier {
         case "directions", UNNotificationDefaultActionIdentifier:
@@ -233,29 +235,29 @@ final class LeaveAlerts: NSObject, UNUserNotificationCenterDelegate {
     }
 }
 
-final class PlaceSearch: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
-    @Published var results: [MKLocalSearchCompletion] = []
+public final class PlaceSearch: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
+    @Published public var results: [MKLocalSearchCompletion] = []
     private let completer = MKLocalSearchCompleter()
 
-    override init() {
+    public override init() {
         super.init()
         completer.delegate = self
         completer.resultTypes = [.address, .pointOfInterest]
         if let g = Here.shared.spot { completer.region = MKCoordinateRegion(center: g.coord, latitudinalMeters: 50_000, longitudinalMeters: 50_000) }
     }
 
-    func query(_ text: String) {
+    public func query(_ text: String) {
         if text.trimmingCharacters(in: .whitespaces).count < 2 { results = []; completer.cancel() } else { completer.queryFragment = text }
     }
 
-    nonisolated func completerDidUpdateResults(_ c: MKLocalSearchCompleter) {
+    public nonisolated func completerDidUpdateResults(_ c: MKLocalSearchCompleter) {
         let r = Array(c.results.prefix(5))
         Task { @MainActor in self.results = r }
     }
-    nonisolated func completer(_ c: MKLocalSearchCompleter, didFailWithError error: Error) { Task { @MainActor in self.results = [] } }
+    public nonisolated func completer(_ c: MKLocalSearchCompleter, didFailWithError error: Error) { Task { @MainActor in self.results = [] } }
 
     // The picked suggestion's name ("Casa Luna, Tamarindo") and spot on the map.
-    func pick(_ s: MKLocalSearchCompletion) async -> (String, Geo)? {
+    public func pick(_ s: MKLocalSearchCompletion) async -> (String, Geo)? {
         results = []
         guard let m = try? await MKLocalSearch(request: MKLocalSearch.Request(completion: s)).start().mapItems.first else { return nil }
         let name = m.name ?? s.title, town = m.placemark.locality ?? ""

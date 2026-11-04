@@ -6,6 +6,7 @@ import AppKit
 import MapKit
 import CoreLocation
 import UserNotifications
+import DatelineCore
 
 struct MoonDot: View {
     let phase: MoonDay

@@ -7,7 +7,7 @@ import SwiftUI
 import CoreLocation
 @MainActor
 
-protocol CalendarSource: AnyObject {
+public protocol CalendarSource: AnyObject {
     // A Mac calendar an account signed in here already shows, by its account's name: left out of what's read, so nothing shows twice.
     var shownElsewhere: (_ account: String, _ calDAV: Bool) -> Bool { get set }
     func askForEvents(_ done: @escaping @MainActor (Bool) -> Void)
@@ -33,21 +33,21 @@ protocol CalendarSource: AnyObject {
 }
 
 @MainActor
-final class AppleCalendar: CalendarSource {
+public final class AppleCalendar: CalendarSource {
     private let ek = EKEventStore()
     private var observer: Any?
     private var deletedAlarms: [String: [EKAlarm]] = [:]
-    var shownElsewhere: (String, Bool) -> Bool = { _, _ in false }
+    public var shownElsewhere: (String, Bool) -> Bool = { _, _ in false }
 
-    static var hasEventAccess: Bool { EKEventStore.authorizationStatus(for: .event) == .fullAccess }
+    public static var hasEventAccess: Bool { EKEventStore.authorizationStatus(for: .event) == .fullAccess }
 
-    func askForEvents(_ done: @escaping @MainActor (Bool) -> Void) {
+    public func askForEvents(_ done: @escaping @MainActor (Bool) -> Void) {
         ek.requestFullAccessToEvents { ok, _ in Task { @MainActor in done(ok) } }
     }
-    func askForReminders(_ done: @escaping @MainActor (Bool) -> Void) {
+    public func askForReminders(_ done: @escaping @MainActor (Bool) -> Void) {
         ek.requestFullAccessToReminders { ok, _ in Task { @MainActor in done(ok) } }
     }
-    func onChange(_ act: @escaping @MainActor () -> Void) {
+    public func onChange(_ act: @escaping @MainActor () -> Void) {
         observer = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: ek, queue: .main) { _ in Task { @MainActor in act() } }
     }
 
@@ -56,11 +56,11 @@ final class AppleCalendar: CalendarSource {
     }
     private func elsewhere(_ s: EKSource) -> Bool { shownElsewhere(s.title, s.sourceType == .calDAV) }
 
-    func calendars() -> [CalInfo] {
+    public func calendars() -> [CalInfo] {
         ek.calendars(for: .event).filter { !elsewhere($0.source) }.sorted { ($0.source.title, $0.title) < ($1.source.title, $1.title) }.map(info)
     }
-    func allCalendars() -> [CalInfo] { ek.calendars(for: .event).map(info) }
-    func defaultCalendar() -> (id: String, title: String, elsewhere: Bool)? {
+    public func allCalendars() -> [CalInfo] { ek.calendars(for: .event).map(info) }
+    public func defaultCalendar() -> (id: String, title: String, elsewhere: Bool)? {
         ek.defaultCalendarForNewEvents.map { ($0.calendarIdentifier, $0.title, elsewhere($0.source)) }
     }
 
@@ -70,12 +70,12 @@ final class AppleCalendar: CalendarSource {
         return (keep.count == all.count ? nil : keep, keep.isEmpty)
     }
 
-    func events(from a: Date, to b: Date) -> [Item] {
+    public func events(from a: Date, to b: Date) -> [Item] {
         let k = kept()
         return k.none ? [] : ek.events(matching: ek.predicateForEvents(withStart: a, end: b, calendars: k.cals)).map(Self.item)
     }
 
-    func eventsInBackground(from a: Date, to b: Date) async -> [Item] {
+    public func eventsInBackground(from a: Date, to b: Date) async -> [Item] {
         let k = kept()
         if k.none { return [] }
         let ids = k.cals.map { Set($0.map(\.calendarIdentifier)) }
@@ -86,7 +86,7 @@ final class AppleCalendar: CalendarSource {
         }.value
     }
 
-    func eventIDs(from a: Date, to b: Date, calendars ids: [String]) -> [(id: String, calendarID: String, uid: String)] {
+    public func eventIDs(from a: Date, to b: Date, calendars ids: [String]) -> [(id: String, calendarID: String, uid: String)] {
         let cals = ek.calendars(for: .event).filter { ids.contains($0.calendarIdentifier) }
         if cals.isEmpty { return [] }
         return ek.events(matching: ek.predicateForEvents(withStart: a, end: b, calendars: cals)).compactMap { e in
@@ -95,7 +95,7 @@ final class AppleCalendar: CalendarSource {
         }
     }
 
-    nonisolated static func item(_ e: EKEvent) -> Item {
+    public nonisolated static func item(_ e: EKEvent) -> Item {
         let s: ShowAs = e.availability == .free ? .free : e.availability == .tentative ? .maybe : .busy
         // A repeating event's occurrences share one identifier; the start date tells them apart. A one-time event keeps its plain identifier so moving it keeps it selected.
         let occ = e.hasRecurrenceRules ? "|" + String(e.occurrenceDate?.timeIntervalSince1970 ?? 0) : ""
@@ -121,7 +121,7 @@ final class AppleCalendar: CalendarSource {
         return ek.events(matching: pred).first { $0.eventIdentifier == id && $0.occurrenceDate == at }
     }
 
-    func add(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure> {
+    public func add(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure> {
         guard let c = ek.calendar(withIdentifier: it.calendarID) else { return .failure(Failure("That calendar is gone.")) }
         let e = EKEvent(eventStore: ek)
         e.calendar = c
@@ -135,7 +135,7 @@ final class AppleCalendar: CalendarSource {
         return .success(Self.item(e))
     }
 
-    func update(_ it: Item, before: Item?) -> Result<String?, Failure> {
+    public func update(_ it: Item, before: Item?) -> Result<String?, Failure> {
         guard let e = event(it, now: before) else { return .failure(Failure("That event is gone.")) }
         if e.calendar.calendarIdentifier != it.calendarID, let c = ek.calendar(withIdentifier: it.calendarID) { e.calendar = c }
         apply(it, to: e)
@@ -143,7 +143,7 @@ final class AppleCalendar: CalendarSource {
         return .success(e.eventIdentifier)
     }
 
-    func delete(_ it: Item, series: Bool) -> Result<Bool, Failure> {
+    public func delete(_ it: Item, series: Bool) -> Result<Bool, Failure> {
         guard let e = event(it) else { return .failure(Failure("That event is gone.")) }
         let alarms = e.alarms ?? [], oneTime = !e.hasRecurrenceRules
         do { try ek.remove(e, span: series ? .futureEvents : .thisEvent, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
@@ -151,7 +151,7 @@ final class AppleCalendar: CalendarSource {
         return .success(oneTime)
     }
 
-    func copyAlerts(from old: Item, to new: Item) {
+    public func copyAlerts(from old: Item, to new: Item) {
         if let alarms = event(old)?.alarms ?? deletedAlarms[old.id], !alarms.isEmpty, let e = ek.event(withIdentifier: new.id) {
             alarms.forEach { a in e.addAlarm(a.absoluteDate.map(EKAlarm.init(absoluteDate:)) ?? EKAlarm(relativeOffset: a.relativeOffset)) }
             try? ek.save(e, span: .thisEvent)
@@ -184,10 +184,10 @@ final class AppleCalendar: CalendarSource {
 
     // MARK: Reminders (Phase 4)
 
-    func reminderLists() -> [CalInfo] { ek.calendars(for: .reminder).sorted { $0.title < $1.title }.map(info) }
+    public func reminderLists() -> [CalInfo] { ek.calendars(for: .reminder).sorted { $0.title < $1.title }.map(info) }
 
     // Every unfinished reminder, plus the ones finished in the last week (for "Show done tasks" and ticked ones on the calendar).
-    func readReminders(_ done: @escaping @MainActor ([ToDo]) -> Void) {
+    public func readReminders(_ done: @escaping @MainActor ([ToDo]) -> Void) {
         let ek = ek
         let open = ek.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)
         let finished = ek.predicateForCompletedReminders(withCompletionDateStarting: Date().addingTimeInterval(-7 * 86400), ending: nil, calendars: nil)
@@ -200,7 +200,7 @@ final class AppleCalendar: CalendarSource {
         }
     }
 
-    nonisolated static func todo(_ r: EKReminder) -> ToDo {
+    public nonisolated static func todo(_ r: EKReminder) -> ToDo {
         let c = r.dueDateComponents
         var t = ToDo(id: r.calendarItemIdentifier, listID: r.calendar.calendarIdentifier, title: r.title ?? "",
                      due: c.flatMap { cal.date(from: $0) }, timed: c?.hour != nil, done: r.isCompleted, notes: r.notes ?? "")
@@ -211,7 +211,7 @@ final class AppleCalendar: CalendarSource {
         return t
     }
 
-    func addReminder(_ t: ToDo, listID: String?) -> Result<ToDo, Failure> {
+    public func addReminder(_ t: ToDo, listID: String?) -> Result<ToDo, Failure> {
         guard let c = listID.flatMap(ek.calendar(withIdentifier:)) ?? ek.defaultCalendarForNewReminders() else { return .failure(Failure("No Reminders list on this Mac can take new tasks.")) }
         let r = EKReminder(eventStore: ek)
         r.calendar = c
@@ -220,7 +220,7 @@ final class AppleCalendar: CalendarSource {
         return .success(Self.todo(r))
     }
 
-    func updateReminder(_ t: ToDo, old: ToDo?) -> Failure? {
+    public func updateReminder(_ t: ToDo, old: ToDo?) -> Failure? {
         guard let r = ek.calendarItem(withIdentifier: t.id) as? EKReminder else { return Failure("That task is gone.") }
         if r.calendar.calendarIdentifier != t.listID, let c = ek.calendar(withIdentifier: t.listID) { r.calendar = c }
         apply(t, old: old, to: r)
@@ -228,7 +228,7 @@ final class AppleCalendar: CalendarSource {
         return nil
     }
 
-    func deleteReminder(_ t: ToDo) -> Failure? {
+    public func deleteReminder(_ t: ToDo) -> Failure? {
         guard let r = ek.calendarItem(withIdentifier: t.id) as? EKReminder else { return Failure("That task is gone.") }
         do { try ek.remove(r, commit: true) } catch { return Failure(error.localizedDescription) }
         return nil
@@ -258,14 +258,14 @@ final class AppleCalendar: CalendarSource {
 
 // Made-up calendars, events and tasks around the mockup's week, relative to today.
 @MainActor
-final class SampleCalendar: CalendarSource {
-    var shownElsewhere: (String, Bool) -> Bool = { _, _ in false }
-    var events: [Item] = []
-    var tasks: [ToDo] = []
-    let firstExtras: [String: Extra]  // what Dateline keeps on these events; Store starts with it
-    let mon: Date
+public final class SampleCalendar: CalendarSource {
+    public var shownElsewhere: (String, Bool) -> Bool = { _, _ in false }
+    public var events: [Item] = []
+    public var tasks: [ToDo] = []
+    public let firstExtras: [String: Extra]  // what Dateline keeps on these events; Store starts with it
+    public let mon: Date
     private var changed: (@MainActor () -> Void)?
-    func fireChange() { changed?() }  // what another device's change does, for the self-check
+    public func fireChange() { changed?() }  // what another device's change does, for the self-check
 
     private let cals = [
         CalInfo(id: "work", title: "Work", account: "Google (sample)", color: Palette.work, writable: true),
@@ -277,7 +277,7 @@ final class SampleCalendar: CalendarSource {
                          CalInfo(id: "r-condo", title: "Condo", account: "iCloud (sample)", color: Palette.family, writable: true),
                          CalInfo(id: "r-groc", title: "Groceries", account: "iCloud (sample)", color: Palette.personal, writable: true)]
 
-    init() {
+    public init() {
         let today = cal.startOfDay(for: sampleToday ?? Date())
         mon = addDays(today, -((cal.component(.weekday, from: today) + 5) % 7))  // always Monday, whatever week start is saved, so samples match the mockups
         let mon = mon
@@ -329,52 +329,52 @@ final class SampleCalendar: CalendarSource {
         tasks = todos
     }
 
-    func askForEvents(_ done: @escaping @MainActor (Bool) -> Void) { done(true) }
-    func askForReminders(_ done: @escaping @MainActor (Bool) -> Void) { done(true) }
-    func onChange(_ act: @escaping @MainActor () -> Void) { changed = act }
+    public func askForEvents(_ done: @escaping @MainActor (Bool) -> Void) { done(true) }
+    public func askForReminders(_ done: @escaping @MainActor (Bool) -> Void) { done(true) }
+    public func onChange(_ act: @escaping @MainActor () -> Void) { changed = act }
 
-    func calendars() -> [CalInfo] { cals }
-    func allCalendars() -> [CalInfo] { cals }
-    func defaultCalendar() -> (id: String, title: String, elsewhere: Bool)? { ("personal", "Personal", false) }
-    func events(from a: Date, to b: Date) -> [Item] { events.filter { $0.end > a && $0.start < b } }
-    func eventsInBackground(from a: Date, to b: Date) async -> [Item] { events(from: a, to: b) }
-    func eventIDs(from a: Date, to b: Date, calendars: [String]) -> [(id: String, calendarID: String, uid: String)] { [] }
+    public func calendars() -> [CalInfo] { cals }
+    public func allCalendars() -> [CalInfo] { cals }
+    public func defaultCalendar() -> (id: String, title: String, elsewhere: Bool)? { ("personal", "Personal", false) }
+    public func events(from a: Date, to b: Date) -> [Item] { events.filter { $0.end > a && $0.start < b } }
+    public func eventsInBackground(from a: Date, to b: Date) async -> [Item] { events(from: a, to: b) }
+    public func eventIDs(from a: Date, to b: Date, calendars: [String]) -> [(id: String, calendarID: String, uid: String)] { [] }
 
-    func add(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure> {
+    public func add(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure> {
         guard cals.contains(where: { $0.id == it.calendarID }) else { return .failure(Failure("That calendar is gone.")) }
         var it = it
         it.id = UUID().uuidString
         events.append(it)
         return .success(it)
     }
-    func update(_ it: Item, before: Item?) -> Result<String?, Failure> {
+    public func update(_ it: Item, before: Item?) -> Result<String?, Failure> {
         guard let i = events.firstIndex(where: { $0.id == it.id }) else { return .failure(Failure("That event is gone.")) }
         events[i] = calendarPart(it)
         return .success(it.id)
     }
-    func delete(_ it: Item, series: Bool) -> Result<Bool, Failure> {
+    public func delete(_ it: Item, series: Bool) -> Result<Bool, Failure> {
         guard events.contains(where: { $0.id == it.id }) else { return .failure(Failure("That event is gone.")) }
         events.removeAll { $0.id == it.id }
         return .success(true)
     }
-    func copyAlerts(from old: Item, to new: Item) {
+    public func copyAlerts(from old: Item, to new: Item) {
         if let i = events.firstIndex(where: { $0.id == new.id }) { events[i].alerts = old.alerts }
     }
 
-    func reminderLists() -> [CalInfo] { lists }
-    func readReminders(_ done: @escaping @MainActor ([ToDo]) -> Void) { done(tasks) }
-    func addReminder(_ t: ToDo, listID: String?) -> Result<ToDo, Failure> {
+    public func reminderLists() -> [CalInfo] { lists }
+    public func readReminders(_ done: @escaping @MainActor ([ToDo]) -> Void) { done(tasks) }
+    public func addReminder(_ t: ToDo, listID: String?) -> Result<ToDo, Failure> {
         var t = t
         t.id = UUID().uuidString; t.listID = listID ?? lists[0].id
         tasks.append(t)
         return .success(t)
     }
-    func updateReminder(_ t: ToDo, old: ToDo?) -> Failure? {
+    public func updateReminder(_ t: ToDo, old: ToDo?) -> Failure? {
         guard let i = tasks.firstIndex(where: { $0.id == t.id }) else { return Failure("That task is gone.") }
         tasks[i] = t
         return nil
     }
-    func deleteReminder(_ t: ToDo) -> Failure? {
+    public func deleteReminder(_ t: ToDo) -> Failure? {
         tasks.removeAll { $0.id == t.id }
         return nil
     }

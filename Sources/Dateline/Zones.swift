@@ -1,6 +1,7 @@
 // Phase 6 (approved mockup, 2026-10-28): favorite time zones with nicknames, in the sidebar and in Settings. Saved on this Mac.
 import SwiftUI
 import CoreLocation
+import DatelineCore
 
 // The sidebar card under Coming up.
 struct ZoneCard: View {

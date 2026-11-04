@@ -15,6 +15,7 @@
 //     with --late after the names, each picture's state is set after the window has drawn, so a screen that fails to follow it shows up against the normal picture
 import SwiftUI
 import AppKit
+import DatelineCore
 
 let args = CommandLine.arguments
 if args.contains("--selftest") { exit(selftest()) }

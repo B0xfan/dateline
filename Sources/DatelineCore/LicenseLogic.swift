@@ -5,24 +5,24 @@ import SwiftUI
 import CryptoKit
 
 // shortcut: the trial start and key sit in the app's settings, so deleting those restarts the trial; the code is public anyway (stops normal buyers, as planned).
-@MainActor final class License: ObservableObject {
-    static let shared = License()
+@MainActor public final class License: ObservableObject {
+    public static let shared = License()
     // Raw Ed25519 public keys (base64) from `node scripts/keys.js init`. A new one is added, never swapped, so sold keys keep working.
-    nonisolated static let publicKeys = ["u+BvQLDQy2Qetmnv32FkcALoKJKB0NoL6hMZJUCF6R8="]
-    nonisolated static let revoked: Set<Int> = []  // refunded keys, by number
-    nonisolated static let trialDays = 7
-    static let buyURL = URL(string: "https://payhip.com/b/P4iIX")!
-    static let price = "$29.99"
-    static let endedMessage = "Your free trial has ended. Your calendar is still here to look at. Buy Dateline, or enter the key you got by email, to add and change events again."
+    public nonisolated static let publicKeys = ["u+BvQLDQy2Qetmnv32FkcALoKJKB0NoL6hMZJUCF6R8="]
+    public nonisolated static let revoked: Set<Int> = []  // refunded keys, by number
+    public nonisolated static let trialDays = 7
+    public static let buyURL = URL(string: "https://payhip.com/b/P4iIX")!
+    public static let price = "$29.99"
+    public static let endedMessage = "Your free trial has ended. Your calendar is still here to look at. Buy Dateline, or enter the key you got by email, to add and change events again."
 
-    enum Status: Equatable { case trial(daysLeft: Int), ended, bought(serial: Int) }
+    public enum Status: Equatable { case trial(daysLeft: Int), ended, bought(serial: Int) }
 
     // Only the real app reads and saves the trial; the test and picture modes never touch the saved settings.
     private let live = !CommandLine.arguments.contains { ["--sample", "--render", "--selftest", "--follow-check", "--timing-ui", "--timing", "--a4-check", "--key-check", "--accounts-check", "--email-check", "--assistant"].contains($0) }
-    private(set) var started: Date
-    @Published private(set) var serial: Int?
-    @Published var test: Status?  // set by --render to draw each state
-    @Published var now = Date()  // moved on by the window's clock, so the days left count down while Dateline stays open
+    public private(set) var started: Date
+    @Published public private(set) var serial: Int?
+    @Published public var test: Status?  // set by --render to draw each state
+    @Published public var now = Date()  // moved on by the window's clock, so the days left count down while Dateline stays open
 
     private init() {
         let d = UserDefaults.standard
@@ -32,14 +32,14 @@ import CryptoKit
     }
 
     /// Redraws the trial parts only when a clock tick changes the days left or ends the trial.
-    func tick(_ d: Date) { if live, test == nil, trialStatus(started: started, now: d, serial: serial) != status { now = d } }
+    public func tick(_ d: Date) { if live, test == nil, trialStatus(started: started, now: d, serial: serial) != status { now = d } }
 
-    var status: Status { test ?? (live ? trialStatus(started: started, now: now, serial: serial) : .bought(serial: 0)) }
-    var canEdit: Bool { if case .ended = status { return false }; return true }
-    var trialEnds: Date { started.addingTimeInterval(Double(Self.trialDays) * 86400) }
+    public var status: Status { test ?? (live ? trialStatus(started: started, now: now, serial: serial) : .bought(serial: 0)) }
+    public var canEdit: Bool { if case .ended = status { return false }; return true }
+    public var trialEnds: Date { started.addingTimeInterval(Double(Self.trialDays) * 86400) }
 
     /// Saves the key when it is good; false leaves everything as it was.
-    func enter(_ key: String) -> Bool {
+    public func enter(_ key: String) -> Bool {
         guard let s = keySerial(key) else { return false }
         if live { UserDefaults.standard.set(key.filter { !$0.isWhitespace }, forKey: "licenseKey") }
         serial = s; test = nil
@@ -47,19 +47,19 @@ import CryptoKit
     }
 
     #if os(macOS)
-    func buy() { NSWorkspace.shared.open(Self.buyURL) }
+    public func buy() { NSWorkspace.shared.open(Self.buyURL) }
     #endif
 }
 
 /// Pure, for the self-test: 7 days from the first open, counted in whole days left (the last day says 1).
-func trialStatus(started: Date, now: Date, serial: Int?) -> License.Status {
+public func trialStatus(started: Date, now: Date, serial: Int?) -> License.Status {
     if let serial { return .bought(serial: serial) }
     let left = started.addingTimeInterval(Double(License.trialDays) * 86400).timeIntervalSince(now)
     return left > 0 ? .trial(daysLeft: min(Int((left / 86400).rounded(.up)), License.trialDays)) : .ended  // never more than 7, even with the clock set back
 }
 
 /// The key's number when it is a good Dateline key: DLK-K<6 digits>.<86-char base64url Ed25519 signature of "K<6 digits>">.
-nonisolated func keySerial(_ key: String, publicKeys: [String] = License.publicKeys, revoked: Set<Int> = License.revoked) -> Int? {
+public nonisolated func keySerial(_ key: String, publicKeys: [String] = License.publicKeys, revoked: Set<Int> = License.revoked) -> Int? {
     let k = key.filter { !$0.isWhitespace }
     guard k.hasPrefix("DLK-K"), k.count == 98, let dot = k.firstIndex(of: "."), k.distance(from: k.startIndex, to: dot) == 11 else { return nil }
     let num = String(k[k.index(k.startIndex, offsetBy: 5)..<dot])
@@ -76,7 +76,7 @@ nonisolated func keySerial(_ key: String, publicKeys: [String] = License.publicK
 
 // MARK: screens
 
-func licenseSelftest(_ expect: (Bool, String) -> Void) {
+public func licenseSelftest(_ expect: (Bool, String) -> Void) {
     let priv = Curve25519.Signing.PrivateKey(), pub = priv.publicKey.rawRepresentation.base64EncodedString()
     func make(_ n: Int, _ k: Curve25519.Signing.PrivateKey = priv) -> String {
         let p = "K" + String(format: "%06d", n)

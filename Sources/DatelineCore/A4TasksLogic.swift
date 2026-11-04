@@ -6,44 +6,45 @@ import SwiftUI
 import AppKit
 #endif
 
-struct A4Task: Equatable {
-    var status = "open"
-    var priority = "normal"
-    var file = ""  // the note's full path
-    var repeating = false
-    var sphere = ""  // "work" or "personal", from the task's project note; it picks the calendar
-    var ring = false  // a time just given in Dateline rings at that time, as a first time does in A4; an undo never sets this, so it can't wake a silenced task
-    static let statuses = [("open", "Open"), ("in-progress", "In progress"), ("blocked", "Blocked"), ("done", "Done")]
-    static let priorities = ["low", "normal", "high"]
-    static let finished = ["done", "closed"]
+public struct A4Task: Equatable {
+    public var status = "open"
+    public var priority = "normal"
+    public var file = ""  // the note's full path
+    public var repeating = false
+    public var sphere = ""  // "work" or "personal", from the task's project note; it picks the calendar
+    public var ring = false  // a time just given in Dateline rings at that time, as a first time does in A4; an undo never sets this, so it can't wake a silenced task
+    public static let statuses = [("open", "Open"), ("in-progress", "In progress"), ("blocked", "Blocked"), ("done", "Done")]
+    public static let priorities = ["low", "normal", "high"]
+    public static let finished = ["done", "closed"]
+    public init(status: String = "open", priority: String = "normal", file: String = "", repeating: Bool = false, sphere: String = "", ring: Bool = false) { self.status = status; self.priority = priority; self.file = file; self.repeating = repeating; self.sphere = sphere; self.ring = ring }
 }
 
-let a4Color = Color(red: 0.49, green: 0.36, blue: 0.82)
-let a4Account = "A4"
-let a4DefaultFolder = NSHomeDirectory() + "/Projects/A4/02 Planner/TaskNotes/Tasks"
+public let a4Color = Color(red: 0.49, green: 0.36, blue: 0.82)
+public let a4Account = "A4"
+public let a4DefaultFolder = NSHomeDirectory() + "/Projects/A4/02 Planner/TaskNotes/Tasks"
 
 // MARK: reading and changing a note (pure, covered by --selftest and --a4-check)
 
 // The lines of a note and where its properties end; nil when it has no properties block.
-func a4Front(_ text: String) -> (lines: [String], end: Int)? {
+public func a4Front(_ text: String) -> (lines: [String], end: Int)? {
     let lines = text.components(separatedBy: "\n")
     guard lines.first == "---", let end = lines.dropFirst().firstIndex(of: "---") else { return nil }
     return (lines, end)
 }
 
-func a4Clean(_ s: some StringProtocol) -> String {
+public func a4Clean(_ s: some StringProtocol) -> String {
     var v = s.trimmingCharacters(in: .whitespaces)
     if v.count >= 2, let q = v.first, q == "\"" || q == "'", v.last == q { v = String(v.dropFirst().dropLast()) }
     return v
 }
 
-func a4Value(_ f: (lines: [String], end: Int), _ key: String) -> String {
+public func a4Value(_ f: (lines: [String], end: Int), _ key: String) -> String {
     guard let l = f.lines[1..<f.end].first(where: { $0.hasPrefix(key + ":") }) else { return "" }
     return a4Clean(l.dropFirst(key.count + 1))
 }
 
 // A property holding a list: "- a" lines under it, or [a, b] on its own line, or one plain value.
-func a4List(_ f: (lines: [String], end: Int), _ key: String) -> [String] {
+public func a4List(_ f: (lines: [String], end: Int), _ key: String) -> [String] {
     guard let i = f.lines[1..<f.end].firstIndex(where: { $0.hasPrefix(key + ":") }) else { return [] }
     let own = f.lines[i].dropFirst(key.count + 1).trimmingCharacters(in: .whitespaces)
     if own.hasPrefix("[") { return own.dropFirst().dropLast().split(separator: ",").map { a4Clean($0) } }
@@ -53,7 +54,7 @@ func a4List(_ f: (lines: [String], end: Int), _ key: String) -> [String] {
 }
 
 // The note with these one-line properties changed (nil removes one, "" keeps it empty) and every other byte as it was.
-func a4Edit(_ text: String, _ set: [(String, String?)]) -> String? {
+public func a4Edit(_ text: String, _ set: [(String, String?)]) -> String? {
     guard var f = a4Front(text) else { return nil }
     for (key, value) in set {
         let i = f.lines[1..<f.end].firstIndex { $0.hasPrefix(key + ":") }
@@ -68,55 +69,55 @@ func a4Edit(_ text: String, _ set: [(String, String?)]) -> String? {
     return f.lines.joined(separator: "\n")
 }
 
-func a4Day(_ d: Date) -> String { let c = cal.dateComponents([.year, .month, .day], from: d); return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!) }
+public func a4Day(_ d: Date) -> String { let c = cal.dateComponents([.year, .month, .day], from: d); return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!) }
 
-func a4ParseDay(_ s: String) -> Date? {
+public func a4ParseDay(_ s: String) -> Date? {
     let p = s.prefix(10).split(separator: "-").compactMap { Int($0) }
     guard s.count >= 10, p.count == 3 else { return nil }
     return cal.date(from: DateComponents(year: p[0], month: p[1], day: p[2]))
 }
 
 // The clock time in a stored date, in minutes: "2026-11-03T11:00" is 660. The same reading as A4's timeOf.
-func a4Minutes(_ s: String) -> Int? {
+public func a4Minutes(_ s: String) -> Int? {
     guard let r = s.range(of: "^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}", options: .regularExpression),
           let h = Int(s[r].suffix(5).prefix(2)), let m = Int(s[r].suffix(2)), h <= 23, m <= 59 else { return nil }
     return h * 60 + m
 }
 
 // A repeating task's time when its day has none: the clock in its rule's DTSTART. Midnight counts as none. The same reading as A4's ruleTimeOf.
-func a4RuleMinutes(_ rule: String) -> Int? {
+public func a4RuleMinutes(_ rule: String) -> Int? {
     guard let r = rule.range(of: "DTSTART(;[^:\\n]*)?[:=][0-9]{8}T[0-9]{4}", options: [.regularExpression, .caseInsensitive]),
           let h = Int(rule[r].suffix(4).prefix(2)), let m = Int(rule[r].suffix(2)), h <= 23, m <= 59, h + m > 0 else { return nil }
     return h * 60 + m
 }
 
 // A date as A4 stores it: the day, with the clock time when there is one.
-func a4When(_ d: Date, timed: Bool) -> String {
+public func a4When(_ d: Date, timed: Bool) -> String {
     guard timed else { return a4Day(d) }
     let c = cal.dateComponents([.hour, .minute], from: d)
     return a4Day(d) + String(format: "T%02d:%02d", c.hour!, c.minute!)
 }
 
 // The time stamp A4 writes in dateModified: local time with its offset.
-func a4Stamp(_ d: Date) -> String {
+public func a4Stamp(_ d: Date) -> String {
     let f = DateFormatter()
     f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.timeZone = cal.timeZone; f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSxxxxx"  // the app's zone, so the cloud self-test (UTC) agrees with the Mac
     return f.string(from: d)
 }
 
 // The project's name from its link: "[[04 Inner World/Projects/Home|Home]]" is Home.
-func a4Project(_ link: String) -> String {
+public func a4Project(_ link: String) -> String {
     let inner = link.replacingOccurrences(of: "[[", with: "").replacingOccurrences(of: "]]", with: "")
     let path = inner.split(separator: "|").first.map(String.init) ?? inner
     let name = path.split(separator: "/").last.map(String.init) ?? path
     return name.hasSuffix(".md") ? String(name.dropLast(3)) : name
 }
 
-func a4Body(_ f: (lines: [String], end: Int)) -> String { f.lines[(f.end + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) }
+public func a4Body(_ f: (lines: [String], end: Int)) -> String { f.lines[(f.end + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) }
 
 // One note as a task; nil for what A4 doesn't show as a task: no task tag, archived, kept for Someday, or finished over a week ago.
 // shortcut: a task finished through A4's engine leaves here when A4 files it in the Archive (about 5 minutes), because reopening one takes A4's own un-archive; read the Archive too if done tasks should stay the week.
-func a4Read(_ text: String, file: String, now: Date) -> ToDo? {
+public func a4Read(_ text: String, file: String, now: Date) -> ToDo? {
     guard let f = a4Front(text) else { return nil }
     let tags = a4List(f, "tags")
     guard tags.contains("task"), !tags.contains("archived"), a4Value(f, "archived") != "true" else { return nil }
@@ -143,7 +144,7 @@ func a4Read(_ text: String, file: String, now: Date) -> ToDo? {
 }
 
 // Each project note's side of life, by its name in lower case, as Obsidian's links ignore case.
-func a4Spheres(_ folder: String) -> [String: String] {
+public func a4Spheres(_ folder: String) -> [String: String] {
     guard FileManager.default.fileExists(atPath: folder), let walk = FileManager.default.enumerator(at: URL(fileURLWithPath: folder), includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { return [:] }  // a missing folder would otherwise walk from the current one
     var found: [String: String] = [:], unclear: Set<String> = []
     for case let u as URL in walk where u.pathExtension == "md" {
@@ -157,7 +158,7 @@ func a4Spheres(_ folder: String) -> [String: String] {
 }
 
 // Every task in the folder. Project notes sit in the vault's Projects room unless told otherwise; `sides` false skips reading them when no calendar is picked.
-func a4Scan(_ folder: String, now: Date, projects: String? = nil, sides: Bool = true) -> [ToDo] {
+public func a4Scan(_ folder: String, now: Date, projects: String? = nil, sides: Bool = true) -> [ToDo] {
     guard let walk = FileManager.default.enumerator(at: URL(fileURLWithPath: folder), includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { return [] }
     let room = projects ?? a4Vault(folder + "/x").map { $0 + "/04 Inner World/My Life/Projects" }
     let spheres = sides ? room.map(a4Spheres) ?? [:] : [:]
@@ -169,7 +170,7 @@ func a4Scan(_ folder: String, now: Date, projects: String? = nil, sides: Bool = 
 }
 
 // The lines that change when `old` becomes `new` in the note `text`. Finishing is not here: that goes through A4's engine.
-func a4Changes(old: ToDo, new: ToDo, text: String, now: Date) -> [(String, String?)] {
+public func a4Changes(old: ToDo, new: ToDo, text: String, now: Date) -> [(String, String?)] {
     guard let o = old.a4, let n = new.a4 else { return [] }
     var set: [(String, String?)] = []
     if old.due != new.due || old.timed != new.timed {
@@ -209,33 +210,34 @@ func a4Changes(old: ToDo, new: ToDo, text: String, now: Date) -> [(String, Strin
 // MARK: A4 tasks with a time, kept as real events on the calendar John picked (John, 2026-11-02)
 // Dateline does the copying, so it happens while Dateline is running. A repeating task stays a task. The link lives in Dateline, not the note.
 
-struct A4Link: Codable, Equatable {
-    var event: String
-    var calendar: String
-    var start: Date  // the last time task and event agreed, which tells which one moved
-    var title: String
-    var misses = 0  // reads in a row that should have held the event and didn't
-    var dismissed = false  // the event was deleted: the task shows as a task and no event comes back
-    var finished = false  // seen done, so its note leaving the folder is A4 filing it
-    var away = false  // its note has left the folder; if it comes back, so does the link
-    var pushed: Date? = nil  // where Dateline last sent the event, so a task changed again before they agree still counts as the task moving
-    var zone = TimeZone.current.identifier  // a note's time has no zone: away from this one, task and event would seem to differ, so they wait
+public struct A4Link: Codable, Equatable {
+    public var event: String
+    public var calendar: String
+    public var start: Date  // the last time task and event agreed, which tells which one moved
+    public var title: String
+    public var misses = 0  // reads in a row that should have held the event and didn't
+    public var dismissed = false  // the event was deleted: the task shows as a task and no event comes back
+    public var finished = false  // seen done, so its note leaving the folder is A4 filing it
+    public var away = false  // its note has left the folder; if it comes back, so does the link
+    public var pushed: Date? = nil  // where Dateline last sent the event, so a task changed again before they agree still counts as the task moving
+    public var zone = TimeZone.current.identifier  // a note's time has no zone: away from this one, task and event would seem to differ, so they wait
+    public init(event: String, calendar: String, start: Date, title: String, misses: Int = 0, dismissed: Bool = false, finished: Bool = false, away: Bool = false, pushed: Date? = nil, zone: String = TimeZone.current.identifier) { self.event = event; self.calendar = calendar; self.start = start; self.title = title; self.misses = misses; self.dismissed = dismissed; self.finished = finished; self.away = away; self.pushed = pushed; self.zone = zone }
 }
 
-enum A4Step: Equatable {
+public enum A4Step: Equatable {
     case create(ToDo, calendar: String)
     case moveEvent(Item, to: Date, title: String)
     case moveTask(ToDo, to: Date)
     case dropEvent(Item)
 }
 
-let a4CreateCap = 20  // new events per pass, so a surprise in the folder can't flood a calendar
-let a4DropCap = 5  // events removed per pass: the one thing here that can't be undone
+public let a4CreateCap = 20  // new events per pass, so a surprise in the folder can't flood a calendar
+public let a4DropCap = 5  // events removed per pass: the one thing here that can't be undone
 
 // What to do to bring tasks and events together. Pure: covered by --selftest. If both moved, the note wins.
 // A move is recorded only once both sides agree, so one that fails to send is simply tried again.
 // `seen`: whether this read could have held a calendar's events; one that couldn't says nothing about a missing event.
-func a4Plan(tasks: [ToDo], links: [String: A4Link], events: [Item], calendarFor: (ToDo) -> String?, now: Date, seen: (String) -> Bool = { _ in true }) -> (links: [String: A4Link], steps: [A4Step]) {
+public func a4Plan(tasks: [ToDo], links: [String: A4Link], events: [Item], calendarFor: (ToDo) -> String?, now: Date, seen: (String) -> Bool = { _ in true }) -> (links: [String: A4Link], steps: [A4Step]) {
     func wanted(_ t: ToDo) -> Bool { t.timed && t.a4?.repeating == false && !t.done }
     var links = links, steps: [A4Step] = []
     var byFile: [String: ToDo] = [:]
@@ -306,25 +308,25 @@ func a4Plan(tasks: [ToDo], links: [String: A4Link], events: [Item], calendarFor:
 
 extension Store {
     // Shows once: on the calendar as its event, not also as a task block.
-    func a4OnCalendar(_ t: ToDo) -> Bool {
+    public func a4OnCalendar(_ t: ToDo) -> Bool {
         guard let f = t.a4?.file, let l = a4Links[f] else { return false }
         return !l.dismissed && !hidden.contains(l.calendar) && a4HasRead(l.calendar)  // only when the event can be on screen; else the task shows
     }
 
-    func a4Pick(calendar: String?, work: Bool) {
+    public func a4Pick(calendar: String?, work: Bool) {
         if work { a4WorkCalendar = calendar } else { a4Calendar = calendar }
         if access != .sample { UserDefaults.standard.set(calendar, forKey: work ? "a4WorkCalendar" : "a4Calendar") }
         reloadA4()
     }
 
     // The calendar a task goes on: its project's side of life picks. A task with no project, or one not marked either way, has none, so a work task can't land on the family calendar by guess.
-    func a4Target(_ t: ToDo) -> String? {
+    public func a4Target(_ t: ToDo) -> String? {
         let id = t.a4?.sphere == "work" ? a4WorkCalendar : t.a4?.sphere == "personal" ? a4Calendar : nil
         return id.flatMap { id in calendars.first { $0.id == id && $0.writable } }?.id
     }
 
     // Reads the events off the main thread, then brings them and the tasks together.
-    func a4Sync() {
+    public func a4Sync() {
         guard a4On, a4Calendar != nil || a4WorkCalendar != nil || !a4Links.isEmpty, access != .sample, a4CanSeeEvents, !a4Syncing, a4Busy == 0 else { return }
         a4Syncing = true
         let now = Date(), from = now.addingTimeInterval(-60 * 86400), to = now.addingTimeInterval(2 * 365 * 86400), read = canRead
@@ -335,7 +337,7 @@ extension Store {
         }
     }
 
-    func a4Apply(events: [Item], now: Date) {
+    public func a4Apply(events: [Item], now: Date) {
         if trialOver { return }  // paused, not half done: a note moved while the event can't follow would leave them apart
         let plan = a4Plan(tasks: todos.filter { $0.a4 != nil }, links: a4Links, events: events, calendarFor: a4Target, now: now, seen: a4HasRead)
         var links = plan.links, failure: Failure?
@@ -368,16 +370,16 @@ extension Store {
 
 // MARK: A4's engine, through the running Obsidian (the same route as the task reminders job)
 
-enum A4Answer: Equatable { case closed, ok, failed(String) }
+public enum A4Answer: Equatable { case closed, ok, failed(String) }
 
 // Runs inside Obsidian. `day` set: tick (or untick) that one occurrence of a repeating task.
-func a4EngineCode(vault: String, path: String, day: String?) -> String {
+public func a4EngineCode(vault: String, path: String, day: String?) -> String {
     let a = (try? JSONSerialization.data(withJSONObject: ["vault": vault, "path": path, "day": day ?? ""])).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
     return "(async () => { const a = \(a); const out = (o) => JSON.stringify(o); if (app.vault.getName() !== a.vault) return out({ r: 'closed' }); const pl = app.plugins.plugins; const own = pl['a4-projects'] || (pl.lifeworld && pl.lifeworld.running && pl.lifeworld.running['a4-projects']); const api = own && typeof own.taskApi === 'function' ? own.taskApi() : null; if (!api) return out({ r: 'noapi' }); if (!app.vault.getAbstractFileByPath(a.path)) return out({ r: 'gone' }); if (a.day) await api.recurring.toggleCompleteInstance(a.path, a.day); else await api.tasks.complete(a.path); return out({ r: 'ok' }); })()"
 }
 
 // The vault a file is in: the nearest folder above it holding .obsidian.
-func a4Vault(_ file: String) -> String? {
+public func a4Vault(_ file: String) -> String? {
     var d = (file as NSString).deletingLastPathComponent
     while d.count > 1 {
         if FileManager.default.fileExists(atPath: d + "/.obsidian") { return d }
@@ -387,7 +389,7 @@ func a4Vault(_ file: String) -> String? {
 }
 
 // The program's output, or nil when it didn't finish in time.
-func a4Run(_ tool: String, _ args: [String], timeout: TimeInterval) -> (status: Int32, out: String)? {
+public func a4Run(_ tool: String, _ args: [String], timeout: TimeInterval) -> (status: Int32, out: String)? {
     #if os(macOS)
     let p = Process(), pipe = Pipe()
     p.executableURL = URL(fileURLWithPath: tool); p.arguments = args; p.standardOutput = pipe; p.standardError = pipe
@@ -404,7 +406,7 @@ func a4Run(_ tool: String, _ args: [String], timeout: TimeInterval) -> (status: 
 }
 
 // Never starts Obsidian: closed is an answer of its own, and the caller decides.
-func a4Engine(file: String, day: String?) -> A4Answer {
+public func a4Engine(file: String, day: String?) -> A4Answer {
     guard let vault = a4Vault(file), a4Run("/usr/bin/pgrep", ["-x", "Obsidian"], timeout: 10)?.status == 0 else { return .closed }
     guard let cli = ["/opt/homebrew/bin/obsidian", "/usr/local/bin/obsidian", "/Applications/Obsidian.app/Contents/MacOS/obsidian-cli"].first(where: FileManager.default.fileExists(atPath:)) else { return .failed("Dateline can't reach Obsidian: its command line tool isn't turned on.") }
     let name = (vault as NSString).lastPathComponent
@@ -419,7 +421,7 @@ func a4Engine(file: String, day: String?) -> A4Answer {
 
 extension Store {
     // Reads the folder in the background and swaps the tasks in when they changed.
-    func reloadA4() {
+    public func reloadA4() {
         guard access != .sample, a4Busy == 0 else { return }
         a4Fetch += 1
         let n = a4Fetch, on = a4On, folder = a4Folder, sides = a4Calendar != nil || a4WorkCalendar != nil
@@ -439,7 +441,7 @@ extension Store {
     }
 
     // A changed A4 task, from the task details, a tick or a drop.
-    func updateA4(_ t: ToDo, old: ToDo?) -> Failure? {
+    public func updateA4(_ t: ToDo, old: ToDo?) -> Failure? {
         if access == .sample {
             guard let i = todos.firstIndex(where: { $0.id == t.id }) else { return Failure("That task is gone.") }
             todos[i] = t; return nil
@@ -480,7 +482,7 @@ extension Store {
     }
 
     // A tick on a repeating task: that day's occurrence only, and ticking it again takes it back.
-    func a4Tick(_ t: ToDo, then: @escaping @MainActor () -> Void = {}) -> Failure? {
+    public func a4Tick(_ t: ToDo, then: @escaping @MainActor () -> Void = {}) -> Failure? {
         guard let file = t.a4?.file else { return Failure("That task is gone.") }
         if access == .sample { return nil }
         if a4Busy > 0 { return Failure("Still saving the last change to Obsidian. Try again in a moment.") }
@@ -500,7 +502,7 @@ extension Store {
         return nil
     }
 
-    func a4Set(on: Bool? = nil, folder: String? = nil) {
+    public func a4Set(on: Bool? = nil, folder: String? = nil) {
         if let on { a4On = on; if access != .sample { UserDefaults.standard.set(on, forKey: "a4On") } }
         if let folder { a4Folder = folder; if access != .sample { UserDefaults.standard.set(folder, forKey: "a4Folder") } }
         reloadReminders()  // the A4 Tasks list in Reminders comes back when A4 tasks are off
@@ -509,7 +511,7 @@ extension Store {
 }
 
 // The real-data check, run on a copy of the tasks folder: every note reads, a change touches only its own lines, and nothing else in the folder changes.
-func a4Check(_ folder: String, projects: String? = nil) -> Int32 {
+public func a4Check(_ folder: String, projects: String? = nil) -> Int32 {
     if a4Vault(folder + "/x") != nil { print("refused: that folder is in an Obsidian vault; this check changes the files it is given, so give it a copy"); return 2 }
     let now = Date()
     var fails = 0

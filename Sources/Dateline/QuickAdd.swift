@@ -2,6 +2,7 @@
 import SwiftUI
 import AppKit
 import Carbon.HIToolbox
+import DatelineCore
 
 // Quick add from any app (Phase 2): its own text, the past event Tab picked, the highlighted suggestion, and its shortcut.
 @MainActor final class QuickBox: ObservableObject {

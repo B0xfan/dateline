@@ -2,6 +2,7 @@
 import SwiftUI
 import AppKit
 import ScreenCaptureKit
+import DatelineCore
 
 // A real window, so the system toolbar, sidebar and glass draw as in use. It sits behind the desktop picture, never in sight: the system will not capture a window off every screen.
 private final class ShotWindow: NSWindow {

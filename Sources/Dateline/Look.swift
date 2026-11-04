@@ -1,6 +1,7 @@
 // Look settings (approved Phase 3 mockup): light or dark, font, text size, how packed, hour height. Saved on this Mac.
 import SwiftUI
 import AppKit
+import DatelineCore
 
 // The Look tab in Settings (approved Phase 3 mockup). Every choice applies at once; the preview on the right follows it.
 struct LookSettings: View {

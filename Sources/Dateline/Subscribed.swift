@@ -3,6 +3,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import DatelineCore
 
 struct SubscribeSheet: View {
     @ObservedObject var app: AppState

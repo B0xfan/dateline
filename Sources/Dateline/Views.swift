@@ -1,6 +1,7 @@
 // The window: sidebar, toolbar with the add box, the view area, the shortcut bar. Colours and sizes follow the approved mockups.
 import SwiftUI
 import AppKit
+import DatelineCore
 
 // Busy = filled dot, Free = ring, Maybe = dotted ring (B17).
 struct Mark: View {

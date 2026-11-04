@@ -2,6 +2,7 @@
 import SwiftUI
 import AppKit
 import Intents
+import DatelineCore
 
 func screenLocked() -> Bool { (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false }
 // A Focus counts only once John allowed Dateline to see it; a copy without Apple's Focus permission reads "not allowed" and keeps showing the alert.

@@ -4,26 +4,28 @@
 import SwiftUI
 import CoreLocation
 
-struct WxDay: Equatable { var code: Int, hi: Double, lo: Double, rain: Int }
-struct WxHour: Equatable { var code: Int, temp: Double, rain: Int, wind: Double }
-struct Forecast: Equatable {
-    var days: [String: WxDay] = [:]    // "2026-10-30", in the Mac's time zone
-    var hours: [String: WxHour] = [:]  // "2026-10-30T15:00"
+public struct WxDay: Equatable { public var code: Int, hi: Double, lo: Double, rain: Int
+    public init(code: Int, hi: Double, lo: Double, rain: Int) { self.code = code; self.hi = hi; self.lo = lo; self.rain = rain } }
+public struct WxHour: Equatable { public var code: Int, temp: Double, rain: Int, wind: Double
+    public init(code: Int, temp: Double, rain: Int, wind: Double) { self.code = code; self.temp = temp; self.rain = rain; self.wind = wind } }
+public struct Forecast: Equatable {
+    public var days: [String: WxDay] = [:]    // "2026-10-30", in the Mac's time zone
+    public var hours: [String: WxHour] = [:]  // "2026-10-30T15:00"
 }
 
-enum WeatherPrefs {
+public enum WeatherPrefs {
     private static let d = UserDefaults.standard
-    static var on = d.object(forKey: "weatherOn") as? Bool ?? true { didSet { save(on, "weatherOn") } }
-    static var fahrenheit = d.object(forKey: "weatherF") as? Bool ?? false { didSet { save(fahrenheit, "weatherF") } }
+    public static var on = d.object(forKey: "weatherOn") as? Bool ?? true { didSet { save(on, "weatherOn") } }
+    public static var fahrenheit = d.object(forKey: "weatherF") as? Bool ?? false { didSet { save(fahrenheit, "weatherF") } }
     /// The town for the day headers; empty = where the Mac is.
-    static var town = d.string(forKey: "weatherTown") ?? "" { didSet { save(town, "weatherTown") } }
-    static var townGeo = (d.array(forKey: "weatherTownGeo") as? [Double]).flatMap { $0.count == 2 ? Geo(lat: $0[0], lon: $0[1]) : nil } { didSet { if let g = townGeo { save([g.lat, g.lon], "weatherTownGeo") } else if Look.saves { d.removeObject(forKey: "weatherTownGeo") } } }
+    public static var town = d.string(forKey: "weatherTown") ?? "" { didSet { save(town, "weatherTown") } }
+    public static var townGeo = (d.array(forKey: "weatherTownGeo") as? [Double]).flatMap { $0.count == 2 ? Geo(lat: $0[0], lon: $0[1]) : nil } { didSet { if let g = townGeo { save([g.lat, g.lon], "weatherTownGeo") } else if Look.saves { d.removeObject(forKey: "weatherTownGeo") } } }
     private static func save(_ v: Any, _ key: String) { if Look.saves { d.set(v, forKey: key) } }
-    static func reset() { on = true; fahrenheit = false; town = ""; townGeo = nil }
+    public static func reset() { on = true; fahrenheit = false; town = ""; townGeo = nil }
 }
 
 /// Open-Meteo's answer to a Forecast. Pure, so the self-test can check it. Nil for anything that isn't a forecast.
-func parseForecast(_ data: Data) -> Forecast? {
+public func parseForecast(_ data: Data) -> Forecast? {
     guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let d = j["daily"] as? [String: Any], let h = j["hourly"] as? [String: Any],
           let dt = d["time"] as? [String], let dc = d["weather_code"] as? [Any], let hi = d["temperature_2m_max"] as? [Any],
@@ -44,7 +46,7 @@ func parseForecast(_ data: Data) -> Forecast? {
 }
 
 /// WMO weather code to an SF Symbol and plain words.
-func wxLook(_ code: Int) -> (symbol: String, words: String) {
+public func wxLook(_ code: Int) -> (symbol: String, words: String) {
     switch code {
     case 0: return ("sun.max.fill", "Clear")
     case 1, 2: return ("cloud.sun.fill", "Partly cloudy")
@@ -59,16 +61,16 @@ func wxLook(_ code: Int) -> (symbol: String, words: String) {
 }
 
 /// A temperature in the chosen unit, rounded: "29°".
-func degrees(_ c: Double, fahrenheit: Bool = WeatherPrefs.fahrenheit) -> String { "\(Int((fahrenheit ? c * 9 / 5 + 32 : c).rounded()))°" }
+public func degrees(_ c: Double, fahrenheit: Bool = WeatherPrefs.fahrenheit) -> String { "\(Int((fahrenheit ? c * 9 / 5 + 32 : c).rounded()))°" }
 
-func wxDayKey(_ d: Date) -> String { dateText(d, "yyyy-MM-dd") }
-func wxHourKey(_ d: Date) -> String { dateText(d, "yyyy-MM-dd'T'HH:00") }
+public func wxDayKey(_ d: Date) -> String { dateText(d, "yyyy-MM-dd") }
+public func wxHourKey(_ d: Date) -> String { dateText(d, "yyyy-MM-dd'T'HH:00") }
 
 @MainActor
-final class WeatherStore: ObservableObject {
-    static let shared = WeatherStore()
-    static var sample = false  // --sample and the off-screen pictures
-    @Published private(set) var forecasts: [String: Forecast] = [:]
+public final class WeatherStore: ObservableObject {
+    public static let shared = WeatherStore()
+    public static var sample = false  // --sample and the off-screen pictures
+    @Published public private(set) var forecasts: [String: Forecast] = [:]
     private var fetched: [String: Date] = [:]  // when to ask again
     private var busy: Set<String> = []
 
@@ -76,7 +78,7 @@ final class WeatherStore: ObservableObject {
     private func key(_ g: Geo) -> String { String(format: "%.2f,%.2f", g.lat, g.lon) }
 
     /// The forecast for a spot; starts a fetch when there is none or it is over an hour old.
-    func forecast(_ g: Geo) -> Forecast? {
+    public func forecast(_ g: Geo) -> Forecast? {
         let k = key(g)
         if Self.sample { return Self.made }
         if busy.contains(k) == false, (fetched[k].map { Date() > $0 } ?? true) { load(g, k) }
@@ -99,7 +101,7 @@ final class WeatherStore: ObservableObject {
     }
 
     /// The made-up week the mockups show (Tamarindo, late October).
-    static let made: Forecast = {
+    public static let made: Forecast = {
         var f = Forecast()
         let start = sampleToday.map { cal.startOfDay(for: $0) } ?? cal.startOfDay(for: Date())
         let week: [(Int, Double, Double, Int)] = [(2, 31, 24, 10), (61, 29, 24, 70), (0, 32, 24, 0), (95, 28, 23, 80), (2, 30, 24, 20), (0, 32, 25, 0), (61, 29, 24, 60)]
@@ -117,12 +119,13 @@ final class WeatherStore: ObservableObject {
 }
 
 /// Where the day headers' weather is for: the town picked in Settings, else where the Mac is.
-@MainActor func headerSpot() -> Geo? { WeatherPrefs.town.isEmpty ? Here.shared.spot : WeatherPrefs.townGeo }
+@MainActor public func headerSpot() -> Geo? { WeatherPrefs.town.isEmpty ? Here.shared.spot : WeatherPrefs.townGeo }
 
-struct Town: Identifiable, Equatable { var label: String, geo: Geo; var id: String { label + "\(geo.lat),\(geo.lon)" } }
+public struct Town: Identifiable, Equatable { public var label: String, geo: Geo; public var id: String { label + "\(geo.lat),\(geo.lon)" }
+    public init(label: String, geo: Geo) { self.label = label; self.geo = geo } }
 
 /// Open-Meteo's town search: up to 8 matches, "Tamarindo, Guanacaste, Costa Rica". Empty on any failure.
-func searchTowns(_ text: String) async -> [Town] {
+public func searchTowns(_ text: String) async -> [Town] {
     var u = URLComponents(string: "https://geocoding-api.open-meteo.com/v1/search")!
     u.queryItems = [.init(name: "name", value: String(text.prefix(80))), .init(name: "count", value: "8"), .init(name: "language", value: "en"), .init(name: "format", value: "json")]
     guard let (data, _) = try? await URLSession.shared.data(from: u.url!) else { return [] }
@@ -130,7 +133,7 @@ func searchTowns(_ text: String) async -> [Town] {
 }
 
 /// Pure, so the self-test can check it.
-func parseTowns(_ data: Data) -> [Town] {
+public func parseTowns(_ data: Data) -> [Town] {
     guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let r = j["results"] as? [[String: Any]] else { return [] }
     var seen = Set<String>()
     return r.compactMap { x in
@@ -142,7 +145,7 @@ func parseTowns(_ data: Data) -> [Town] {
     }
 }
 
-func weatherSelftest(_ expect: (Bool, String) -> Void) {
+public func weatherSelftest(_ expect: (Bool, String) -> Void) {
     let json = #"{"daily":{"time":["2026-10-30","2026-10-31"],"weather_code":[61,null],"temperature_2m_max":[29.4,33],"temperature_2m_min":[24.2,24.9],"precipitation_probability_max":[70,null]},"hourly":{"time":["2026-10-30T15:00"],"weather_code":[61],"temperature_2m":[27.6],"precipitation_probability":[70],"wind_speed_10m":[12.1]}}"#
     let f = parseForecast(Data(json.utf8))
     expect(f?.days["2026-10-30"] == WxDay(code: 61, hi: 29.4, lo: 24.2, rain: 70), "weather: a day is read from Open-Meteo's answer")

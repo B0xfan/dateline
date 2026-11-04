@@ -1,6 +1,7 @@
 // Phase 6 (approved mockup, 2026-10-28): the menu bar icon and its menu of today's events and tasks. Saved on this Mac.
 import SwiftUI
 import AppKit
+import DatelineCore
 
 enum MenuIcon {
     static let shows = ["Calendar icon with today's date", "Day and date", "Week number", "What's next"]

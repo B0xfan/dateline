@@ -3,6 +3,7 @@
 // The app answers them: MCP, one JSON-RPC message per line. There is no delete tool at all.
 import SwiftUI
 import AppKit
+import DatelineCore
 
 enum Allow: String, CaseIterable { case allowed = "Allowed", ask = "Ask me first", never = "Never" }
 

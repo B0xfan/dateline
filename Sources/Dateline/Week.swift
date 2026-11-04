@@ -1,5 +1,6 @@
 // Week settings (approved mockup, 2026-10-27): the first day of the week, working days and working hours. Saved on this Mac.
 import SwiftUI
+import DatelineCore
 
 // Days off in light grey, and (when on) light stripes over the hours outside work. Drawn behind a full 24-hour day column.
 struct OffHours: View {

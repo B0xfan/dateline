@@ -1,61 +1,63 @@
 // Pure logic, no calendar access: the type-a-sentence parser and the date maths behind the views. Covered by --selftest.
 import Foundation
 
-enum ShowAs: String, CaseIterable { case busy = "Busy", free = "Free", maybe = "Maybe" }
+public enum ShowAs: String, CaseIterable { case busy = "Busy", free = "Free", maybe = "Maybe" }
 
 // What the add box understood from a sentence (A1, A2).
-struct Parsed: Equatable {
-    var title = ""
-    var start: Date
-    var end: Date
-    var allDay = false
-    var place = ""
-    var geo: Geo? = nil  // set when the place was picked from Apple Maps
-    var showAs = ShowAs.busy
-    var lengthGiven = false  // an end time or "for 2 hours" was written
-    var dateGiven = false  // a day or a time was written (a task without one has no due date)
+public struct Parsed: Equatable {
+    public var title = ""
+    public var start: Date
+    public var end: Date
+    public var allDay = false
+    public var place = ""
+    public var geo: Geo? = nil  // set when the place was picked from Apple Maps
+    public var showAs = ShowAs.busy
+    public var lengthGiven = false  // an end time or "for 2 hours" was written
+    public var dateGiven = false  // a day or a time was written (a task without one has no due date)
     // Short codes (Phase 2): "/Personal" picks a calendar, "-a15m" an alert, "-r1w" a repeat.
-    var calendarCode: String? = nil
-    var alertMinutes: Int? = nil
-    var repeats: Repeat? = nil
-    var notes = ""  // only set by Make Event from Email and A4 tasks on the calendar
+    public var calendarCode: String? = nil
+    public var alertMinutes: Int? = nil
+    public var repeats: Repeat? = nil
+    public var notes = ""  // only set by Make Event from Email and A4 tasks on the calendar
+    public init(title: String = "", start: Date, end: Date, allDay: Bool = false, place: String = "", geo: Geo? = nil, showAs: ShowAs = ShowAs.busy, lengthGiven: Bool = false, dateGiven: Bool = false, calendarCode: String? = nil, alertMinutes: Int? = nil, repeats: Repeat? = nil, notes: String = "") { self.title = title; self.start = start; self.end = end; self.allDay = allDay; self.place = place; self.geo = geo; self.showAs = showAs; self.lengthGiven = lengthGiven; self.dateGiven = dateGiven; self.calendarCode = calendarCode; self.alertMinutes = alertMinutes; self.repeats = repeats; self.notes = notes }
 }
 
-struct Repeat: Equatable {
-    let unit: Character  // d, w, m or y
-    let n: Int
-    var text: String {
+public struct Repeat: Equatable {
+    public let unit: Character  // d, w, m or y
+    public let n: Int
+    public var text: String {
         let name = ["d": "day", "w": "week", "m": "month", "y": "year"][unit]!
         return n == 1 ? "Every \(name)" : "Every \(n) \(name)s"
     }
+    public init(unit: Character, n: Int) { self.unit = unit; self.n = n }
 }
 
-var cal: Calendar = { var c = Calendar(identifier: .gregorian); c.locale = Locale(identifier: "en_US"); return c }()
+public var cal: Calendar = { var c = Calendar(identifier: .gregorian); c.locale = Locale(identifier: "en_US"); return c }()
 
 // ISO week number (B21): the week with the year's first Thursday is week 1.
 // Weeks that start on another day count from January 1st, as Apple Calendar does.
-func weekNumber(_ d: Date) -> Int {
+public func weekNumber(_ d: Date) -> Int {
     var c = Calendar(identifier: WorkWeek.firstWeekday == 2 ? .iso8601 : .gregorian); c.timeZone = cal.timeZone
     if WorkWeek.firstWeekday != 2 { c.firstWeekday = WorkWeek.firstWeekday; c.minimumDaysInFirstWeek = 1 }
     return c.component(.weekOfYear, from: d)
 }
 
-func startOfWeek(_ d: Date) -> Date {  // the day picked in Settings, Week
+public func startOfWeek(_ d: Date) -> Date {  // the day picked in Settings, Week
     let day = cal.startOfDay(for: d)
     let wd = cal.component(.weekday, from: day)  // 1 = Sunday
     return cal.date(byAdding: .day, value: -((wd - WorkWeek.firstWeekday + 7) % 7), to: day)!
 }
 
-func addDays(_ d: Date, _ n: Int) -> Date { cal.date(byAdding: .day, value: n, to: d)! }
+public func addDays(_ d: Date, _ n: Int) -> Date { cal.date(byAdding: .day, value: n, to: d)! }
 
 // `day` at the clock time of `from`, right on a day the clocks change too.
-func sameClock(_ from: Date, on day: Date) -> Date {
+public func sameClock(_ from: Date, on day: Date) -> Date {
     let c = cal.dateComponents([.hour, .minute], from: from)
     return cal.date(bySettingHour: c.hour!, minute: c.minute!, second: 0, of: day) ?? day
 }
 
 // The 35 or 42 days the month grid shows, from the first day of the week.
-func monthGrid(_ d: Date) -> [Date] {
+public func monthGrid(_ d: Date) -> [Date] {
     let first = cal.date(from: cal.dateComponents([.year, .month], from: d))!
     let start = startOfWeek(first)
     let last = cal.date(byAdding: DateComponents(month: 1, day: -1), to: first)!
@@ -106,7 +108,7 @@ private func shortCode(_ w: String, _ prefix: String) -> (Int, Character)? {
 
 // Reads a sentence like "Dinner with Ana Friday 7pm at Casa Luna /Personal -a15m". `now` is the moment the box is typed in.
 // Short codes are taken out first, wherever they are; the rest is read as below.
-func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60) -> Parsed {
+public func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60) -> Parsed {
     var code: String? = nil, alert: Int? = nil, rep: Repeat? = nil
     let rest = text.split(separator: " ").filter { word in
         let w = word.lowercased()
@@ -237,13 +239,13 @@ private func durationAt(_ i: Int, _ w: [String]) -> (Int, Int)? {
 }
 
 // Clock text for the views: "7:00 PM", "7 PM" when `short`.
-func timeText(_ d: Date, short: Bool = false) -> String {
+public func timeText(_ d: Date, short: Bool = false) -> String {
     dateText(d, short && cal.component(.minute, from: d) == 0 ? "h a" : "h:mm a")
 }
 
 // One formatter per format, reused: the views ask for dates many times per redraw.
 @MainActor private var formatters: [String: DateFormatter] = [:]
-func dateText(_ d: Date, _ format: String, in tz: TimeZone = cal.timeZone) -> String {
+public func dateText(_ d: Date, _ format: String, in tz: TimeZone = cal.timeZone) -> String {
     MainActor.assumeIsolated {
         let f = formatters[format] ?? { let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.dateFormat = format; formatters[format] = f; return f }()
         f.timeZone = tz
@@ -252,7 +254,7 @@ func dateText(_ d: Date, _ format: String, in tz: TimeZone = cal.timeZone) -> St
 }
 
 // Moves a time by whole minutes on the 15-minute grid (Option Up/Down). Off the grid, the first step goes to the nearest grid line that way.
-func snapped(_ d: Date, by minutes: Int, step: Int = 15) -> Date {
+public func snapped(_ d: Date, by minutes: Int, step: Int = 15) -> Date {
     let day = cal.startOfDay(for: d)
     let t = cal.dateComponents([.minute], from: day, to: d).minute!
     let down = t / step * step
@@ -261,7 +263,7 @@ func snapped(_ d: Date, by minutes: Int, step: Int = 15) -> Date {
 }
 
 // A past event's title can stand in for what is typed: same first word, exact starts first, at most two (quick add).
-func suggestions(_ title: String, in past: [Item]) -> [Item] {
+public func suggestions(_ title: String, in past: [Item]) -> [Item] {
     let t = title.lowercased()
     guard t.count >= 2, let first = t.split(separator: " ").first else { return [] }
     let hits = past.filter { $0.title.lowercased().hasPrefix(first) }
@@ -269,7 +271,7 @@ func suggestions(_ title: String, in past: [Item]) -> [Item] {
 }
 
 // Tab on a past event: its title, and its place, length and show-as where the sentence did not say.
-func applying(_ pick: Item, to p: Parsed) -> Parsed {
+public func applying(_ pick: Item, to p: Parsed) -> Parsed {
     var p = p
     p.title = pick.title
     if p.place.isEmpty { p.place = pick.place }
@@ -278,37 +280,38 @@ func applying(_ pick: Item, to p: Parsed) -> Parsed {
     return p
 }
 
-func alertText(_ m: Int) -> String {
+public func alertText(_ m: Int) -> String {
     if m == 0 { return "At the start" }
     let (n, unit) = m % 1440 == 0 ? (m / 1440, "day") : m % 60 == 0 ? (m / 60, "hour") : (m, "minute")
     return "\(n) \(unit)\(n == 1 ? "" : "s") before"
 }
 
 // "/fam" or "/f" -> the calendar named that, or starting with it. Calendars shown in the sidebar win over hidden ones.
-func matchCalendar(_ code: String, in cals: [CalInfo], hidden: Set<String>) -> CalInfo? {
+public func matchCalendar(_ code: String, in cals: [CalInfo], hidden: Set<String>) -> CalInfo? {
     let k = code.lowercased()
     let squash = { (c: CalInfo) in c.title.lowercased().replacingOccurrences(of: " ", with: "") }
     let ordered = cals.filter { !hidden.contains($0.id) } + cals.filter { hidden.contains($0.id) }
     return ordered.first { squash($0) == k } ?? ordered.first { squash($0).hasPrefix(k) }
 }
 
-func quarterStart(_ d: Date) -> Date {
+public func quarterStart(_ d: Date) -> Date {
     var c = cal.dateComponents([.year, .month], from: d)
     c.month = (c.month! - 1) / 3 * 3 + 1
     return cal.date(from: c)!
 }
 
 // One line of the sidebar's "Coming up" card: `lead` + `big` (bold) + `tail`. `dim`: the event already under way.
-struct Soon: Equatable { let title: String; let calendarID: String; let lead: String; let big: String; let tail: String; let dim: Bool }
+public struct Soon: Equatable { public let title: String; public let calendarID: String; public let lead: String; public let big: String; public let tail: String; public let dim: Bool
+    public init(title: String, calendarID: String, lead: String, big: String, tail: String, dim: Bool) { self.title = title; self.calendarID = calendarID; self.lead = lead; self.big = big; self.tail = tail; self.dim = dim } }
 
 // The next event, the next all-day event (the next big day), and the event under way now.
 // "5 min", "2 h", "5 h 28 min" (also the menu bar's "What's next").
-func span(_ s: TimeInterval) -> String {
+public func span(_ s: TimeInterval) -> String {
     let m = max(1, Int(s / 60)), h = m / 60, r = m % 60
     return h == 0 ? "\(m) min" : r == 0 ? "\(h) h" : "\(h) h \(r) min"
 }
 
-func comingUp(_ items: [Item], now: Date) -> [Soon] {
+public func comingUp(_ items: [Item], now: Date) -> [Soon] {
     func days(_ d: Date) -> (String, String) {
         let n = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: d)).day!
         return (n == 1 ? "1 day" : "\(n) days", " · " + dateText(d, "EEEE"))

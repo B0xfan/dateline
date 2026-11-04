@@ -3,6 +3,7 @@
 // About 16 days ahead; further out shows nothing. Sample mode and the off-screen pictures use made-up weather, never the network.
 import SwiftUI
 import CoreLocation
+import DatelineCore
 
 /// The weather icon: grey cloud (multicolor's white cloud vanishes on the light look), yellow sun, blue rain.
 struct WxIcon: View {

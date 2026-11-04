@@ -1,6 +1,7 @@
 // Phase 3 rows in the event details (approved mockup): emoji, color, tags, and the formatted notes box.
 import SwiftUI
 import AppKit
+import DatelineCore
 
 // The emoji row: the button opens the picker under it.
 struct EmojiRow: View {

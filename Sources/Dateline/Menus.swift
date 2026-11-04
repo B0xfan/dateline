@@ -1,6 +1,7 @@
 // The menu bar: every toolbar button and key is here too, so people can find them. Plain-letter keys stay in the key handler (Model), because a menu key would also fire while typing.
 import SwiftUI
 import UniformTypeIdentifiers
+import DatelineCore
 
 struct AppCommands: Commands {
     let app: AppState

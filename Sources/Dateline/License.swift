@@ -4,6 +4,7 @@
 import SwiftUI
 import CryptoKit
 import AppKit
+import DatelineCore
 
 private func lockIcon() -> some View { Image(systemName: "lock").font(.ui(11, weight: .semibold)) }
 
