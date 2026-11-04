@@ -249,7 +249,7 @@ final class AppState: ObservableObject {
 
     // Takes the cursor out of the add box only: the toolbar's focus switch does not always let go of it.
     func dropAddCursor() {
-        for w in NSApp.windows where w.identifier?.rawValue.hasPrefix("main") == true {
+        for w in NSApp?.windows ?? [] where w.identifier?.rawValue.hasPrefix("main") == true {  // no NSApp in --selftest
             if let f = (w.firstResponder as? NSTextView)?.delegate as? NSTextField, f.placeholderString == AddBox.placeholder { w.makeFirstResponder(nil) }
         }
     }
