@@ -52,7 +52,7 @@ public final class AppleCalendar: CalendarSource {
     }
 
     // The Mac tells display and sound alerts from email and program ones; the iPhone has only the first two.
-    private static func isShownAlarm(_ a: EKAlarm) -> Bool {
+    private nonisolated static func isShownAlarm(_ a: EKAlarm) -> Bool {
         #if os(macOS)
         return a.type == .display || a.type == .audio
         #else
