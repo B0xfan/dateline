@@ -1,6 +1,9 @@
 // Everything the window reads: the calendars and events from a calendar source (CalendarSource.swift), plus Dateline's own extras, sets and accounts.
 import Foundation
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct CalInfo: Identifiable, Hashable {
     let id: String
@@ -169,9 +172,11 @@ final class Store: ObservableObject {
         loadSubs { self.requestAccess() }
         requestReminders()
         reloadA4()
+        #if os(macOS)  // the iPhone has no A4 vault to re-read when the app comes forward
         a4Observer = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in self.reloadA4() }
         }
+        #endif
     }
 
     func saveA4Links() { save(a4Links, "a4Links") }
@@ -431,3 +436,4 @@ final class Store: ObservableObject {
 var sampleToday: Date?
 
 struct Failure: Error { let message: String; init(_ m: String) { message = m } }
+

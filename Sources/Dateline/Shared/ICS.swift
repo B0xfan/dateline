@@ -218,3 +218,4 @@ func occurrences(_ e: ICalEvent, from a: Date, to b: Date) -> [Date] {
     }
     return out
 }
+

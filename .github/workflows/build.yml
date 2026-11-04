@@ -1,6 +1,12 @@
 # Manual trigger only, on purpose: start a run with scripts/cloud-build.sh. No push or schedule triggers.
 name: build
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      quick:
+        description: "Only the iPhone check of the shared code (for fast fixing)"
+        type: boolean
+        default: false
 jobs:
   build:
     runs-on: macos-15
@@ -8,14 +14,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Release build
+        if: ${{ !inputs.quick }}
         run: swift build -c release -j 2
       - name: Self-test (pure logic only, no calendar access)
+        if: ${{ !inputs.quick }}
         run: .build/release/Dateline --selftest
+      - name: iPhone check (shared code)
+        run: |
+          xcrun --sdk iphonesimulator swiftc -typecheck -module-name DatelineShared -target arm64-apple-ios17.0-simulator \
+            -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" Sources/Dateline/Shared/*.swift
       - name: Package the app
+        if: ${{ !inputs.quick }}
         run: |
           scripts/make-app.sh
           ditto -c -k --keepParent "build/Dateline.app" Dateline.zip
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.quick }}
         with:
           name: Dateline
           path: Dateline.zip
