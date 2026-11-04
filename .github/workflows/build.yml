@@ -25,18 +25,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Release build
-        if: ${{ !inputs.quick }}
         run: swift build -c release -j 2
       - name: Self-test (pure logic only, no calendar access)
-        if: ${{ !inputs.quick }}
         run: .build/release/Dateline --selftest
       - name: Package the app
-        if: ${{ !inputs.quick }}
         run: |
           scripts/make-app.sh
           ditto -c -k --keepParent "build/Dateline.app" Dateline.zip
       - uses: actions/upload-artifact@v4
-        if: ${{ !inputs.quick }}
         with:
           name: Dateline
           path: Dateline.zip

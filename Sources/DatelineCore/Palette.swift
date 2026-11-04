@@ -1,4 +1,4 @@
-// The window: sidebar, toolbar with the add box, the view area, the shortcut bar. Colours and sizes follow the approved mockups.
+// The colours and sizes shared by the Mac and iPhone screens, from the approved mockups.
 import SwiftUI
 #if canImport(AppKit)
 import AppKit

@@ -1,4 +1,4 @@
-// The day and week grid, the month grid and the event details panel.
+// The maths behind the day, week and month grids: side-by-side lanes, day shifts, calendars per day.
 import SwiftUI
 
 // Side-by-side columns for events that overlap in time: (column, columns in its group).

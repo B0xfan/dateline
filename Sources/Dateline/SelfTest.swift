@@ -1,4 +1,4 @@
-// The self-test: runs the pure logic in Shared/ plus the Mac-only screens' logic. --selftest.
+// The self-test: runs the pure logic in DatelineCore plus the Mac-only screens' logic. --selftest.
 import SwiftUI
 import AppKit
 import Combine

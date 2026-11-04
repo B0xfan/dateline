@@ -113,6 +113,7 @@ public func moonDay(_ day: Date) -> MoonDay? {
     return nil
 }
 
+@MainActor
 public final class Trips {
     public init() {}
     private struct Check { let minutes: Int?; let at: Date; let start: Date; let geo: Geo; let origin: Geo }
@@ -159,11 +160,11 @@ public final class Trips {
 
     private func origin(_ it: Item, all: [Item], store: Store) async -> Geo? {
         switch it.from {
-        case .here: return await Here.shared.spot
+        case .here: return Here.shared.spot
         case .before:
             let prev = all.filter { $0.geo != nil && !$0.allDay && $0.id != it.id && $0.end <= it.start && cal.isDate($0.end, inSameDayAs: it.start) }.max { $0.end < $1.end }
             if let g = prev?.geo { return g }
-            return await Here.shared.spot
+            return Here.shared.spot
         case .home, .work:
             let work = it.from == .work
             if let s = spots[work] { return s }
@@ -236,6 +237,7 @@ public final class LeaveAlerts: NSObject, UNUserNotificationCenterDelegate {
     }
 }
 
+@MainActor
 public final class PlaceSearch: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
     @Published public var results: [MKLocalSearchCompletion] = []
     private let completer = MKLocalSearchCompleter()
@@ -244,7 +246,7 @@ public final class PlaceSearch: NSObject, ObservableObject, MKLocalSearchComplet
         super.init()
         completer.delegate = self
         completer.resultTypes = [.address, .pointOfInterest]
-        if let g = MainActor.assumeIsolated({ Here.shared.spot }) { completer.region = MKCoordinateRegion(center: g.coord, latitudinalMeters: 50_000, longitudinalMeters: 50_000) }
+        if let g = Here.shared.spot { completer.region = MKCoordinateRegion(center: g.coord, latitudinalMeters: 50_000, longitudinalMeters: 50_000) }
     }
 
     public func query(_ text: String) {
