@@ -420,7 +420,6 @@ final class Store: ObservableObject {
         sets = [CalSet(name: "Work", calendars: ["work"], defaultCalendar: "work"),
                 CalSet(name: "Family", calendars: ["family", "personal", "school"], defaultCalendar: "family"),
                 CalSet(name: "Just me", calendars: ["personal"], defaultCalendar: "personal")]
-        loadSampleA4(s.mon)
         subs = [Sub(id: "sub-sample", url: "https://calendar.example-school.cr/grade5/schedule.ics", name: "Grade 5 schedule", color: 3, updated: sampleToday)]
         subParsed["sub-sample"] = parseICS(sampleICS)
         calendars += subInfos

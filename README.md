@@ -2,6 +2,10 @@
 
 A calendar app for the Mac. It works with the calendars and Apple Reminders already set up on your Mac (iCloud, Google, Exchange and anything else in Apple Calendar), so there are no new accounts to set up. Your data stays on your Mac.
 
+**[Download the free 7 day trial](https://github.com/B0xfan/dateline/releases/latest)** · **[Buy Dateline for $29.99](https://payhip.com/b/P4iIX)** · [dateline.app](https://dateline.app)
+
+One payment, no subscription. All updates are free.
+
 ![Week view](docs/screenshots/week.png)
 
 ## Features
@@ -41,6 +45,14 @@ A calendar app for the Mac. It works with the calendars and Apple Reminders alre
 
 ![Task list](docs/screenshots/task-list.png)
 
+**Events from email and video calls**
+- Turn a saved email into an event with File > Make Event from Email File. Apple's on-device AI reads it, and Dateline shows you what it found before anything is added. This needs Apple Intelligence on macOS 26 or newer.
+- A Join button for Zoom, Google Meet and Teams calls, in the event and on the full screen alert.
+
+![An event from an email](docs/screenshots/email-review.png)
+
+![A video call event](docs/screenshots/call.png)
+
 **Places and travel**
 - A map in each event that has a place, and a map of all the week's or month's places (key P).
 - Drive time blocks before events, with an alert telling you when to leave. Drive times come from Apple Maps.
@@ -62,47 +74,32 @@ Press ? in the app for every keyboard shortcut.
 
 ## Install
 
-You need a Mac with macOS 14 (Sonoma) or newer. Dateline is built from this code on your own Mac, using Apple's free developer tools.
+You need a Mac with macOS 14 (Sonoma) or newer.
 
-1. **Install Apple's developer tools.** Open Terminal and run:
+1. Download the newest `Dateline-0.1.x.zip` from [Releases](https://github.com/B0xfan/dateline/releases/latest). It is signed and checked by Apple.
+2. Open the zip and drag Dateline into your Applications folder, then open it.
+3. When macOS asks for permission to use Calendar and Reminders, click Allow for both. Dateline asks for your location only when you first use drive times or sunrise and sunset.
 
-   ```
-   xcode-select --install
-   ```
+### Free trial and buying
 
-   Click Install in the window that appears. If you already have Xcode or the tools, Terminal says so and you can skip this step.
+Every copy starts with a 7 day free trial. After that your calendar is still there to look at, and adding or changing events needs a key. [Buy Dateline on Payhip](https://payhip.com/b/P4iIX) for $29.99 once; your key comes in the email from Payhip. Paste it into Settings > License. The same key works on a new Mac.
 
-2. **Download the code.** This repository is private, so sign in to GitHub first. The easiest way is the [GitHub CLI](https://cli.github.com) (`brew install gh`, then `gh auth login`):
+### Updates
 
-   ```
-   gh repo clone B0xfan/dateline
-   cd dateline
-   ```
+All updates are free. Use Dateline > Check for Updates, or let it check every day by itself. Your settings and calendars are kept.
 
-   GitHub Desktop works too: File > Clone Repository, then pick `B0xfan/dateline`.
+### Building from the code
 
-3. **Build and install.**
-
-   ```
-   scripts/local-build.sh
-   scripts/install.sh
-   ```
-
-   The first command builds the app and runs its self-checks. The second puts Dateline in your Applications folder and opens it. The first build is the slow one.
-
-4. **Allow access.** On first open, macOS asks for permission to use Calendar and Reminders. Click Allow for both. Dateline asks for your location only when you first use drive times or sunrise and sunset.
-
-### Updating
-
-From the `dateline` folder:
+Building it yourself needs Apple's developer tools (`xcode-select --install`). Then:
 
 ```
-git pull
+git clone https://github.com/B0xfan/dateline.git
+cd dateline
 scripts/local-build.sh
 scripts/install.sh
 ```
 
-Your settings and calendars are kept. On your Mac, macOS may ask for Calendar and Reminders permission again after each update, because the app is signed on your Mac rather than with a paid Apple developer certificate. Click Allow again and you're set.
+A copy you build has the same 7 day trial and takes the same key.
 
 ### Try it without your calendars
 

@@ -506,13 +506,14 @@ struct SettingsView: View {
             WeekSettings(app: app).tabItem { Label("Week", systemImage: "calendar") }.tag("week")
             AlertSettings(app: app, store: app.store).tabItem { Label("Alerts", systemImage: "bell") }.tag("alerts")
             ZoneSettings(app: app).tabItem { Label("Time zones", systemImage: "globe") }.tag("zones")
-            A4Settings(store: app.store).tabItem { Label("A4 tasks", systemImage: "checklist") }.tag("a4")
+            if app.store.a4Here { A4Settings(store: app.store).tabItem { Label("A4 tasks", systemImage: "checklist") }.tag("a4") }
             MenuBarSettings(app: app).tabItem { Label("Menu bar", systemImage: "menubar.rectangle") }.tag("menubar")
             WeatherSettings(app: app).tabItem { Label("Weather", systemImage: "cloud.sun") }.tag("weather")
             AssistantSettings(app: app, a: Assistant.shared).tabItem { Label("Assistant", systemImage: "sparkles") }.tag("assistant")
             UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }.tag("updates")
             LicenseSettings().tabItem { Label("License", systemImage: "key") }.tag("license")
         }
+        .onAppear { if tab == "a4" && !app.store.a4Here { tab = "quick" } }  // an older copy may have left the hidden A4 tab picked
     }
 }
 

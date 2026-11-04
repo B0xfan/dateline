@@ -349,7 +349,7 @@ final class EmailInbox: ObservableObject {
                     draft: Draft(title: "Flight SJO to MIA", place: "Juan Santamaría Airport (SJO)", notes: "AV 584, booking code K7Q2LP.",
                                  start: cal.date(from: DateComponents(year: 2026, month: 11, day: 9, hour: 6, minute: 10)), end: cal.date(from: DateComponents(year: 2026, month: 11, day: 9, hour: 10, minute: 55)),
                                  quotes: ["AV 584", "Nov 9, 2026 at 6:10 AM", "San José (SJO)"])),
-            Pending(id: "s3", mail: Mail(from: "Pipa Fría <hola@pipafria.com>", subject: "New arrivals this week", body: "Fresh linen shirts are in the shop. Come by any time.", date: at(-2, 11, 0)),
+            Pending(id: "s3", mail: Mail(from: "Café Lino <hola@example.com>", subject: "New arrivals this week", body: "Fresh pastries are in the shop. Come by any time.", date: at(-2, 11, 0)),
                     draft: makeDraft(found: false, title: "", start: "", end: "", place: "", notes: "", quotes: [], unsure: [], subject: "New arrivals this week"), seen: true),
         ]
     }
@@ -503,7 +503,7 @@ struct EmailReview: View {
 
 func emailSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int, Int) -> Date) {
     let eml = """
-        From: =?utf-8?Q?Pipa_Fr=C3=ADa?= <hola@pipafria.com>\r
+        From: =?utf-8?Q?Caf=C3=A9_Lino?= <hola@example.com>\r
         Subject: =?utf-8?B?RndkOiBDZW5hIGVuIFBhbmdhcw==?=\r
         Date: Fri, 30 Oct 2026 09:41:00 -0600\r
         Content-Type: multipart/alternative; boundary="b1"\r
@@ -522,7 +522,7 @@ func emailSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int, In
 
         """
     let m = readMail(Data(eml.utf8))
-    expect(m.fromName == "Pipa Fría" && m.subject == "Fwd: Cena en Pangas", "email: encoded From and Subject words")
+    expect(m.fromName == "Café Lino" && m.subject == "Fwd: Cena en Pangas", "email: encoded From and Subject words")
     expect(m.body == "Cena el sábado a las 7, mesa para 4.", "email: quoted-printable plain text with a soft line break (\(m.body))")
     expect(m.date == at(2026, 10, 30, 9, 41), "email: the Date header")
     let html = "Subject: Hi\nContent-Type: text/html; charset=utf-8\nContent-Transfer-Encoding: base64\n\n" + Data("<style>x{}</style><p>Dentist&nbsp;Tue &amp; 3pm</p><br>Bye".utf8).base64EncodedString()

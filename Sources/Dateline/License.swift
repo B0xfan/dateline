@@ -12,8 +12,7 @@ import AppKit
     nonisolated static let publicKeys = ["u+BvQLDQy2Qetmnv32FkcALoKJKB0NoL6hMZJUCF6R8="]
     nonisolated static let revoked: Set<Int> = []  // refunded keys, by number
     nonisolated static let trialDays = 7
-    // shortcut: the store front until the Dateline product page exists on Payhip; put its own link here then.
-    static let buyURL = URL(string: "https://payhip.com/WorkbenchGoods")!
+    static let buyURL = URL(string: "https://payhip.com/b/P4iIX")!
     static let price = "$29.99"
     static let endedMessage = "Your free trial has ended. Your calendar is still here to look at. Buy Dateline, or enter the key you got by email, to add and change events again."
 

@@ -682,7 +682,7 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
         routed.a4WorkCalendar = nil
         expect(routed.a4Target(w) == nil, "a4 link: no work calendar picked, a work task stays a task")
         // The whole round on sample calendars: event made, shown once, each side moves the other.
-        let linked = AppState(store: Store(sample: true), today: now)
+        let linked = AppState(store: .sampleWithA4(), today: now)
         let ls = linked.store, vet = ls.todos.first { $0.title == "Vet appointment" }!, target = ls.calendars.first { $0.writable && !ls.hidden.contains($0.id) }!
         ls.a4Calendar = target.id
         @MainActor func events() -> [Item] { ls.between(addDays(now, -60), addDays(now, 400)) }
@@ -701,7 +701,7 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
         ls.a4Apply(events: events(), now: addDays(vet.due!, -1))
         expect(theEvent()?.start == vet.due, "a4 link: moving the task moves the event")
         let d = UserDefaults.standard, before = (d.object(forKey: "a4On") as? Bool, d.string(forKey: "a4Folder"))
-        let a = AppState(store: Store(sample: true), today: now)
+        let a = AppState(store: .sampleWithA4(), today: now)
         a.store.a4Set(on: false, folder: "/selftest")
         expect((d.object(forKey: "a4On") as? Bool, d.string(forKey: "a4Folder")) == before, "a4: tests never change the saved A4 settings")
         a.store.use(CalSet(name: "W", calendars: [], lists: []))
@@ -836,7 +836,13 @@ struct A4Settings: View {
 }
 
 extension Store {
-    // Made-up A4 tasks for the pictures (Monday `mon`).
+    // Only John's Mac has an A4 vault; on any other Mac, A4 stays out of sight.
+    var a4Here: Bool { [a4Folder, a4DefaultFolder].contains { FileManager.default.fileExists(atPath: $0) } }
+
+    // A sample store with made-up A4 tasks, for the A4 checks and John's A4 picture; the buyer-facing sample has none.
+    static func sampleWithA4() -> Store { let s = Store(sample: true); s.loadSampleA4(SampleCalendar().mon); return s }
+
+    // Made-up A4 tasks (Monday `mon`).
     func loadSampleA4(_ mon: Date) {
         let projects = [("a4-launch", "A4: Dateline launch"), ("a4-home", "A4: Home"), ("a4-reading", "A4: Reading Vault")]
         lists += projects.map { CalInfo(id: $0.0, title: $0.1, account: a4Account, color: a4Color, writable: false) }

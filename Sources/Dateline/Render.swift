@@ -55,10 +55,10 @@ private final class ShotWindow: NSWindow {
     var ok = true
     for dark in [false, true] {
         let tag = dark ? "dark" : "light"
-        func shot(_ name: String, wait: Double = 0.2, width: CGFloat = 1380, _ setup: @escaping (AppState) -> Void) {
+        func shot(_ name: String, wait: Double = 0.2, width: CGFloat = 1380, a4: Bool = false, _ setup: @escaping (AppState) -> Void) {
             if !only.isEmpty && !only.contains(name) { return }
             License.shared.test = nil  // the bought look unless the picture is about the trial
-            let app = AppState(store: Store(sample: true), today: today)
+            let app = AppState(store: a4 ? .sampleWithA4() : Store(sample: true), today: today)
             app.taskPanel.openLists = []; app.sidebarOpen = true  // never the folds or sidebar saved on this Mac
             // shortcut: --late can't check the map and email pictures, sheets don't draw off-screen; they come out as the plain calendar.
             let late = CommandLine.arguments.contains("--late")
@@ -123,10 +123,10 @@ private final class ShotWindow: NSWindow {
         shot("email-review-nodate") { $0.panels.reviewing = "s3" }
         shot("places-map", wait: 4) { $0.mode = .week; $0.days = 7; $0.panels.mapOpen = true }
         shot("task-list") { $0.mode = .week; $0.days = 5; $0.panels.tasksOpen = true }
-        shot("a4-list") { $0.mode = .week; $0.days = 5; $0.panels.tasksOpen = true; $0.taskPanel.openLists = ["a4-launch"] }
-        shot("a4-timed") { a in a.mode = .week; a.days = 5; a.panels.openTaskID = "a4-Vet appointment" }
-        shot("a4-details") { a in a.mode = .week; a.days = 5; a.panels.openTaskID = "a4-Choose a license for Dateline" }
-        ok = save(A4Settings(store: Store(sample: true)).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/a4-settings-\(tag).png") && ok
+        shot("a4-list", a4: true) { $0.mode = .week; $0.days = 5; $0.panels.tasksOpen = true; $0.taskPanel.openLists = ["a4-launch"] }
+        shot("a4-timed", a4: true) { a in a.mode = .week; a.days = 5; a.panels.openTaskID = "a4-Vet appointment" }
+        shot("a4-details", a4: true) { a in a.mode = .week; a.days = 5; a.panels.openTaskID = "a4-Choose a license for Dateline" }
+        ok = save(A4Settings(store: .sampleWithA4()).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/a4-settings-\(tag).png") && ok
         // Folded no-date lists (approved mockup): Groceries open past 20 tasks, so "Show all" shows; the others folded.
         shot("task-folded") { a in a.mode = .week; a.days = 5; a.panels.tasksOpen = true; a.taskPanel.openLists = ["r-groc"]
             for i in 1...22 { a.store.todos.append(ToDo(id: "g\(i)", listID: "r-groc", title: "Grocery item \(i)")) }
