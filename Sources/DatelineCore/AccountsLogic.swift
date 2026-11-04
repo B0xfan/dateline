@@ -1166,7 +1166,9 @@ public func accountsSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, In
 
 // Marked as downloaded, so a program attached by someone else gets the Mac's usual "downloaded from the internet" check before it runs.
 public func quarantine(_ u: URL) throws {
+    #if os(macOS)  // the iPhone has no download quarantine
     var v = URLResourceValues(); v.quarantineProperties = [kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload as String]
     var u = u; try u.setResourceValues(v)
+    #endif
 }
 

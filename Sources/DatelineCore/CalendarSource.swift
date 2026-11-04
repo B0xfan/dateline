@@ -51,8 +51,22 @@ public final class AppleCalendar: CalendarSource {
         observer = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: ek, queue: .main) { _ in Task { @MainActor in act() } }
     }
 
+    // The Mac tells display and sound alerts from email and program ones; the iPhone has only the first two.
+    private func isShownAlarm(_ a: EKAlarm) -> Bool {
+        #if os(macOS)
+        return a.type == .display || a.type == .audio
+        #else
+        return true
+        #endif
+    }
+
     private func info(_ c: EKCalendar) -> CalInfo {
-        CalInfo(id: c.calendarIdentifier, title: c.title, account: c.source.title, color: Color(nsColor: c.color), writable: c.allowsContentModifications)
+        #if os(macOS)
+        let color = Color(nsColor: c.color)
+        #else
+        let color = Color(cgColor: c.cgColor)
+        #endif
+        return CalInfo(id: c.calendarIdentifier, title: c.title, account: c.source.title, color: color, writable: c.allowsContentModifications)
     }
     private func elsewhere(_ s: EKSource) -> Bool { shownElsewhere(s.title, s.sourceType == .calDAV) }
 
@@ -103,7 +117,7 @@ public final class AppleCalendar: CalendarSource {
                     calendarID: e.calendar.calendarIdentifier, title: e.title ?? "", start: e.startDate, end: e.endDate,
                     allDay: e.isAllDay, place: e.location ?? "", notes: e.notes ?? "", showAs: s,
                     geo: e.structuredLocation?.geoLocation.map { Geo(lat: $0.coordinate.latitude, lon: $0.coordinate.longitude) },
-                    alerts: (e.alarms ?? []).filter { $0.proximity == .none && ($0.type == .display || $0.type == .audio) && !(e.hasRecurrenceRules && $0.absoluteDate != nil) }
+                    alerts: (e.alarms ?? []).filter { $0.proximity == .none && isShownAlarm($0) && !(e.hasRecurrenceRules && $0.absoluteDate != nil) }
                         .map { $0.absoluteDate ?? e.startDate.addingTimeInterval($0.relativeOffset) },
                     link: e.url?.absoluteString ?? "")
     }

@@ -199,7 +199,7 @@ public final class Store: ObservableObject {
         UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
     }
 
-    public var activeSet: CalSet? { Dateline.activeSet(sets, calendars: calendars.map(\.id), hidden: hidden) }
+    public var activeSet: CalSet? { DatelineCore.activeSet(sets, calendars: calendars.map(\.id), hidden: hidden) }
 
     // Shows only that set's calendars; nil = all calendars.
     public func use(_ s: CalSet?) {

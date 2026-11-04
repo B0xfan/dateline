@@ -129,7 +129,12 @@ extension Store {
         let cs = CNContactStore()
         guard (try? await cs.requestAccess(for: .contacts)) == true else { return .failure(Failure("Dateline can't see Contacts. Turn it on in System Settings, Privacy & Security, Contacts.")) }
         let keys = [CNContactPostalAddressesKey as CNKeyDescriptor]
-        guard let me = try? cs.unifiedMeContactWithKeys(toFetch: keys) else { return .failure(Failure("No card is set as yours in Contacts (Card, Make This My Card).")) }
+        #if os(macOS)
+        let meCard = try? cs.unifiedMeContactWithKeys(toFetch: keys)
+        #else
+        let meCard: CNContact? = nil  // the iPhone has no "my card" lookup
+        #endif
+        guard let me = meCard else { return .failure(Failure("No card is set as yours in Contacts (Card, Make This My Card).")) }
         guard let a = me.postalAddresses.first(where: { $0.label == (work ? CNLabelWork : CNLabelHome) })?.value else {
             return .failure(Failure("Your card in Contacts has no \(work ? "work" : "home") address."))
         }
