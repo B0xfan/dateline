@@ -1,6 +1,4 @@
-// The one door to the Mac's calendars and reminders. AppleCalendar is the real thing (F1, J3: the accounts already set up on this Mac, nothing leaves it);
-// SampleCalendar is made-up data in memory for every test and picture, and never asks for access. Only this file talks to Apple's calendar framework.
-// Items going through here carry what the calendar holds; Dateline's own extras (emoji, tags, travel) stay in Store.
+// The self-check for saving, undo and calendar changes through the store, on made-up sample data only.
 import Foundation
 import EventKit
 import SwiftUI
