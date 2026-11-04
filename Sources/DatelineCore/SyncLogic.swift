@@ -348,6 +348,7 @@ extension Store {
     if var c = find(phone, "Marco at the condo") { c.emoji = ""; c.color = nil; c.tags = []; phone.update(c) }
     t += 10; phone.syncNow(); mac.syncNow()
     expect(phone.extras.isEmpty && mac.extras.isEmpty, "sync: removing the very last extras on the iPhone removes them on the Mac")
+    if !(phone.extras.isEmpty && mac.extras.isEmpty) { var r: [String: SyncRec] = [:]; edited { r = $0 }; print("DEBUG phone", phone.extras, "mac", mac.extras, "cloud", r["e/sample-9"].map { "\($0.t) \($0.v.map { String(decoding: $0, as: UTF8.self) } ?? "nil")" } ?? "none", "pseen", phone.sync.memo.seen["e/sample-9"] as Any, "mseen", mac.sync.memo.seen["e/sample-9"] as Any, "t", t) }
     if var c = find(mac, "Marco at the condo") { c.tags = ["Condo"]; mac.update(c) }
     t += 10; mac.syncNow(); phone.syncNow()
     expect(find(phone, "Marco at the condo")?.tags == ["Condo"], "sync: and new extras after that still arrive")
