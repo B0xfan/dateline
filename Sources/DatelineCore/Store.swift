@@ -59,7 +59,7 @@ public struct CalSet: Codable, Identifiable, Equatable {
     public var calendars: [String]
     public var defaultCalendar: String?
     public var lists: [String]? = nil  // Reminders lists shown (Phase 4); nil = sets saved before Phase 4, which leave lists alone
-    public init(id: String = UUID().uuidString, name: String, calendars: [String], defaultCalendar: String?, lists: [String]? = nil) { self.id = id; self.name = name; self.calendars = calendars; self.defaultCalendar = defaultCalendar; self.lists = lists }
+    public init(id: String = UUID().uuidString, name: String, calendars: [String], defaultCalendar: String? = nil, lists: [String]? = nil) { self.id = id; self.name = name; self.calendars = calendars; self.defaultCalendar = defaultCalendar; self.lists = lists }
 }
 
 // The set whose calendars are exactly the ones shown (calendars no longer on this Mac are ignored).

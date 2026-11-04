@@ -4,9 +4,9 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import DatelineCore
 #if canImport(FoundationModels)
 import FoundationModels
-import DatelineCore
 #endif
 
 // MARK: reading the email file
