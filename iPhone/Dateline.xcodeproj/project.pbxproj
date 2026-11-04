@@ -1,0 +1,273 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		D100000000000000000000C8 /* DatelineApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000064 /* DatelineApp.swift */; };
+		D100000000000000000000C9 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000065 /* Theme.swift */; };
+		D100000000000000000000CA /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000066 /* RootView.swift */; };
+		D100000000000000000000CB /* CalendarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000067 /* CalendarViews.swift */; };
+		D100000000000000000000CC /* MonthYear.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000068 /* MonthYear.swift */; };
+		D100000000000000000000CD /* DetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000069 /* DetailsView.swift */; };
+		D100000000000000000000CE /* AddViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000000000000006A /* AddViews.swift */; };
+		D100000000000000000000CF /* TasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000000000000006B /* TasksView.swift */; };
+		D100000000000000000000D0 /* PlacesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000000000000006C /* PlacesView.swift */; };
+		D100000000000000000000D1 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000000000000006D /* SettingsView.swift */; };
+		D100000000000000000000D2 /* WidgetsPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000000000000006E /* WidgetsPreview.swift */; };
+		D100000000000000000000D3 /* Demo.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000000000000006F /* Demo.swift */; };
+		D1000000000000000000000B /* DatelineCore in Frameworks */ = {isa = PBXBuildFile; productRef = D1000000000000000000000D /* DatelineCore */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		D10000000000000000000064 /* DatelineApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatelineApp.swift; sourceTree = "<group>"; };
+		D10000000000000000000065 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		D10000000000000000000066 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		D10000000000000000000067 /* CalendarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarViews.swift; sourceTree = "<group>"; };
+		D10000000000000000000068 /* MonthYear.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthYear.swift; sourceTree = "<group>"; };
+		D10000000000000000000069 /* DetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsView.swift; sourceTree = "<group>"; };
+		D1000000000000000000006A /* AddViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddViews.swift; sourceTree = "<group>"; };
+		D1000000000000000000006B /* TasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TasksView.swift; sourceTree = "<group>"; };
+		D1000000000000000000006C /* PlacesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesView.swift; sourceTree = "<group>"; };
+		D1000000000000000000006D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		D1000000000000000000006E /* WidgetsPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetsPreview.swift; sourceTree = "<group>"; };
+		D1000000000000000000006F /* Demo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Demo.swift; sourceTree = "<group>"; };
+		D10000000000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		D10000000000000000000002 /* DatelinePhone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DatelinePhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D10000000000000000000009 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1000000000000000000000B /* DatelineCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		D10000000000000000000003 = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000004 /* DatelinePhone */,
+				D10000000000000000000005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D10000000000000000000004 /* DatelinePhone */ = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000064 /* DatelineApp.swift */,
+				D10000000000000000000065 /* Theme.swift */,
+				D10000000000000000000066 /* RootView.swift */,
+				D10000000000000000000067 /* CalendarViews.swift */,
+				D10000000000000000000068 /* MonthYear.swift */,
+				D10000000000000000000069 /* DetailsView.swift */,
+				D1000000000000000000006A /* AddViews.swift */,
+				D1000000000000000000006B /* TasksView.swift */,
+				D1000000000000000000006C /* PlacesView.swift */,
+				D1000000000000000000006D /* SettingsView.swift */,
+				D1000000000000000000006E /* WidgetsPreview.swift */,
+				D1000000000000000000006F /* Demo.swift */,
+				D10000000000000000000001 /* Info.plist */,
+			);
+			path = DatelinePhone;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000002 /* DatelinePhone.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		D10000000000000000000006 /* DatelinePhone */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D10000000000000000000012 /* Build configuration list for PBXNativeTarget "DatelinePhone" */;
+			buildPhases = (
+				D10000000000000000000008 /* Sources */,
+				D10000000000000000000009 /* Frameworks */,
+				D1000000000000000000000A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DatelinePhone;
+			packageProductDependencies = (
+				D1000000000000000000000D /* DatelineCore */,
+			);
+			productName = DatelinePhone;
+			productReference = D10000000000000000000002 /* DatelinePhone.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D10000000000000000000007 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = D10000000000000000000013 /* Build configuration list for PBXProject "Dateline" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = D10000000000000000000003;
+			packageReferences = (
+				D1000000000000000000000C /* XCLocalSwiftPackageReference ".." */,
+			);
+			productRefGroup = D10000000000000000000005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D10000000000000000000006 /* DatelinePhone */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D1000000000000000000000A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D10000000000000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D100000000000000000000C8 /* DatelineApp.swift in Sources */,
+				D100000000000000000000C9 /* Theme.swift in Sources */,
+				D100000000000000000000CA /* RootView.swift in Sources */,
+				D100000000000000000000CB /* CalendarViews.swift in Sources */,
+				D100000000000000000000CC /* MonthYear.swift in Sources */,
+				D100000000000000000000CD /* DetailsView.swift in Sources */,
+				D100000000000000000000CE /* AddViews.swift in Sources */,
+				D100000000000000000000CF /* TasksView.swift in Sources */,
+				D100000000000000000000D0 /* PlacesView.swift in Sources */,
+				D100000000000000000000D1 /* SettingsView.swift in Sources */,
+				D100000000000000000000D2 /* WidgetsPreview.swift in Sources */,
+				D100000000000000000000D3 /* Demo.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		D1000000000000000000000E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LJZ32VB25F;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "DatelinePhone/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Dateline;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.johnhesch.dateline;
+				PRODUCT_NAME = DatelinePhone;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		D1000000000000000000000F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LJZ32VB25F;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "DatelinePhone/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Dateline;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.johnhesch.dateline;
+				PRODUCT_NAME = DatelinePhone;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		D10000000000000000000010 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		D10000000000000000000011 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		D10000000000000000000012 /* Build configuration list for PBXNativeTarget "DatelinePhone" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1000000000000000000000E /* Debug */,
+				D1000000000000000000000F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D10000000000000000000013 /* Build configuration list for PBXProject "Dateline" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D10000000000000000000010 /* Debug */,
+				D10000000000000000000011 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		D1000000000000000000000C /* XCLocalSwiftPackageReference ".." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "..";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D1000000000000000000000D /* DatelineCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DatelineCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = D10000000000000000000007 /* Project object */;
+}

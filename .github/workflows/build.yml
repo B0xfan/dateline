@@ -4,10 +4,29 @@ on:
   workflow_dispatch:
     inputs:
       quick:
-        description: "Only the iPhone check of the shared code (for fast fixing)"
+        description: "Only the iPhone jobs (for fast fixing)"
         type: boolean
         default: false
 jobs:
+  # The iPhone app on the sample calendars: built for the simulator (Debug, so the checks and pictures are in), its checks, and a light and dark picture of each screen.
+  ios-app:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the iPhone app
+        run: |
+          xcodebuild build -project iPhone/Dateline.xcodeproj -scheme DatelinePhone -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath dd CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+      - name: Checks and screen pictures
+        run: scripts/ios-check.sh "$(find dd/Build/Products -maxdepth 3 -name DatelinePhone.app | head -1)" ios-shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-shots
+          path: ios-shots
+          retention-days: 3
+          if-no-files-found: ignore
   # The shared DatelineCore package must keep compiling for the iPhone. No signing, nothing uploaded.
   ios-core:
     runs-on: macos-15
