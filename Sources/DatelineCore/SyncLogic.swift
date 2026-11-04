@@ -140,9 +140,10 @@ extension Store {
             }
             remote = r
         }
-        let fixed = sets.map(localSet)  // set calendars that only now can be matched by name
-        if fixed != sets { sets = fixed }
-        let skipped = { (k: String) in self.sync.skip.contains(syncKind(k)) }
+        // Sets name calendars and Reminders lists: they wait until both have been read, or the names would go out as this device's bare ids.
+        let setsReady = canRead && taskAccess != .unknown
+        if setsReady { let fixed = sets.map(localSet); if fixed != sets { sets = fixed } }  // set calendars that only now can be matched by name
+        let skipped = { (k: String) in self.sync.skip.contains(syncKind(k)) || (k == "sets" && !setsReady) }
         let m = syncMerge(local: syncRecords().filter { !skipped($0.key) }, seen: sync.memo.seen.filter { !skipped($0.key) }, remote: remote.filter { !skipped($0.key) }, now: sync.clock())
         if let out = m.cloud {
             let full = remote.merging(out) { $1 }
@@ -242,7 +243,7 @@ extension Store {
     var m = syncMerge(local: [:], seen: [:], remote: ["e/1": SyncRec(v: a, t: 5)], now: 10)
     expect(m.here["e/1"] == .some(a) && m.cloud == nil, "sync: a new device takes iCloud's copy and sends nothing")
     m = syncMerge(local: [:], seen: ["e/1": Seen(h: fingerprint(a), t: 5)], remote: ["e/1": SyncRec(v: a, t: 5)], now: 10)
-    expect(m.here.isEmpty && m.cloud == nil, "sync: an emptied device removes nothing and gets it back")
+    expect(m.here["e/1"] == .some(a) && m.cloud == nil, "sync: an emptied device removes nothing and gets it back")
     m = syncMerge(local: ["e/2": b], seen: ["e/1": Seen(h: fingerprint(a), t: 5), "e/2": Seen(h: fingerprint(b), t: 5)], remote: ["e/1": SyncRec(v: a, t: 5), "e/2": SyncRec(v: b, t: 5)], now: 10)
     expect(m.cloud?["e/1"] == SyncRec(v: nil, t: 10), "sync: an event's extras removed here are removed in iCloud")
     m = syncMerge(local: ["e/1": b], seen: [:], remote: ["e/1": SyncRec(v: a, t: 5)], now: 10)
