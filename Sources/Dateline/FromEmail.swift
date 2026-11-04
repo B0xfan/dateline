@@ -339,9 +339,9 @@ final class EmailInbox: ObservableObject {
         let t = sampleToday ?? Date(), at = { (d: Int, h: Int, m: Int) in cal.date(byAdding: .minute, value: h * 60 + m, to: addDays(cal.startOfDay(for: t), d))! }
         let sat = addDays(cal.startOfDay(for: t), (7 - cal.component(.weekday, from: t)) % 7)
         return [
-            Pending(id: "s1", mail: Mail(from: "Lily <lily@example.com>", subject: "Fwd: dinner Saturday?",
-                                         body: "Hi John! Want to do dinner at Pangas this Saturday around 7? I booked a table for 4 under my name. Bring Ana if she's around.\n\nLily", date: at(0, 9, 41)),
-                    draft: Draft(title: "Dinner at Pangas", place: "Pangas Beach Club, Tamarindo", notes: "Table for 4 under Lily's name.",
+            Pending(id: "s1", mail: Mail(from: "Maya <maya@example.com>", subject: "Fwd: dinner Saturday?",
+                                         body: "Hi John! Want to do dinner at Pangas this Saturday around 7? I booked a table for 4 under my name. Bring Ana if she's around.\n\nMaya", date: at(0, 9, 41)),
+                    draft: Draft(title: "Dinner at Pangas", place: "Pangas Beach Club, Tamarindo", notes: "Table for 4 under Maya's name.",
                                  start: sat.addingTimeInterval(19 * 3600), end: sat.addingTimeInterval(21 * 3600), unsure: ["when"],
                                  whenNote: "\"Around 7\" with no end time; 2 hours guessed.", quotes: ["dinner at Pangas", "Saturday around 7"])),
             Pending(id: "s2", mail: Mail(from: "Avianca <no-reply@avianca.com>", subject: "Your flight SJO to MIA",

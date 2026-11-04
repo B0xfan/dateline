@@ -95,7 +95,7 @@ private final class ShotWindow: NSWindow {
         shot("quarter") { $0.mode = .quarter }
         shot("add-preview") { $0.mode = .week; $0.days = 7; $0.addText = "Dinner with Ana Friday 7pm at Casa Luna"; $0.addBox.focused = true }
         shot("details") { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Write proposal" }?.id; a.panels.panelOpen = true }
-        shot("details-extras") { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Christian at the condo" }?.id; a.panels.panelOpen = true }
+        shot("details-extras") { a in a.mode = .week; a.days = 7; a.selectedID = a.store.items.first { $0.title == "Marco at the condo" }?.id; a.panels.panelOpen = true }
         shot("set-family") { a in a.pickSet(3) }
         shot("tasks-week") { $0.mode = .week; $0.days = 5 }
         // Moved into the working day, to check the dashed block.

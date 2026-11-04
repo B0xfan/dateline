@@ -296,7 +296,7 @@ final class SampleCalendar: CalendarSource {
         ev("family", "School pickup", 0, 15, 0, 30)
         ev("personal", "Gym", 0, 17, 30, 60, .free)
         ev("work", "Client call", 1, 11, 0, 60, place: "Zoom", notes: "Join: https://us02web.zoom.us/j/8123456789")
-        ev("family", "Christian at the condo", 1, 13, 30, 60, place: "Condo", notes: "Fix before he leaves:\n[x] Kitchen tap drips\n[ ] Balcony door lock sticks\n- Gate code is in the group chat",
+        ev("family", "Marco at the condo", 1, 13, 30, 60, place: "Condo", notes: "Fix before he leaves:\n[x] Kitchen tap drips\n[ ] Balcony door lock sticks\n- Gate code is in the group chat",
            emoji: "🏠", color: 3, tags: ["Condo", "Visitors"], geo: Geo(lat: 10.2930, lon: -85.8318))
         ev("family", "Dentist", 2, 8, 30, 60, place: "Clínica Dental Tamarindo", emoji: "🦷", geo: Geo(lat: 10.2995, lon: -85.8371))
         ev("work", "Design review", 3, 14, 0, 90)

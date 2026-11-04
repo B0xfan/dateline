@@ -108,7 +108,7 @@ struct LookPreview: View {
                 }
                 GeometryReader { g in
                     let col = (g.size.width - 44) / 2
-                    block("🏠 Christian at the condo", "11:30 AM", Palette.family).frame(width: col - 6, height: h * 0.5 - 2).offset(x: 47, y: h * 0.5 + 1)
+                    block("🏠 Marco at the condo", "11:30 AM", Palette.family).frame(width: col - 6, height: h * 0.5 - 2).offset(x: 47, y: h * 0.5 + 1)
                     block("Client call", "12 to 1 PM", Palette.work).frame(width: col - 6, height: h - 2).offset(x: 47 + col, y: h + 1)
                 }
             }.frame(height: h * CGFloat(hours.count)).padding(.top, 8).clipped()
