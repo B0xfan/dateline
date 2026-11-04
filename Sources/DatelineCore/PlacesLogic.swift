@@ -53,6 +53,9 @@ public final class Here: NSObject, ObservableObject, CLLocationManagerDelegate {
     public nonisolated func locationManager(_ m: CLLocationManager, didFailWithError error: Error) {}  // no fix: the last saved spot stays
     public nonisolated func locationManagerDidChangeAuthorization(_ m: CLLocationManager) {
         if m.authorizationStatus == .authorizedAlways { m.requestLocation() }  // on the Mac, "allowed" reads as always
+        #if os(iOS)
+        if m.authorizationStatus == .authorizedWhenInUse { m.requestLocation() }  // the first ask fails while the iPhone's permission box is up
+        #endif
     }
 }
 

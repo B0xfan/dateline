@@ -28,8 +28,8 @@ struct RootView: View {
             }
         }
         .background(T.bg)
-        .sheet(isPresented: Binding(get: { app.adding != nil }, set: { if !$0 { app.adding = nil } })) { AddSheet(start: app.adding ?? "") }
-        .sheet(item: $app.email) { EmailSheet(find: $0) }
+        .sheet(isPresented: Binding(get: { app.adding != nil }, set: { if !$0 { app.adding = nil } }), onDismiss: { app.sheetClosed() }) { AddSheet(start: app.adding ?? "") }
+        .sheet(item: $app.email, onDismiss: { app.sheetClosed() }) { EmailSheet(find: $0) }
         .sheet(isPresented: $app.showUnlock) { UnlockView() }
         .alert(app.problem ?? "", isPresented: Binding(get: { app.problem != nil }, set: { if !$0 { app.problem = nil } })) { Button("OK") {} }
         .onReceive(clock) { now in

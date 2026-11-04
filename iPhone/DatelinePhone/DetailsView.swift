@@ -98,17 +98,21 @@ struct DetailsView: View {
         }
         .confirmationDialog("Delete \(it.title)?", isPresented: $askDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
-                if let f = store.delete(it) { problem = f.message; if store.trialOver { app.showUnlock = true } } else { app.path.removeAll { $0 == it.id } }
+                if let f = store.delete(it) { if store.trialOver { app.showUnlock = true } else { problem = f.message } } else { app.path.removeAll { $0 == it.id } }
             }
         }
     }
 
     private func save(_ it: Item) {
         var n = it
-        n.title = title.trimmingCharacters(in: .whitespaces).isEmpty ? it.title : title
-        n.place = place
+        let t = title.trimmingCharacters(in: .whitespaces)
+        n.title = t.isEmpty ? it.title : t
+        n.place = place.trimmingCharacters(in: .whitespaces)
         if n.place != it.place { n.geo = nil }  // a typed place has no spot on the map until it is looked up
-        if n != it, let f = store.update(n) { problem = f.message; if store.trialOver { app.showUnlock = true } }
+        if n != it {
+            if let f = store.update(n) { if store.trialOver { app.showUnlock = true } else { problem = f.message } }
+            else if app.opened[n.id] != nil { app.opened[n.id] = n }  // opened from outside the days in view: show the saved copy
+        }
         editing = false
     }
 

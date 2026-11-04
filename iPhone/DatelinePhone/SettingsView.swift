@@ -17,15 +17,15 @@ struct SettingsView: View {
                     ForEach(accounts, id: \.name) { a in
                         line(a.name.hasPrefix("Google") ? "globe" : a.name.hasPrefix("iCloud") ? "icloud.fill" : "calendar",
                              a.name.hasPrefix("Google") ? Palette.personal : a.name.hasPrefix("iCloud") ? Palette.work : Palette.tags[7],
-                             a.name, "\(a.count) calendar\(a.count == 1 ? "" : "s")")
+                             a.name, "\(a.count) calendar\(a.count == 1 ? "" : "s")", opens: false)
                     }
-                    line(nil, .clear, "Add an account", "")
+                    line(nil, .clear, "Add an account", "", opens: false)
                 }
                 Section("Calendar") {
-                    line("square.stack.fill", Palette.family, "Calendar sets", "\(store.sets.count)")
-                    line("paintbrush.fill", Palette.tags[5], "Look", Look.appearance == "Match Mac" ? "Auto" : Look.appearance)
-                    line("bell.fill", Palette.tags[3], "Alert sounds", Alerts.soundName("events"))
-                    line("car.fill", Palette.tags[7], "Places and drive times", WorkWeek.leave ? "On" : "Off")
+                    line("square.stack.fill", Palette.family, "Calendar sets", "\(store.sets.count)", opens: false)
+                    line("paintbrush.fill", Palette.tags[5], "Look", Look.appearance == "Match Mac" ? "Auto" : Look.appearance, opens: false)
+                    line("bell.fill", Palette.tags[3], "Alert sounds", Alerts.soundName("events"), opens: false)
+                    line("car.fill", Palette.tags[7], "Places and drive times", WorkWeek.leave && !app.drive.isEmpty ? "On" : "Off", opens: false)
                 }
                 Section {
                     Toggle("Emoji, colors, tags, notes, sets", isOn: $sync).listRowBackground(T.bg2)
@@ -49,13 +49,14 @@ struct SettingsView: View {
     }
     private var statusDetail: String { if case .bought(let s) = license.status, s > 0 { return "Mac key" }; return "" }
 
-    private func line(_ icon: String?, _ color: Color, _ title: String, _ value: String) -> some View {
+    // shortcut: only the Dateline row opens a page; the other rows' pages have no approved mockup yet, so they show no arrow.
+    private func line(_ icon: String?, _ color: Color, _ title: String, _ value: String, opens: Bool = true) -> some View {
         HStack(spacing: 12) {
             if let icon { Image(systemName: icon).font(.footnote.weight(.semibold)).foregroundStyle(.white).frame(width: 28, height: 28).background(color, in: RoundedRectangle(cornerRadius: 7)) }
             Text(title).foregroundStyle(T.text)
             Spacer()
             Text(value).foregroundStyle(T.text2)
-            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(T.text2.opacity(0.6))
+            if opens { Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(T.text2.opacity(0.6)) }
         }
         .font(.callout).frame(minHeight: 32).contentShape(Rectangle())
         .listRowBackground(T.bg2)

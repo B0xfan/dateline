@@ -62,7 +62,7 @@ struct AddSheet: View {
             .navigationTitle("New event").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Add", action: add).fontWeight(.semibold).disabled(empty) }
+                ToolbarItem(placement: .confirmationAction) { Button("Add", action: add).fontWeight(.semibold).disabled(empty || app.calendarFor(p) == nil) }
             }
         }
         .onAppear { focused = true }
@@ -73,7 +73,7 @@ struct AddSheet: View {
         guard !empty else { return }
         switch app.add(parseSentence(text, now: app.today)) {
         case .success: dismiss()
-        case .failure(let f): if store.trialOver { dismiss() } else { problem = f.message }
+        case .failure(let f): if store.trialOver { app.unlockNext = true; dismiss() } else { problem = f.message }
         }
     }
 }
@@ -105,7 +105,7 @@ struct EmailSheet: View {
             .navigationTitle("Event from email").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Add", action: add).fontWeight(.semibold) }
+                ToolbarItem(placement: .confirmationAction) { Button("Add", action: add).fontWeight(.semibold).disabled(app.calendarFor(find.parsed) == nil) }
             }
         }
         .alert(problem ?? "", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) { Button("OK") {} }
@@ -114,7 +114,7 @@ struct EmailSheet: View {
     private func add() {
         switch app.add(find.parsed, emoji: find.emoji) {
         case .success: app.emails.removeAll { $0.id == find.id }; dismiss()
-        case .failure(let f): if store.trialOver { dismiss() } else { problem = f.message }
+        case .failure(let f): if store.trialOver { app.unlockNext = true; dismiss() } else { problem = f.message }
         }
     }
 }

@@ -40,7 +40,9 @@ final class PhoneState: ObservableObject {
     @Published var adding: String?  // the add sheet's starting text; nil = closed
     @Published var email: EmailFind?
     @Published var showUnlock = false
+    var unlockNext = false  // an add refused by the ended trial: the unlock screen opens once the add sheet has closed
     @Published var problem: String?
+    // shortcut: only the sample fills this; the phone does not run the shared drive planner (Trips) yet, which also schedules the leave alerts (a later step).
     @Published var drive: [String: Int] = [:]  // minutes of driving before an event with a place
     @Published var emails: [EmailFind] = []  // events found in emails shared to Dateline
     var opened: [String: Item] = [:]  // events opened from outside the days in view (the map)
@@ -79,6 +81,9 @@ final class PhoneState: ObservableObject {
     func open(_ it: Item) { opened[it.id] = it; path.append(it.id) }
     func item(_ id: String) -> Item? { store.items.first { $0.id == id } ?? opened[id] }
 
+    /// After a sheet closes: the unlock screen, when the ended trial refused what the sheet tried.
+    func sheetClosed() { if unlockNext { unlockNext = false; showUnlock = true } }
+
     /// Where a new event goes: a typed /code, else the shown set's calendar, else the phone's default (as on the Mac).
     func calendarFor(_ p: Parsed) -> CalInfo? {
         let writable = store.calendars.filter(\.writable)
@@ -94,7 +99,6 @@ final class PhoneState: ObservableObject {
             it.emoji = emoji
             if store.update(it) == nil { r = .success(it) }
         }
-        if case .failure = r, store.trialOver { showUnlock = true }
         return r
     }
 
