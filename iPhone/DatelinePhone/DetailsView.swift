@@ -9,7 +9,8 @@ struct DetailsView: View {
     @ObservedObject private var weather = WeatherStore.shared
     let id: String
     @State private var editing = false
-    @State private var title = "", place = ""
+    @State private var title = ""
+    @State private var place = ""
     @State private var askDelete = false
     @State private var problem: String?
 
