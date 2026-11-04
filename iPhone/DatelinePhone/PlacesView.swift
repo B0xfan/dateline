@@ -21,9 +21,9 @@ struct PlacesView: View {
                             Circle().fill(store.color(it)).frame(width: 14, height: 14).overlay(Circle().stroke(.white, lineWidth: 2))
                         }
                     }
+                    .annotationTitles(.hidden)
                 }
             }
-            .annotationTitles(.hidden)
             .frame(height: 440)
             .frame(maxHeight: .infinity, alignment: .top)
             Text("This week's places").font(.subheadline).foregroundStyle(T.text2)
