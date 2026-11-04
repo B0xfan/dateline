@@ -73,6 +73,7 @@ final class AppState: ObservableObject {
     var openMain: (() -> Void)?  // brings the main window back, also after it was closed
     let emails: EmailInbox  // Phase 9: forwarded emails waiting to become events
     @Published var look = 0  // bumped when a Look setting changes, to redraw everything
+    private var lookSync: Any?  // step 2: a Look choice synced from the iPhone
     @Published var error: String?
     // A new day changes what most views draw (today's mark, overdue tasks), so it redraws everything; a tick within the day doesn't.
     var now: Date {
@@ -92,6 +93,7 @@ final class AppState: ObservableObject {
         let saved = store.access == .sample || !Look.saves ? nil : UserDefaults.standard.object(forKey: "anchorSaved") as? Date
         anchor = cal.startOfDay(for: saved.map { cal.isDate($0, inSameDayAs: today) } == true ? UserDefaults.standard.object(forKey: "anchor") as? Date ?? today : today)  // saved in another time zone, it isn't midnight here
         store.onError = { [weak self] in self?.error = $0 }
+        lookSync = NotificationCenter.default.addObserver(forName: Look.synced, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.look += 1 } }
         now = today
         reload()
         if store.access != .sample { Assistant.shared.attach(self) }  // here, not when the window opens: Dateline also runs with its window closed

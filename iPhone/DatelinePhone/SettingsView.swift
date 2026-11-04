@@ -30,7 +30,7 @@ struct SettingsView: View {
                 Section {
                     Toggle("Emoji, colors, tags, notes, sets", isOn: $sync).listRowBackground(T.bg2)
                         .onChange(of: sync) { _, on in if on { store.syncNow() } }
-                } header: { Text("Sync with your Mac") } footer: { Text("Through your own iCloud. No Dateline server.") }
+                } header: { Text("Sync with your Mac") } footer: { Text(store.sync.problem ?? "Through your own iCloud. No Dateline server.") }
                 Section("Dateline") {
                     Button { app.showUnlock = true } label: { line(nil, .clear, statusName, statusDetail) }.buttonStyle(.plain).listRowBackground(T.bg2)
                 }

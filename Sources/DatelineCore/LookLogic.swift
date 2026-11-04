@@ -8,6 +8,7 @@ public enum Look {
     public static let appearances = ["Match Mac", "Light", "Dark"], fonts = ["System", "Rounded", "Serif", "Mono"]
     public static let packs = ["Roomy", "Normal", "Compact"], hours = ["Short", "Medium", "Tall"]
     private static let d = UserDefaults.standard
+    public static let synced = Notification.Name("DatelineLookSynced")  // a Look or sound choice arrived from the other device
     public static var saves = true  // off for the off-screen pictures, so they never change your settings
     public static var appearance = pick("lookAppearance", appearances, "Match Mac") { didSet { if saves { d.set(appearance, forKey: "lookAppearance") }; apply() } }
     public static var font = pick("lookFont", fonts, "System") { didSet { if saves { d.set(font, forKey: "lookFont") } } }

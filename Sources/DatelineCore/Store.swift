@@ -199,6 +199,7 @@ public final class Store: ObservableObject {
     func save<T: Encodable>(_ v: T, _ key: String) {
         guard access != .sample, let data = try? JSONEncoder().encode(v) else { return }
         UserDefaults.standard.set(data, forKey: key)
+        if let r = ["calendarSets": "sets", "recentEmoji": "emoji"][key], !sync.applying { syncChanged(r) }
         if ["eventExtras", "calendarSets", "recentEmoji"].contains(key) { syncSoon() }
     }
     public func load<T: Decodable>(_ key: String) -> T? {
@@ -243,7 +244,7 @@ public final class Store: ObservableObject {
                       noTravel: it.noTravel ? true : nil, leave: it.leave, from: it.from == .here ? nil : it.from)
         var ex = extras
         ex[key(it.id)] = x.isEmpty ? nil : x
-        if !it.uid.isEmpty { ex["~" + syncUID(it.uid)] = nil; sync.memo.uids[key(it.id)] = syncUID(it.uid); if x.isEmpty { syncRemoved("e/" + syncUID(it.uid)) } }
+        if !it.uid.isEmpty { ex["~" + syncUID(it.uid)] = nil; sync.memo.uids[key(it.id)] = syncUID(it.uid); if x.isEmpty { syncRemoved("e/" + syncUID(it.uid)) } else { syncChanged("e/" + syncUID(it.uid)) } }
         if ex != extras { extras = ex }
     }
 
