@@ -176,7 +176,7 @@ public func davEvents(_ x: XNode, base: URL) -> [String: DavRes] {
     return out
 }
 
-let davProps = """
+public let davProps = """
 <?xml version="1.0" encoding="UTF-8"?><d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:a="http://apple.com/ns/ical/">\
 <d:prop><d:resourcetype/><d:displayname/><a:calendar-color/><d:current-user-privilege-set/><c:supported-calendar-component-set/></d:prop></d:propfind>
 """

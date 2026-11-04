@@ -212,7 +212,7 @@ public func calendarName(_ text: String) -> String? {
 
 // A small calendar file with the awkward parts real ones have: a folded line, escapes, an alarm inside an event, time zones,
 // repeats by week (with a skipped and a moved week), by month and by year, and a cancelled event.
-let sampleICS = """
+public let sampleICS = """
 BEGIN:VCALENDAR\r
 X-WR-CALNAME:Grade 5 schedule\r
 BEGIN:VTIMEZONE\r
