@@ -498,7 +498,7 @@ func googleJSON(_ method: String, _ path: String, token: String, body: [String: 
     let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] ?? [:]
     guard (200..<300).contains(h.statusCode) else {
         let err = (j["error"] as? [String: Any])?["message"] as? String ?? "error \(h.statusCode)"
-        if err.contains("has not been used") || err.contains("is disabled") { throw Failure("Google Calendar isn't switched on for the Google key yet.") }
+        if err.contains("has not been used") || err.contains("is disabled") { throw Failure("Google Calendar turned Dateline away. Update Dateline (Dateline > Check for Updates), then remove the Google account in Settings, Accounts, and add it again. (Google: \(err))") }
         throw Failure("Google: " + err)
     }
     return j
@@ -883,7 +883,7 @@ func driveUpload(token: String, name: String, type: String, data: Data) async th
     guard (200..<300).contains(h.statusCode), let id = j["id"] as? String else {
         let err = (j["error"] as? [String: Any])?["message"] as? String ?? "error \(h.statusCode)"
         if err.lowercased().contains("insufficient") { throw Failure("Google needs a fresh sign-in to put files in your Drive: remove the Google account in Settings, Accounts, and add it again.") }
-        if err.contains("has not been used") || err.contains("is disabled") { throw Failure("Google Drive isn't switched on for the Google key yet.") }
+        if err.contains("has not been used") || err.contains("is disabled") { throw Failure("Google Drive turned Dateline away. Update Dateline (Dateline > Check for Updates), then remove the Google account in Settings, Accounts, and add it again. (Google: \(err))") }
         throw Failure("Google Drive: " + err)
     }
     if j["webViewLink"] == nil { j["webViewLink"] = "https://drive.google.com/file/d/\(id)/view" }  // in case the asked-for fields don't carry over to the upload step
