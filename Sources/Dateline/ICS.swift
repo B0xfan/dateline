@@ -141,6 +141,8 @@ func occurrences(_ e: ICalEvent, from a: Date, to b: Date) -> [Date] {
     let names = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]
     c.firstWeekday = (names.firstIndex(of: r["WKST"] ?? "MO") ?? 1) + 1
     let step = max(1, Int(r["INTERVAL"] ?? "") ?? 1)
+    // A feed can say any gap. Over 1000 the next time is years away, and step * period below could overflow and crash.
+    guard step <= 1000 else { return overlaps(e.start) ? [e.start] : [] }
     let count = Int(r["COUNT"] ?? "")
     let until = r["UNTIL"].flatMap { v -> Date? in
         if e.allDay { return icsDate(String(v.prefix(8)), [:])?.0 }  // an all-day event ends on a date, whatever form it is written in
@@ -185,13 +187,15 @@ func occurrences(_ e: ICalEvent, from a: Date, to b: Date) -> [Date] {
     for period in 0..<5000 {  // shortcut: 5000 steps (13 years of daily repeats) from the first time; later times of an older daily event are not shown
         var list: [Date]
         switch freq {
-        case "DAILY": list = [c.date(byAdding: .day, value: period * step, to: e.start)!]
+        case "DAILY":
+            guard let d = c.date(byAdding: .day, value: period * step, to: e.start) else { return out }
+            list = [d]
         case "WEEKLY":
-            let wk = c.date(byAdding: .weekOfYear, value: period * step, to: week0)!
+            guard let wk = c.date(byAdding: .weekOfYear, value: period * step, to: week0) else { return out }
             let days = byDay.isEmpty ? [c.component(.weekday, from: e.start)] : byDay.map(\.1)
             list = days.compactMap { w in
                 let off = (w - c.firstWeekday + 7) % 7
-                let d = c.date(byAdding: .day, value: off, to: wk)!
+                guard let d = c.date(byAdding: .day, value: off, to: wk) else { return nil }
                 return day(c.component(.year, from: d), c.component(.month, from: d), c.component(.day, from: d))
             }
         case "MONTHLY":

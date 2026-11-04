@@ -552,6 +552,9 @@ func subSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int, Int)
     expect(times("DTSTART;TZID=Europe/Madrid:20261102T003000\nRRULE:FREQ=WEEKLY;COUNT=3\nEXDATE;VALUE=DATE:20261109", "20261101", "20261201") == 2, "a date-only exception goes by the date where the event is")
     expect(times("DTSTART:20261113T100000\nRRULE:FREQ=MONTHLY;BYDAY=FR;BYMONTHDAY=13", "20261101", "20271231") == 2, "Friday the 13th matches both parts")
     expect(times("DTSTART:20261102T100000\nRRULE:FREQ=YEARLY;BYDAY=MO", "20261101", "20261231") == 9, "every Monday of the year, with no month named")
+    for f in ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] {  // a feed with a huge repeat gap must not crash the app (it would again on every launch)
+        expect(times("DTSTART:20261102T100000\nRRULE:FREQ=\(f);INTERVAL=\(Int.max)", "20261101", "20261231") == 1, "a huge \(f.lowercased()) repeat gap shows the first time only")
+    }
     expect(icsText("C:\\\\new\\nnext\\, end") == "C:\\new\nnext, end", "an escaped backslash before an n stays a backslash and an n")
     let meet = ev.first { $0.uid == "meet" }
     expect(meet?.title == "Parent meeting" && meet?.notes == "Room 4, upstairs\nBring the form", "title and escaped notes; the alarm's text is not the title")
