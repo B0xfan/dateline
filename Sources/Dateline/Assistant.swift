@@ -3,6 +3,7 @@
 // The app answers them: MCP, one JSON-RPC message per line. There is no delete tool at all.
 import SwiftUI
 import AppKit
+import Security
 
 enum Allow: String, CaseIterable { case allowed = "Allowed", ask = "Ask me first", never = "Never" }
 
@@ -19,6 +20,7 @@ final class Assistant: ObservableObject {
     @Published var add: Allow { didSet { keep(add.rawValue, "assistantAdd") } }
     @Published var change: Allow { didSet { keep(change.rawValue, "assistantChange") } }
     @Published var hidden: Set<String> { didSet { keep(Array(hidden), "assistantHidden") } }  // calendars it may not see
+    @Published var apps: [String: String] { didSet { keep(apps, "assistantApps") } }  // apps John allowed to connect: signature → name
     @Published var log: [Line] { didSet { if keeps, let data = try? JSONEncoder().encode(log) { d.set(data, forKey: "assistantLog") } } }
     @Published var undos: [UUID: () -> Failure?] = [:]  // this run only: a line from before a restart has no Undo
     var ask: (String, String) -> Bool = { title, detail in
@@ -42,13 +44,14 @@ final class Assistant: ObservableObject {
         add = Allow(rawValue: d.string(forKey: "assistantAdd") ?? "") ?? .ask
         change = Allow(rawValue: d.string(forKey: "assistantChange") ?? "") ?? .ask
         hidden = Set(d.stringArray(forKey: "assistantHidden") ?? [])
+        apps = d.dictionary(forKey: "assistantApps") as? [String: String] ?? [:]
         log = d.data(forKey: "assistantLog").flatMap { try? JSONDecoder().decode([Line].self, from: $0) } ?? []
     }
 
     /// A test or picture copy: the normal choices, nothing read or saved, no socket.
     static func test(_ app: AppState) -> Assistant {
         let a = Assistant(keeps: false)
-        a.on = true; a.see = .allowed; a.add = .ask; a.change = .ask; a.hidden = []; a.log = []
+        a.on = true; a.see = .allowed; a.add = .ask; a.change = .ask; a.hidden = []; a.apps = [:]; a.log = []
         a.app = app
         return a
     }
@@ -89,6 +92,8 @@ final class Assistant: ObservableObject {
     /// Plain read and write, never FileHandle: a chat that closed mid-answer must not take Dateline down with it.
     nonisolated static func serve(_ c: Int32, _ a: Assistant) {
         defer { close(c) }
+        let who = callerApp(c)
+        guard DispatchQueue.main.sync(execute: { MainActor.assumeIsolated { a.admit(who) } }) else { return }
         var one: Int32 = 1
         setsockopt(c, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
         var buf = Data(), chunk = [UInt8](repeating: 0, count: 65536)
@@ -101,6 +106,18 @@ final class Assistant: ObservableObject {
                 if let out, !writeAll(c, out + Data([10])) { return }
             }
         }
+    }
+
+    /// The first time an app connects, John says whether it may. A yes is kept for an app signed by its maker; an unsigned app, or one of Apple's, is asked every time, and a no is never kept.
+    func admit(_ who: Caller) -> Bool {
+        if let k = who.key, apps[k] != nil { return true }
+        guard ask("\(who.name) wants to use your calendar", "It can do only what Dateline's Assistant settings allow. " +
+                  (who.key == nil ? "Dateline will ask each time this app connects." : "Dateline won't ask again for this app.")) else {
+            note("Turned away \(who.name)"); return false
+        }
+        if let k = who.key { apps[k] = who.name }
+        note("Let \(who.name) connect")
+        return true
     }
 
     // MARK: MCP
@@ -337,6 +354,53 @@ func writeAll(_ fd: Int32, _ d: Data) -> Bool {
     }
 }
 
+// MARK: which app is connecting
+
+/// key is the app's code signature (its maker's team and its name), so a copy that only calls itself "Claude" is a different app.
+/// nil when the app isn't properly signed: it is asked about every time.
+struct Caller: Equatable { var name: String; var key: String? }
+
+/// Walks up from the process on the other end of the socket, past Dateline's own relay and Apple's command-line tools (a shell, for one), to the app that started it.
+// shortcut: a parent is found by its process number, which a quitting app could hand on in the moment between; use audit tokens if that ever matters.
+nonisolated func callerApp(_ fd: Int32) -> Caller {
+    var pid: pid_t = 0, len = socklen_t(MemoryLayout<pid_t>.size)
+    guard getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &len) == 0 else { return Caller(name: "An unknown app", key: nil) }
+    func path(_ p: pid_t) -> String? {
+        var buf = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        return proc_pidpath(p, &buf, UInt32(buf.count)) > 0 ? String(cString: buf) : nil
+    }
+    let me = path(getpid())  // the relay is this same program
+    for _ in 0..<32 where pid > 1 {
+        guard let path = path(pid) else { break }
+        let (key, apple) = signature(pid)
+        if path != me && !(apple && !path.contains(".app/")) {
+            let app = path.split(separator: "/").first { $0.hasSuffix(".app") }  // the outermost app: Claude, not its helper inside
+            // A bare program is named by its signature (claude-code), since its file name can be a version number.
+            let name = app.map { String($0.dropLast(4)) } ?? key?.split(separator: ".").last.map(String.init) ?? (path as NSString).lastPathComponent
+            return Caller(name: name, key: key)
+        }
+        var info = proc_bsdinfo()
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0 else { break }
+        pid = pid_t(info.pbi_ppid)
+    }
+    return Caller(name: "An unknown app", key: nil)
+}
+
+/// A running process's signature, checked on the spot: "team:name", nil for an unsigned, self-signed or Apple program; apple is true for Apple's own.
+nonisolated func signature(_ pid: pid_t) -> (key: String?, apple: Bool) {
+    var code: SecCode?, still: SecStaticCode?, info: CFDictionary?, appleOnly: SecRequirement?
+    guard SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributePid: pid] as CFDictionary, [], &code) == errSecSuccess, let code,
+          SecCodeCheckValidity(code, [], nil) == errSecSuccess,
+          SecCodeCopyStaticCode(code, [], &still) == errSecSuccess, let still,
+          SecCodeCopySigningInformation(still, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess else { return (nil, false) }
+    SecRequirementCreateWithString("anchor apple" as CFString, [], &appleOnly)
+    let apple = appleOnly.map { SecCodeCheckValidity(code, [], $0) == errSecSuccess } ?? false
+    let d = info as? [String: Any], team = d?[kSecCodeInfoTeamIdentifier as String] as? String
+    // Apple's own apps (Terminal, for one) run anything John starts in them, so a yes for them is never kept.
+    guard let id = d?[kSecCodeInfoIdentifier as String] as? String, let team, !apple else { return (nil, apple) }
+    return ("\(team):\(id)", apple)
+}
+
 // MARK: Settings, Assistant
 
 struct AssistantSettings: View {
@@ -381,6 +445,15 @@ struct AssistantSettings: View {
                     }
                 }
                 .disabled(!a.on)
+                Text("APPS ALLOWED").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.top, 4)
+                if a.apps.isEmpty { Text("None yet. Dateline asks the first time an app connects.").font(.system(size: 12)).foregroundStyle(Palette.text3) }
+                ForEach(a.apps.sorted { $0.value < $1.value }, id: \.key) { k, name in
+                    HStack {
+                        Text(name)
+                        Spacer()
+                        Button("Remove") { a.apps[k] = nil }.buttonStyle(.plain).foregroundStyle(Palette.accent)
+                    }
+                }
             }
             .frame(width: 400, alignment: .leading)
             VStack(alignment: .leading, spacing: 12) {
@@ -504,6 +577,8 @@ struct AssistantSettings: View {
     // The socket, end to end: a hello sent the way Claude's relay sends it comes back answered.
     let sock = "/tmp/dateline-selftest-\(getpid()).sock"  // a Unix socket path must stay under 104 bytes
     let live = Assistant.test(app)
+    var knocks = 0
+    live.ask = { _, _ in knocks += 1; return true }
     live.on = true; live.start(at: sock)
     let fd = connectUnix(sock)
     var answer = Data()
@@ -514,7 +589,15 @@ struct AssistantSettings: View {
         let until = Date().addingTimeInterval(5)
         while answer.isEmpty && Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
     }
-    expect(String(data: answer, encoding: .utf8)?.contains(#""id":7"#) == true, "assistant: the socket answers")
+    expect(String(data: answer, encoding: .utf8)?.contains(#""id":7"#) == true && knocks == 1, "assistant: the socket answers, after asking John once")
+    let signed = Caller(name: "Claude", key: "TEAM:com.example.claude"), copy = Caller(name: "Claude", key: nil)
+    live.apps = [:]; knocks = 0
+    expect(live.admit(signed) && live.admit(signed) && knocks == 1 && live.apps[signed.key!] == "Claude", "assistant: a signed app is asked about once")
+    expect(live.admit(copy) && live.admit(copy) && knocks == 3, "assistant: an unsigned app is asked every time, even with a known name")
+    live.ask = { _, _ in knocks += 1; return false }
+    let other = Caller(name: "Other", key: "TEAM2:other")
+    expect(!live.admit(other) && !live.admit(other) && knocks == 5 && live.apps[other.key!] == nil, "assistant: a no is not kept, so it asks again")
+    expect(signature(getpid()).key == nil || signature(getpid()).key?.contains(":") == true, "assistant: reading a signature doesn't fail")
     live.stop()
     expect(!FileManager.default.fileExists(atPath: sock), "assistant: the socket is removed when it stops")
 }

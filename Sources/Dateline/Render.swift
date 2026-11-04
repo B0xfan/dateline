@@ -187,7 +187,7 @@ private final class ShotWindow: NSWindow {
         }
         do {  // Phase 9 (approved mockup section 4): Settings, Assistant, with two things Claude did, the newest one undoable.
             let a = AppState(store: Store(sample: true), today: today), ai = Assistant.test(a)
-            ai.on = true
+            ai.on = true; ai.apps = ["Q6L2SF6YDW:com.anthropic.claudefordesktop": "Claude"]
             let moved = Assistant.Line(when: today.addingTimeInterval(-25 * 60), text: "Moved \"Dentist\" to Thu 4:00 PM")
             ai.log = [moved, Assistant.Line(when: today.addingTimeInterval(-40 * 60), text: "Looked at Nov 2 to Nov 8")]
             ai.undos[moved.id] = { nil }
