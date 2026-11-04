@@ -35,8 +35,9 @@ public struct Item: Identifiable, Equatable {
     public var alerts: [Date] = []  // when the calendar's own alerts go off (Phase 6 plays the picked sound with them)
     public var link = ""  // the event's own web link (Phase 8: a pasted Zoom, Meet or Teams link goes here)
     public var files: [Attach] = []  // Phase 8 attachments, only on calendars of an account signed in through Dateline
+    public var uid = ""  // the event's own id in the calendar, the same on the Mac and the iPhone (step 2: the extras sync by it); "" when unknown
     public var shownTitle: String { emoji.isEmpty ? title : emoji + " " + title }
-    public init(id: String, calendarID: String, title: String, start: Date, end: Date, allDay: Bool, place: String, notes: String, showAs: ShowAs, emoji: String = "", color: Int? = nil, tags: [String] = [], rich: Data? = nil, geo: Geo? = nil, noTravel: Bool = false, leave: Bool? = nil, from: From = .here, alerts: [Date] = [], link: String = "", files: [Attach] = []) { self.id = id; self.calendarID = calendarID; self.title = title; self.start = start; self.end = end; self.allDay = allDay; self.place = place; self.notes = notes; self.showAs = showAs; self.emoji = emoji; self.color = color; self.tags = tags; self.rich = rich; self.geo = geo; self.noTravel = noTravel; self.leave = leave; self.from = from; self.alerts = alerts; self.link = link; self.files = files }
+    public init(id: String, calendarID: String, title: String, start: Date, end: Date, allDay: Bool, place: String, notes: String, showAs: ShowAs, emoji: String = "", color: Int? = nil, tags: [String] = [], rich: Data? = nil, geo: Geo? = nil, noTravel: Bool = false, leave: Bool? = nil, from: From = .here, alerts: [Date] = [], link: String = "", files: [Attach] = [], uid: String = "") { self.id = id; self.uid = uid; self.calendarID = calendarID; self.title = title; self.start = start; self.end = end; self.allDay = allDay; self.place = place; self.notes = notes; self.showAs = showAs; self.emoji = emoji; self.color = color; self.tags = tags; self.rich = rich; self.geo = geo; self.noTravel = noTravel; self.leave = leave; self.from = from; self.alerts = alerts; self.link = link; self.files = files }
 }
 
 // One attached file. `id`: iCloud's managed id or the Google Drive file id (nil = a plain link someone else put in the event).
@@ -160,6 +161,9 @@ public final class Store: ObservableObject {
     // Phase 8: accounts signed in inside Dateline (Accounts.swift).
     @Published public var accounts: [Account] = [] { didSet { save(accounts, "accounts") } }
     public let accData = AccData()
+    // iPhone step 2: Dateline's own extras shared through the person's iCloud (SyncLogic.swift). nil = no sync (every test and picture, unless a check gives it a pretend cloud).
+    public var cloud: CloudStore?
+    public var sync = SyncState()
     public var onError: ((String) -> Void)?  // a change that failed on its way to an account
 
     public convenience init(sample: Bool) { self.init(source: sample ? SampleCalendar() : AppleCalendar()) }
@@ -167,11 +171,12 @@ public final class Store: ObservableObject {
     public init(source: CalendarSource) {
         self.source = source
         source.shownElsewhere = { [weak self] account, calDAV in self?.shownHere(account, calDAV: calDAV) ?? false }
-        if let s = source as? SampleCalendar { loadSample(s); listenForChanges(); return }
-        // Only when the saved copy reads back: a copy that fails to read must not be overwritten with an empty one.
-        if let v: [CalSet] = load("calendarSets") { sets = v }
-        if let v: [String] = load("recentEmoji") { recentEmoji = v }
-        if let v: [String: Extra] = load("eventExtras") { extras = v }
+        if let s = source as? SampleCalendar { sync.settings = .memory; loadSample(s); listenForChanges(); return }
+        // Only when the saved copy reads back: a copy that fails to read must not be overwritten with an empty one (nor synced: see SyncState.skip).
+        if let v: [CalSet] = load("calendarSets") { sets = v } else if UserDefaults.standard.object(forKey: "calendarSets") != nil { sync.skip.insert("sets") }
+        if let v: [String] = load("recentEmoji") { recentEmoji = v } else if UserDefaults.standard.object(forKey: "recentEmoji") != nil { sync.skip.insert("emoji") }
+        if let v: [String: Extra] = load("eventExtras") { extras = v } else if UserDefaults.standard.object(forKey: "eventExtras") != nil { sync.skip.insert("e/") }
+        startSync(ICloudKVS())
         if let v: [String: A4Link] = load("a4Links") { a4Links = v }
         loadAccounts()
         listenForChanges()
@@ -191,9 +196,10 @@ public final class Store: ObservableObject {
     public func a4HasRead(_ id: String) -> Bool { isAcc(id) ? accCal(id).map { accData.loaded.contains($0.0.id) } == true : canRead }
 
     // Dateline's own saved data. Sample mode (every test and picture) keeps it in memory only.
-    private func save<T: Encodable>(_ v: T, _ key: String) {
+    func save<T: Encodable>(_ v: T, _ key: String) {
         guard access != .sample, let data = try? JSONEncoder().encode(v) else { return }
         UserDefaults.standard.set(data, forKey: key)
+        if ["eventExtras", "calendarSets", "recentEmoji"].contains(key) { syncSoon() }
     }
     public func load<T: Decodable>(_ key: String) -> T? {
         UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
@@ -215,10 +221,10 @@ public final class Store: ObservableObject {
     public func usedEmoji(_ e: String) { recentEmoji = Array(([e] + recentEmoji.filter { $0 != e }).prefix(16)) }
 
     // A repeating event's occurrences share their extras.
-    private func key(_ id: String) -> String { String(resolve(id).split(separator: "|").first ?? "") }
+    func key(_ id: String) -> String { String(resolve(id).split(separator: "|").first ?? "") }
 
     public func decorated(_ it: Item) -> Item {
-        guard let x = extras[key(it.id)] else { return it }
+        guard let x = extras[key(it.id)] ?? (it.uid.isEmpty ? nil : extras["~" + syncUID(it.uid)]) else { return it }  // "~": extras that came from the other device before this one knew the event
         var it = it
         it.emoji = x.emoji; it.color = x.color; it.tags = x.tags
         it.noTravel = x.noTravel ?? false; it.leave = x.leave; it.from = x.from ?? .here
@@ -229,7 +235,18 @@ public final class Store: ObservableObject {
     private func setExtras(_ it: Item) {
         let x = Extra(emoji: it.emoji, color: it.color, tags: it.tags, rich: it.rich, plain: it.rich == nil ? nil : it.notes,
                       noTravel: it.noTravel ? true : nil, leave: it.leave, from: it.from == .here ? nil : it.from)
-        if extras[key(it.id)] != (x.isEmpty ? nil : x) { extras[key(it.id)] = x.isEmpty ? nil : x }
+        var ex = extras
+        ex[key(it.id)] = x.isEmpty ? nil : x
+        if !it.uid.isEmpty { ex["~" + syncUID(it.uid)] = nil; sync.memo.uids[key(it.id)] = syncUID(it.uid) }
+        if ex != extras { extras = ex }
+    }
+
+    // Removes the event's extras, under either key.
+    private func dropExtras(_ it: Item) {
+        var ex = extras
+        ex[key(it.id)] = nil
+        if !it.uid.isEmpty { ex["~" + syncUID(it.uid)] = nil }
+        if ex != extras { extras = ex }
     }
 
     public func calendar(_ id: String) -> CalInfo? { calendars.first { $0.id == id } }
@@ -268,6 +285,7 @@ public final class Store: ObservableObject {
         defaultCalendarID = source.defaultCalendar().flatMap { d in d.elsewhere ? accInfos.first { $0.title == d.title }?.id : d.id }
         pastStale = pastCache != nil
         fetch()
+        syncSoon()  // calendar sets need the calendars to match by name
     }
 
     public func refetch() { fetch() }
@@ -386,14 +404,14 @@ public final class Store: ObservableObject {
         if isAcc(it.calendarID) {
             let oneTime = !accRepeats(it)
             if let f = accDelete(it, series: series) { return f }
-            if oneTime || series { extras[key(it.id)] = nil }
+            if oneTime || series { dropExtras(it) }
             fetch(); return nil
         }
         switch source.delete(current(it), series: series) {
         case .failure(let f): return f
         case .success(let oneTime):
             // shortcut: extras of events deleted in Apple Calendar stay saved; clean them up if the saved data ever grows large.
-            if oneTime || series { extras[key(it.id)] = nil }  // undo copies them back from `it`
+            if oneTime || series { dropExtras(it) }  // undo copies them back from `it`
             fetch()
             return nil
         }

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- iPhone step 2: the same iCloud key-value store as the Mac app (App/Dateline.entitlements), named in full so it stays shared if the phone ever gets its own app ID -->
+    <key>com.apple.developer.ubiquity-kvstore-identifier</key><string>$(TeamIdentifierPrefix)com.johnhesch.dateline</string>
+</dict>
+</plist>

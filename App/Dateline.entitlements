@@ -5,6 +5,8 @@
     <key>com.apple.application-identifier</key><string>LJZ32VB25F.com.johnhesch.dateline</string>
     <key>com.apple.developer.team-identifier</key><string>LJZ32VB25F</string>
     <key>com.apple.developer.usernotifications.communication</key><true/>
+    <!-- iPhone step 2: Dateline's extras shared with the iPhone through iCloud key-value storage; the iPhone app names the same store -->
+    <key>com.apple.developer.ubiquity-kvstore-identifier</key><string>LJZ32VB25F.com.johnhesch.dateline</string>
     <!-- hardened runtime (needed for Apple's check): the Mac data Dateline asks for -->
     <key>com.apple.security.personal-information.calendars</key><true/>
     <key>com.apple.security.personal-information.addressbook</key><true/>

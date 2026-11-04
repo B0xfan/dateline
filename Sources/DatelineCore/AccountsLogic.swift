@@ -342,7 +342,7 @@ public func davItems(_ c: AccCal, _ res: [String: DavRes], from a: Date, to b: D
                 let at = e.recurrenceID ?? d
                 out.append(Item(id: "\(c.id)/\(e.uid)" + (repeating ? "|\(Int(at.timeIntervalSince1970))" : ""), calendarID: c.id, title: e.title,
                                 start: d, end: d.addingTimeInterval(len), allDay: e.allDay, place: e.place, notes: e.notes, showAs: e.free ? .free : .busy,
-                                alerts: e.alarms.map { d.addingTimeInterval($0) }, link: e.url, files: e.files))
+                                alerts: e.alarms.map { d.addingTimeInterval($0) }, link: e.url, files: e.files, uid: e.uid))
             }
         }
     }
@@ -375,7 +375,7 @@ public func googleItem(_ c: AccCal, _ j: [String: Any]) -> GEv? {
     return GEv(iid: iid, master: master, etag: j["etag"] as? String,
                item: Item(id: id, calendarID: c.id, title: j["summary"] as? String ?? "", start: a, end: b, allDay: allDay, place: j["location"] as? String ?? "",
                           notes: j["description"] as? String ?? "", showAs: (j["transparency"] as? String) == "transparent" ? .free : .busy,
-                          alerts: allDay ? [] : mins.map { a.addingTimeInterval(-Double($0 * 60)) }, link: link, files: files))
+                          alerts: allDay ? [] : mins.map { a.addingTimeInterval(-Double($0 * 60)) }, link: link, files: files, uid: master ?? iid))
 }
 
 // `known`: the link the event already had from Google (its Meet link), which is never copied into the notes.

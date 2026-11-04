@@ -6,7 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     @ObservedObject private var license = License.shared
-    @State private var sync = true  // shortcut: shows the step 2 switch; it saves and syncs nothing until the iCloud sync is built
+    @AppStorage("syncExtras") private var sync = true  // step 2: Store.syncOn reads it; the Mac has no switch, so it syncs always
 
     var body: some View {
         let accounts = Dictionary(grouping: store.calendars, by: \.account).map { (name: $0.key, count: $0.value.count) }.sorted { $0.name < $1.name }
@@ -29,6 +29,7 @@ struct SettingsView: View {
                 }
                 Section {
                     Toggle("Emoji, colors, tags, notes, sets", isOn: $sync).listRowBackground(T.bg2)
+                        .onChange(of: sync) { _, on in if on { store.syncNow() } }
                 } header: { Text("Sync with your Mac") } footer: { Text("Through your own iCloud. No Dateline server.") }
                 Section("Dateline") {
                     Button { app.showUnlock = true } label: { line(nil, .clear, statusName, statusDetail) }.buttonStyle(.plain).listRowBackground(T.bg2)

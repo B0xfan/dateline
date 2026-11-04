@@ -1,0 +1,318 @@
+// iPhone step 2 (John 2026-11-04): Dateline's own extras (emoji, colors, tags, formatted notes, travel choices), calendar sets, recent emoji,
+// alert sounds and Look settings, shared between the Mac and the iPhone through the person's own iCloud. No Dateline server.
+// The events themselves already sync through iCloud and Google; only what Dateline adds on top goes here.
+// Route: iCloud key-value storage, because it holds the data: John's Mac held 0 event extras and 2 KB of sets on 2026-11-04, and the self-check measures 500 formatted notes at a small part of its 1 MB.
+// shortcut: everything in one compressed 1 MB value; move to CloudKit if `problem` ever reports it full.
+import Foundation
+import CryptoKit
+
+/// Where the shared copy lives: the real iCloud, or a pretend one in memory for every check (as SampleCalendar stands in for real calendars).
+@MainActor
+public protocol CloudStore: AnyObject {
+    func data() -> Data?
+    func write(_ d: Data)
+    func onChange(_ act: @escaping @MainActor () -> Void)  // the other device's copy arrived
+}
+
+@MainActor
+public final class ICloudKVS: CloudStore {
+    private let kv = NSUbiquitousKeyValueStore.default
+    private var observer: Any?
+    private static let key = "sync.v1"
+    public init() { kv.synchronize() }
+    public func data() -> Data? { kv.data(forKey: Self.key) }
+    public func write(_ d: Data) { kv.set(d, forKey: Self.key) }
+    public func onChange(_ act: @escaping @MainActor () -> Void) {
+        observer = NotificationCenter.default.addObserver(forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification, object: kv, queue: .main) { _ in Task { @MainActor in act() } }
+    }
+}
+
+@MainActor
+public final class MemoryCloud: CloudStore {
+    public var raw: Data?
+    public var writes = 0
+    public init() {}
+    public func data() -> Data? { raw }
+    public func write(_ d: Data) { raw = d; writes += 1 }
+    public func onChange(_ act: @escaping @MainActor () -> Void) {}
+}
+
+/// One record in the shared copy. `v` nil: removed on purpose here (a real delete, never a missing or unreadable value).
+public struct SyncRec: Codable, Equatable { public var v: Data?; public var t: Double }
+/// What this device and the shared copy last agreed on, per record: a fingerprint of the value and when it changed.
+public struct Seen: Codable, Equatable { public var h: String?; public var t: Double }
+
+func fingerprint(_ d: Data?) -> String? { d.map { SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined() } }
+// Records: "e/<uid>" one event's extras, "sets", "emoji", "s/<setting>". Every event record is one kind.
+func syncKind(_ key: String) -> String { key.hasPrefix("e/") ? "e/" : key }
+/// Google's own id and Apple's copy of it ("…@google.com") are the same event.
+public func syncUID(_ uid: String) -> String { uid.hasSuffix("@google.com") ? String(uid.dropLast(11)) : uid }
+
+/// Merges this device's records with the shared copy, record by record, the newest change winning.
+/// `local`: what this device holds now, empty values left out. A kind this device holds nothing of (new, emptied or unread) never removes anything,
+/// and a record this device never agreed on loses to the one already in iCloud: an empty or new device can only receive.
+/// Returns what to change here (nil value = remove), the shared copy to write (nil = nothing new for it) and the new agreements.
+public func syncMerge(local: [String: Data], seen: [String: Seen], remote: [String: SyncRec], now: Double) -> (here: [String: Data?], cloud: [String: SyncRec]?, seen: [String: Seen]) {
+    let present = Set(local.keys.map(syncKind))
+    var here: [String: Data?] = [:], cloud = remote, pushed = false, agreed = seen
+    for k in Set(local.keys).union(seen.keys).union(remote.keys) {
+        let lv = local[k], lh = fingerprint(lv), s = seen[k], theirs = remote[k]
+        var mine: SyncRec?
+        if let s, s.h == lh { mine = SyncRec(v: lv, t: s.t) }  // unchanged since the last agreement
+        else if lv != nil { mine = SyncRec(v: lv, t: s == nil && theirs != nil ? 0 : now) }  // changed here; first contact: iCloud's copy comes first
+        else if s != nil, present.contains(syncKind(k)) { mine = SyncRec(v: nil, t: now) }  // removed here
+        if let m = mine, theirs.map({ m.t > $0.t }) ?? true {
+            if theirs != m { cloud[k] = m; pushed = true }
+            agreed[k] = Seen(h: lh, t: m.t)
+        } else if let r = theirs {
+            if fingerprint(r.v) != lh { here.updateValue(r.v, forKey: k) }
+            agreed[k] = Seen(h: fingerprint(r.v), t: r.t)
+        }
+    }
+    return (here, pushed ? cloud : nil, agreed)
+}
+
+/// Look and alert sound choices: the real saved settings, or a dictionary in memory for the checks and pictures.
+public struct SyncSettings {
+    public static let keys = ["lookAppearance", "lookFont", "lookScale", "lookPack", "lookHour", "alertSounds"]
+    public var read: () -> [String: Any]
+    public var write: (String, Any) -> Void
+    public static var real: SyncSettings {
+        SyncSettings(read: { Dictionary(uniqueKeysWithValues: keys.compactMap { k in UserDefaults.standard.object(forKey: k).map { (k, $0) } }) },  // only what was chosen: an untouched default is never sent
+                     write: { k, v in UserDefaults.standard.set(v, forKey: k); Look.reload(); Alerts.reloadSounds() })
+    }
+    public static var memory: SyncSettings {
+        final class Box { var d: [String: Any] = [:] }
+        let b = Box()
+        return SyncSettings(read: { b.d }, write: { b.d[$0] = $1 })
+    }
+}
+
+/// Saved on this device between launches.
+public struct SyncMemo: Codable, Equatable {
+    var seen: [String: Seen] = [:]
+    var uids: [String: String] = [:]  // this device's extras key -> the event's uid
+    var alias: [String: String] = [:]  // a calendar id here -> the other device's name for it, so the name goes back unchanged
+}
+
+public struct SyncState {
+    public var on: Bool?  // set by the checks; nil = the "Sync with your Mac" switch (on unless turned off)
+    public var settings = SyncSettings.real
+    public var clock: () -> Double = { Date().timeIntervalSince1970 }
+    public var problem: String?  // the shared copy is full or unreadable: nothing was changed
+    var memo = SyncMemo()
+    var skip: Set<String> = []  // kinds whose saved copy did not read on this device: left out entirely
+    var scanned: Date?
+    var soon: Task<Void, Never>?
+    var ticker: Task<Void, Never>?
+    public init() {}
+}
+
+extension Store {
+    public var syncOn: Bool { sync.on ?? (UserDefaults.standard.object(forKey: "syncExtras") as? Bool ?? true) }
+
+    func startSync(_ c: CloudStore) {
+        cloud = c
+        if let v: SyncMemo = load("syncMemo") { sync.memo = v }  // unread: every record counts as first contact, so iCloud's copy wins and nothing is removed
+        c.onChange { [weak self] in self?.syncNow() }
+        // Look and alert sounds are changed outside the store: a pass every minute picks them up.
+        sync.ticker = Task { [weak self] in
+            while !Task.isCancelled { try? await Task.sleep(nanoseconds: 60_000_000_000); self?.syncNow() }
+        }
+    }
+
+    // Soon after a change here, so a burst of changes is one pass.
+    public func syncSoon() {
+        guard cloud != nil, access != .sample, sync.soon == nil else { return }
+        sync.soon = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            self?.sync.soon = nil
+            self?.syncNow()
+        }
+    }
+
+    public func syncNow() {
+        guard let cloud, syncOn else { return }
+        var remote: [String: SyncRec] = [:]
+        if let raw = cloud.data() {
+            guard let d = try? (raw as NSData).decompressed(using: .zlib) as Data, let r = try? JSONDecoder().decode([String: SyncRec].self, from: d) else {
+                sync.problem = "The iCloud copy of Dateline's extras can't be read."; return  // never written over
+            }
+            remote = r
+        }
+        let fixed = sets.map(localSet)  // set calendars that only now can be matched by name
+        if fixed != sets { sets = fixed }
+        let skipped = { (k: String) in self.sync.skip.contains(syncKind(k)) }
+        let m = syncMerge(local: syncRecords().filter { !skipped($0.key) }, seen: sync.memo.seen.filter { !skipped($0.key) }, remote: remote.filter { !skipped($0.key) }, now: sync.clock())
+        if let out = m.cloud {
+            let full = remote.merging(out) { $1 }
+            guard let json = try? JSONEncoder().encode(full), let packed = try? (json as NSData).compressed(using: .zlib) as Data else { return }
+            guard packed.count < 900_000 else { sync.problem = "Dateline's extras are too big for iCloud's 1 MB."; return }  // nothing applied or agreed, so nothing is lost
+            cloud.write(packed)
+        }
+        sync.problem = nil
+        applyHere(m.here)
+        var memo = sync.memo
+        memo.seen = m.seen.merging(sync.memo.seen.filter { skipped($0.key) }) { a, _ in a }
+        memo.uids = memo.uids.filter { extras[$0.key] != nil }
+        if memo != sync.memo { sync.memo = memo; save(memo, "syncMemo") }
+    }
+
+    // The event a key belongs to, by its uid: "~uid" came from the other device, "calendar/uid" is an account's event, a plain key is looked up.
+    func uidFor(_ k: String) -> String? {
+        if k.hasPrefix("~") { return String(k.dropFirst()) }
+        if let i = k.firstIndex(of: "/") { return syncUID(String(k[k.index(after: i)...])) }
+        return sync.memo.uids[k]
+    }
+
+    private func names(_ infos: [CalInfo], _ id: String) -> String { sync.memo.alias[id] ?? infos.first { $0.id == id }.map { $0.account + "\u{1F}" + $0.title } ?? id }
+    private func localID(_ p: String, _ infos: [CalInfo]) -> String {
+        if infos.contains(where: { $0.id == p }) { return p }
+        let parts = p.components(separatedBy: "\u{1F}")
+        guard parts.count == 2 else { return p }
+        let same = infos.filter { $0.title == parts[1] }
+        // The iPhone can call an account something else ("Gmail" for the Mac's address): then the title alone, when only one calendar has it. Else kept as is.
+        guard let c = infos.first(where: { $0.account == parts[0] && $0.title == parts[1] }) ?? (same.count == 1 ? same[0] : nil) else { return p }
+        sync.memo.alias[c.id] = p
+        return c.id
+    }
+    private var calInfos: [CalInfo] { source.allCalendars() + calendars }
+    private func localSet(_ s: CalSet) -> CalSet {
+        let c = calInfos
+        var s = s
+        s.calendars = s.calendars.map { localID($0, c) }; s.defaultCalendar = s.defaultCalendar.map { localID($0, c) }; s.lists = s.lists?.map { localID($0, lists) }
+        return s
+    }
+
+    // What this device holds now, as records. Empty values are left out: "nothing here" is never sent as a change.
+    func syncRecords() -> [String: Data] {
+        let enc = JSONEncoder()
+        enc.outputFormatting = .sortedKeys
+        if canRead, extras.keys.contains(where: { uidFor($0) == nil }), sync.scanned.map({ Date().timeIntervalSince($0) > 600 }) ?? true {  // extras saved before step 2: their events' uids, once
+            sync.scanned = Date()
+            let (a, b) = Self.accWindow()
+            for it in source.events(from: a, to: b) where !it.uid.isEmpty && extras[key(it.id)] != nil { sync.memo.uids[key(it.id)] = syncUID(it.uid) }
+        }
+        var out: [String: Data] = [:]
+        // One event can have two keys (the Mac's copy and an account's): the account's wins, then the plain one, then "~".
+        func rank(_ k: String) -> Int { k.contains("/") ? 0 : k.hasPrefix("~") ? 2 : 1 }
+        for k in extras.keys.sorted(by: { (rank($1), $1) < (rank($0), $0) }) {
+            if let uid = uidFor(k), let x = extras[k], let d = try? enc.encode(x) { out["e/" + uid] = d }
+        }
+        let c = calInfos
+        let portable = sets.map { s -> CalSet in
+            var s = s
+            s.calendars = s.calendars.map { names(c, $0) }; s.defaultCalendar = s.defaultCalendar.map { names(c, $0) }; s.lists = s.lists?.map { names(lists, $0) }
+            return s
+        }
+        if !sets.isEmpty, let d = try? enc.encode(portable) { out["sets"] = d }
+        if !recentEmoji.isEmpty, let d = try? enc.encode(recentEmoji) { out["emoji"] = d }
+        for (k, v) in sync.settings.read() where JSONSerialization.isValidJSONObject([v]) { if let d = try? JSONSerialization.data(withJSONObject: v, options: [.sortedKeys, .fragmentsAllowed]) { out["s/" + k] = d } }
+        return out
+    }
+
+    // The other device's newer records, written here. A value that does not read is skipped, never written over a good one.
+    func applyHere(_ here: [String: Data?]) {
+        guard !here.isEmpty else { return }
+        let dec = JSONDecoder()
+        var ex = extras
+        for (k, v) in here {
+            if k.hasPrefix("e/") {
+                let uid = String(k.dropFirst(2)), x = v.flatMap { try? dec.decode(Extra.self, from: $0) }
+                if v != nil && x == nil { continue }
+                let keys = Set(ex.keys.filter { uidFor($0) == uid } + sync.memo.uids.filter { $0.value == uid }.map(\.key))  // also a key emptied here, so it comes back under its own name
+                for kk in keys.isEmpty ? ["~" + uid] : keys { ex[kk] = x }
+            } else if k == "sets", let v, let s = try? dec.decode([CalSet].self, from: v) {
+                sets = s.map(localSet)
+            } else if k == "emoji", let v, let e = try? dec.decode([String].self, from: v) {
+                recentEmoji = e
+            } else if k.hasPrefix("s/"), SyncSettings.keys.contains(String(k.dropFirst(2))), let v, let val = try? JSONSerialization.jsonObject(with: v, options: .fragmentsAllowed) {
+                sync.settings.write(String(k.dropFirst(2)), val)
+            }
+        }
+        if ex != extras { extras = ex }
+        refetch()  // the views pick up the new extras
+    }
+}
+
+// Two stores on the sample calendars stand in for the Mac and the iPhone, sharing a pretend iCloud. Nothing real is read or written.
+@MainActor public func syncSelftest(_ expect: (Bool, String) -> Void) {
+    // The merge alone.
+    let a = Data("a".utf8), b = Data("b".utf8)
+    var m = syncMerge(local: [:], seen: [:], remote: ["e/1": SyncRec(v: a, t: 5)], now: 10)
+    expect(m.here["e/1"] == .some(a) && m.cloud == nil, "sync: a new device takes iCloud's copy and sends nothing")
+    m = syncMerge(local: [:], seen: ["e/1": Seen(h: fingerprint(a), t: 5)], remote: ["e/1": SyncRec(v: a, t: 5)], now: 10)
+    expect(m.here.isEmpty && m.cloud == nil, "sync: an emptied device removes nothing and gets it back")
+    m = syncMerge(local: ["e/2": b], seen: ["e/1": Seen(h: fingerprint(a), t: 5), "e/2": Seen(h: fingerprint(b), t: 5)], remote: ["e/1": SyncRec(v: a, t: 5), "e/2": SyncRec(v: b, t: 5)], now: 10)
+    expect(m.cloud?["e/1"] == SyncRec(v: nil, t: 10), "sync: an event's extras removed here are removed in iCloud")
+    m = syncMerge(local: ["e/1": b], seen: [:], remote: ["e/1": SyncRec(v: a, t: 5)], now: 10)
+    expect(m.here["e/1"] == .some(a) && m.cloud == nil, "sync: on first contact iCloud's copy wins over a different one here")
+
+    // The Mac and an empty iPhone.
+    var t = 1000.0
+    let cloud = MemoryCloud()
+    let mac = Store(source: SampleCalendar()), phone = Store(source: SampleCalendar(prefix: "p"))  // the iPhone's event ids differ from the Mac's; the uids match
+    phone.extras = [:]; phone.sets = []; phone.recentEmoji = []
+    mac.recentEmoji = ["🏠", "🦷"]
+    mac.sync.settings.write("lookFont", "Serif")
+    for s in [mac, phone] { s.sync.on = true; s.sync.clock = { t }; s.cloud = cloud }
+    let macExtras = mac.extras, macSets = mac.sets
+    func find(_ s: Store, _ title: String) -> Item? { s.between(addDays(Date(), -60), addDays(Date(), 60)).first { $0.title == title } }
+
+    phone.syncNow()  // the empty phone goes first
+    expect(cloud.raw == nil, "sync: an empty iPhone writes nothing to iCloud")
+    mac.syncNow()
+    expect(cloud.raw != nil && mac.extras == macExtras && mac.sets == macSets, "sync: the Mac's first sync sends its extras and keeps them all")
+    t += 10; phone.syncNow()
+    expect(find(phone, "Dentist")?.emoji == "🦷" && find(phone, "Marco at the condo")?.tags == ["Condo", "Visitors"], "sync: the iPhone gets the Mac's emoji and tags")
+    expect(phone.sets.map(\.name) == macSets.map(\.name) && phone.sets.first?.calendars == macSets.first?.calendars, "sync: the iPhone gets the calendar sets, matched to its calendars")
+    expect(phone.recentEmoji == ["🏠", "🦷"] && phone.sync.settings.read()["lookFont"] as? String == "Serif", "sync: recent emoji and Look settings arrive")
+    var w = cloud.writes
+    mac.syncNow(); phone.syncNow(); mac.syncNow()
+    expect(cloud.writes == w && mac.extras == macExtras, "sync: once both agree nothing more is written")
+
+    // An empty side never erases the other.
+    phone.extras = [:]; phone.sets = []
+    t += 10; phone.syncNow(); mac.syncNow()
+    expect(mac.extras == macExtras && mac.sets == macSets, "sync: an iPhone that lost its extras erases nothing on the Mac")
+    expect(find(phone, "Dentist")?.emoji == "🦷" && phone.sets.count == macSets.count, "sync: and gets them back")
+    mac.extras = [:]
+    t += 10; mac.syncNow()
+    expect(mac.extras == macExtras, "sync: a Mac that lost its extras gets them back from iCloud")
+
+    // Newest change wins, per event, also when iCloud kept only the other device's whole copy.
+    let before = cloud.raw
+    t += 10
+    if var d = find(mac, "Dentist") { d.emoji = "😬"; mac.update(d) }
+    if var c = find(mac, "Marco at the condo") { c.color = 5; mac.update(c) }
+    mac.syncNow()
+    cloud.raw = before  // the iPhone wrote before the Mac's copy reached it
+    t += 10
+    if var d = find(phone, "Dentist") { d.emoji = "😁"; phone.update(d) }
+    phone.syncNow(); mac.syncNow(); phone.syncNow()
+    expect(find(mac, "Dentist")?.emoji == "😁" && find(phone, "Dentist")?.emoji == "😁", "sync: the newer change to the same event wins on both")
+    expect(find(phone, "Marco at the condo")?.color == 5 && find(mac, "Marco at the condo")?.color == 5, "sync: the Mac's change to another event is not lost")
+    t += 10
+    if var d = find(phone, "Dentist") { d.emoji = ""; phone.update(d) }
+    phone.syncNow(); mac.syncNow()
+    expect(find(mac, "Dentist")?.emoji == "" && find(mac, "Marco at the condo")?.tags == ["Condo", "Visitors"], "sync: an emoji removed on the iPhone is removed on the Mac, nothing else")
+
+    // A copy that can't be read is left alone; the switch off sends nothing.
+    let good = cloud.raw, junk = Data("junk".utf8)
+    cloud.raw = junk; w = cloud.writes
+    let held = mac.extras
+    mac.syncNow()
+    expect(cloud.raw == junk && cloud.writes == w && mac.extras == held && mac.sync.problem != nil, "sync: an unreadable iCloud copy is never written over and changes nothing")
+    cloud.raw = good; phone.sync.on = false
+    if var d = find(phone, "Dentist") { d.emoji = "🦷"; phone.update(d) }
+    w = cloud.writes; t += 10; phone.syncNow()
+    expect(cloud.writes == w, "sync: with the switch off nothing is sent")
+
+    // Size: 500 events with formatted notes, against iCloud's 1 MB.
+    let rtf = { (i: Int) in Data(#"{\rtf1\ansi\ansicpg1252\cocoartf2822 \cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fswiss\fcharset0 Helvetica-Bold;}{\colortbl;\red255\green255\blue255;}{\*\expandedcolortbl;;}\pard\tx560\tx1120\pardirnatural\partightenfactor0 \f1\b\fs26 \cf0 Event \#(i) agenda\f0\b0 \ Bring the papers for visit \#(i), call \#(i * 7919 % 10007) first, room \#(i % 37). Ask about the \#(i * 31 % 97) open items and the next date.}"#.utf8) }
+    var big: [String: SyncRec] = [:]
+    for i in 0..<500 { big["e/uid-\(i)-\(UUID().uuidString)"] = SyncRec(v: try? JSONEncoder().encode(Extra(emoji: "🦷", tags: ["Tag \(i % 9)"], rich: rtf(i), plain: "Event \(i) agenda")), t: Double(i)) }
+    let size = (try? (JSONEncoder().encode(big) as NSData).compressed(using: .zlib).count) ?? .max
+    print("sync size: 500 events with formatted notes = \(size / 1024) KB of iCloud's 1024 KB")
+    expect(size < 450_000, "sync: 500 formatted notes fit in half of iCloud's 1 MB (\(size / 1024) KB)")
+}

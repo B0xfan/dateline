@@ -19,6 +19,7 @@ public enum Alerts {
     public static var sound = d.dictionary(forKey: "alertSounds") as? [String: String] ?? [:] { didSet { save(sound, "alertSounds") } }
 
     private static func save(_ v: Any, _ key: String) { if Look.saves { d.set(v, forKey: key) } }
+    public static func reloadSounds() { sound = d.dictionary(forKey: "alertSounds") as? [String: String] ?? [:] }  // after the other device's choice arrived (step 2 sync)
 
     public static func covers(_ c: CalInfo) -> Bool { fullCalendars?.contains(c.id) ?? (c.title.caseInsensitiveCompare("Work") == .orderedSame) }
     public static func soundName(_ kind: String) -> String { sound[kind] ?? kinds.first { $0.0 == kind }!.2 }

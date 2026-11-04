@@ -119,7 +119,7 @@ public final class AppleCalendar: CalendarSource {
                     geo: e.structuredLocation?.geoLocation.map { Geo(lat: $0.coordinate.latitude, lon: $0.coordinate.longitude) },
                     alerts: (e.alarms ?? []).filter { $0.proximity == .none && isShownAlarm($0) && !(e.hasRecurrenceRules && $0.absoluteDate != nil) }
                         .map { $0.absoluteDate ?? e.startDate.addingTimeInterval($0.relativeOffset) },
-                    link: e.url?.absoluteString ?? "")
+                    link: e.url?.absoluteString ?? "", uid: e.calendarItemExternalIdentifier ?? "")
     }
 
     private func event(_ it: Item, now: Item? = nil) -> EKEvent? {
@@ -291,7 +291,8 @@ public final class SampleCalendar: CalendarSource {
                          CalInfo(id: "r-condo", title: "Condo", account: "iCloud (sample)", color: Palette.family, writable: true),
                          CalInfo(id: "r-groc", title: "Groceries", account: "iCloud (sample)", color: Palette.personal, writable: true)]
 
-    public init() {
+    // `prefix`: the start of each made-up event's id, so a check can stand in for a second device whose ids differ (as the iPhone's do); the uids stay the same.
+    public init(prefix: String = "s") {
         let today = cal.startOfDay(for: sampleToday ?? Date())
         mon = addDays(today, -((cal.component(.weekday, from: today) + 5) % 7))  // always Monday, whatever week start is saved, so samples match the mockups
         let mon = mon
@@ -299,8 +300,8 @@ public final class SampleCalendar: CalendarSource {
         var made: [Item] = []
         func ev(_ c: String, _ t: String, _ d: Int, _ h: Int, _ m: Int, _ mins: Int, _ s: ShowAs = .busy, place: String = "", notes: String = "",
                 emoji: String = "", color: Int? = nil, tags: [String] = [], geo: Geo? = nil) {
-            made.append(Item(id: "s\(made.count + 1)", calendarID: c, title: t, start: at(d, h, m), end: at(d, h, m + mins), allDay: false, place: place, notes: notes, showAs: s,
-                             emoji: emoji, color: color, tags: tags, geo: geo))
+            made.append(Item(id: "\(prefix)\(made.count + 1)", calendarID: c, title: t, start: at(d, h, m), end: at(d, h, m + mins), allDay: false, place: place, notes: notes, showAs: s,
+                             emoji: emoji, color: color, tags: tags, geo: geo, uid: "sample-\(made.count + 1)"))
         }
         ev("personal", "Lunch with Sam", -14, 12, 30, 60, place: "Casa Luna")
         ev("work", "Lunch with the team", -27, 12, 0, 60, place: "Office")
@@ -318,7 +319,7 @@ public final class SampleCalendar: CalendarSource {
         ev("personal", "Call with Lee", 4, 16, 0, 60)
         ev("personal", "Dinner with Ana", 4, 19, 0, 120, place: "Casa Luna, Tamarindo", notes: "Table on the terrace", geo: Geo(lat: 10.3046, lon: -85.8405))
         ev("family", "Beach day", 5, 9, 0, 240, .free, place: "Playa Grande", geo: Geo(lat: 10.3329, lon: -85.8586))
-        made.append(Item(id: "s-ad", calendarID: "school", title: "Holiday: no school", start: addDays(mon, 2), end: addDays(mon, 3), allDay: true, place: "", notes: "", showAs: .free))
+        made.append(Item(id: prefix + "-ad", calendarID: "school", title: "Holiday: no school", start: addDays(mon, 2), end: addDays(mon, 3), allDay: true, place: "", notes: "", showAs: .free, uid: "sample-ad"))
         firstExtras = Dictionary(uniqueKeysWithValues: made.compactMap { it in
             let x = Extra(emoji: it.emoji, color: it.color, tags: it.tags)
             return x.isEmpty ? nil : (it.id, x)
@@ -357,7 +358,7 @@ public final class SampleCalendar: CalendarSource {
     public func add(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure> {
         guard cals.contains(where: { $0.id == it.calendarID }) else { return .failure(Failure("That calendar is gone.")) }
         var it = it
-        it.id = UUID().uuidString
+        it.id = UUID().uuidString; it.uid = it.id
         events.append(it)
         return .success(it)
     }

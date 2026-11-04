@@ -87,6 +87,7 @@ enum SelfTest {
 
         licenseSelftest { ok, name in check(ok, name) }
         weatherSelftest { ok, name in check(ok, name) }
+        syncSelftest { ok, name in check(ok, name) }  // a pretend iCloud in memory, never the real one
 
         check(store.activeSet?.name == "Family" && store.hidden.contains("work") && !store.hidden.contains("family"), "the Family set shows only its calendars")
         app.mode = .week

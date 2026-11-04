@@ -30,6 +30,9 @@ public enum Look {
         #endif
     }
 
+    // Reads them again after the other device's choice arrived (step 2 sync).
+    public static func reload() { appearance = pick("lookAppearance", appearances, "Match Mac"); font = pick("lookFont", fonts, "System"); scale = min(1.25, max(0.85, d.object(forKey: "lookScale") as? Double ?? 1)); pack = pick("lookPack", packs, "Normal"); hour = pick("lookHour", hours, "Medium") }
+
     // Back to the defaults, for the off-screen pictures.
     public static func reset() { saves = false; scale = 1; font = "System"; pack = "Normal"; hour = "Medium" }
 }
