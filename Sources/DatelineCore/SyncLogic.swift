@@ -67,6 +67,7 @@ public func syncMerge(local: [String: Data], seen: [String: Seen], remote: [Stri
             if theirs != m { cloud[k] = m; pushed = true }
             agreed[k] = Seen(h: lh, t: m.t)
         } else if let r = theirs {
+            if s?.h == lh && s?.t == r.t { continue }  // already agreed on this version (written here in this device's own encoding)
             if fingerprint(r.v) != lh { here.updateValue(r.v, forKey: k) }
             agreed[k] = Seen(h: fingerprint(r.v), t: r.t)
         }
@@ -177,6 +178,8 @@ extension Store {
         } else { sync.problem = nil }
         let failed = applyHere(m.here)
         for k in failed { seen[k] = sync.memo.seen[k] }  // not applied, so not agreed: the newer copy keeps winning instead of being pushed over
+        // Agreed as this device writes it back: another version's encoding of the same value must not count as a change here next pass.
+        if !m.here.isEmpty { let now = syncRecords(); for k in m.here.keys where !failed.contains(k) { if let t = seen[k]?.t { seen[k] = Seen(h: fingerprint(now[k]), t: t) } } }
         let sent = sync.problem == nil
         sync.memo.seen = seen
         sync.memo.removed = sent ? sync.memo.removed.filter(skipped) : sync.memo.removed  // left-out kinds keep their removals for a later pass
@@ -348,7 +351,6 @@ extension Store {
     if var c = find(phone, "Marco at the condo") { c.emoji = ""; c.color = nil; c.tags = []; phone.update(c) }
     t += 10; phone.syncNow(); mac.syncNow()
     expect(phone.extras.isEmpty && mac.extras.isEmpty, "sync: removing the very last extras on the iPhone removes them on the Mac")
-    if !(phone.extras.isEmpty && mac.extras.isEmpty) { var r: [String: SyncRec] = [:]; edited { r = $0 }; print("DEBUG phone", phone.extras, "mac", mac.extras, "cloud", r["e/sample-9"].map { "\($0.t) \($0.v.map { String(decoding: $0, as: UTF8.self) } ?? "nil")" } ?? "none", "pseen", phone.sync.memo.seen["e/sample-9"] as Any, "mseen", mac.sync.memo.seen["e/sample-9"] as Any, "t", t) }
     if var c = find(mac, "Marco at the condo") { c.tags = ["Condo"]; mac.update(c) }
     t += 10; mac.syncNow(); phone.syncNow()
     expect(find(phone, "Marco at the condo")?.tags == ["Condo"], "sync: and new extras after that still arrive")
