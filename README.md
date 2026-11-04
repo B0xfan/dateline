@@ -88,23 +88,6 @@ Every copy starts with a 7 day free trial. After that your calendar is still the
 
 All updates are free. Use Dateline > Check for Updates, or let it check every day by itself. Your settings and calendars are kept.
 
-### Building from the code
+## License
 
-Building it yourself needs Apple's developer tools (`xcode-select --install`). Then:
-
-```
-git clone https://github.com/B0xfan/dateline.git
-cd dateline
-scripts/local-build.sh
-scripts/install.sh
-```
-
-A copy you build has the same 7 day trial and takes the same key.
-
-### Try it without your calendars
-
-```
-.build/release/Dateline --sample
-```
-
-This opens Dateline on made-up calendars, without asking for any access.
+Copyright 2026 John Hesch. All rights reserved. The code is here to read; copying, building or changing it needs written permission. See [LICENSE](LICENSE).
