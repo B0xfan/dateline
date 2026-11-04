@@ -87,7 +87,7 @@ struct YearView: View {
         let y = cal.dateInterval(of: .year, for: app.anchor)!
         let busy = dayCalendars(store.items.filter { !store.hidden.contains($0.calendarID) }, in: y)
         ScrollView {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 3), alignment: .leading, spacing: 18) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: 3), alignment: .leading, spacing: 18) {
                 ForEach(0..<12, id: \.self) { m in mini(cal.date(byAdding: .month, value: m, to: y.start)!, busy: busy) }
             }
             .padding(.horizontal, 16).padding(.top, 16)

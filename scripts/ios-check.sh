@@ -14,6 +14,7 @@ echo "simulator $UDID"
 defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false   # the add screen shows the on-screen keyboard, as in the mockup
 xcrun simctl boot "$UDID" || true
 xcrun simctl bootstatus "$UDID" -b
+xcrun simctl spawn "$UDID" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true || true   # no first-run keyboard tip over the keys
 xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
 xcrun simctl install "$UDID" "$APP"
 BID=com.johnhesch.dateline

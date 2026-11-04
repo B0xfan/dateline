@@ -175,7 +175,11 @@ struct WeekView: View {
                 Text("tasks").font(.caption2).foregroundStyle(T.text2).padding(.leading, 6).padding(.top, 6).frame(width: 44, alignment: .leading)
                 ForEach(days, id: \.self) { d in
                     VStack(alignment: .leading, spacing: 3) {
-                        ForEach(dayTasks(store, d, now: app.today)) { TaskChip(t: $0).font(.caption) }
+                        let open = dayTasks(store, d, now: app.today).filter { !$0.done }
+                        ForEach(open.prefix(2)) { TaskChip(t: $0).font(.caption) }
+                        if open.count > 2 {
+                            Button("+\(open.count - 2) more") { app.tab = .tasks }.font(.caption).foregroundStyle(T.text2).buttonStyle(.plain)
+                        }
                         ForEach(store.shown(on: d).filter(\.allDay)) { AllDayChip(it: $0) }
                     }
                     .padding(.horizontal, 3).padding(.vertical, 4).frame(maxWidth: .infinity, alignment: .leading)
@@ -241,10 +245,10 @@ struct HourGrid: View {
                 ZStack(alignment: .topLeading) {
                     VStack(spacing: 0) {
                         ForEach(0..<24, id: \.self) { h in
-                            ZStack(alignment: .topLeading) {
-                                Rectangle().fill(T.line).frame(height: 1)
+                            ZStack(alignment: .topLeading) {  // the line sits 8 below the row's top, so a row scrolled to the top keeps its label
+                                Rectangle().fill(T.line).frame(height: 1).offset(y: 8)
                                 Text(h == 12 ? "Noon" : minuteText(h * 60, short: true)).font(.caption2).foregroundStyle(T.text2)
-                                    .padding(.trailing, 2).background(T.bg).offset(x: 6, y: -7)
+                                    .padding(.trailing, 2).background(T.bg).offset(x: 6, y: 1)
                             }
                             .frame(height: hourH, alignment: .top).id(h)
                         }
@@ -252,9 +256,9 @@ struct HourGrid: View {
                     HStack(spacing: 0) {
                         ForEach(days, id: \.self) { column($0) }
                     }
-                    .padding(.leading, wide ? 52 : 44)
+                    .padding(.leading, wide ? 52 : 44).padding(.top, 8)
                 }
-                .padding(.top, 8).padding(.bottom, 170)  // room under the add bar and tabs
+                .padding(.bottom, 170)  // room under the add bar and tabs
             }
             .onAppear { sv.scrollTo(firstHour, anchor: .top) }
             .onChange(of: app.anchor) { sv.scrollTo(firstHour, anchor: .top) }

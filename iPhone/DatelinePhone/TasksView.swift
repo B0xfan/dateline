@@ -36,7 +36,7 @@ struct TasksView: View {
                 }
                 Section {} footer: { Text("Swipe right to finish, left to move to tomorrow.") }
             }
-            .listStyle(.insetGrouped).scrollContentBackground(.hidden)
+            .listStyle(.insetGrouped).listSectionSpacing(.compact).scrollContentBackground(.hidden)
             .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 90) }
         }
         .background(T.bg)
