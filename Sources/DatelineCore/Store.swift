@@ -205,6 +205,12 @@ public final class Store: ObservableObject {
         UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
     }
 
+    // A set deleted by the person; the last one deleted on one device is deleted on the other too.
+    public func deleteSet(_ id: String) {
+        sets.removeAll { $0.id == id }
+        if sets.isEmpty { syncRemoved("sets") }
+    }
+
     public var activeSet: CalSet? { DatelineCore.activeSet(sets, calendars: calendars.map(\.id), hidden: hidden) }
 
     // Shows only that set's calendars; nil = all calendars.
@@ -237,7 +243,7 @@ public final class Store: ObservableObject {
                       noTravel: it.noTravel ? true : nil, leave: it.leave, from: it.from == .here ? nil : it.from)
         var ex = extras
         ex[key(it.id)] = x.isEmpty ? nil : x
-        if !it.uid.isEmpty { ex["~" + syncUID(it.uid)] = nil; sync.memo.uids[key(it.id)] = syncUID(it.uid) }
+        if !it.uid.isEmpty { ex["~" + syncUID(it.uid)] = nil; sync.memo.uids[key(it.id)] = syncUID(it.uid); if x.isEmpty { syncRemoved("e/" + syncUID(it.uid)) } }
         if ex != extras { extras = ex }
     }
 
@@ -245,7 +251,7 @@ public final class Store: ObservableObject {
     private func dropExtras(_ it: Item) {
         var ex = extras
         ex[key(it.id)] = nil
-        if !it.uid.isEmpty { ex["~" + syncUID(it.uid)] = nil }
+        if !it.uid.isEmpty { ex["~" + syncUID(it.uid)] = nil; syncRemoved("e/" + syncUID(it.uid)) }
         if ex != extras { extras = ex }
     }
 
@@ -390,7 +396,8 @@ public final class Store: ObservableObject {
         case .failure(let f): fetch(); return f
         case .success(let nid):
             // Moving to another calendar can give the event a new identifier: the extras move with it.
-            if let nid, nid != oldKey { extras[oldKey] = nil; var moved = it; moved.id = nid; setExtras(moved) } else { setExtras(it) }
+            // The move can give it a new uid too: left unknown here, so the extras sync once the scan has matched it.
+            if let nid, nid != oldKey { extras[oldKey] = nil; var moved = it; moved.id = nid; moved.uid = ""; setExtras(moved) } else { setExtras(it) }
             fetch()
             return nil
         }

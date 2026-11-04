@@ -251,7 +251,7 @@ struct SetList: View {
                     .contextMenu {
                         Button("New Set…") { app.newSet() }
                         Button("Edit set") { app.panels.editingSet = s }
-                        Button("Delete set", role: .destructive) { store.sets.removeAll { $0.id == s.id } }
+                        Button("Delete set", role: .destructive) { store.deleteSet(s.id) }
                     }
             }
         }
@@ -323,7 +323,7 @@ struct SetEditor: View {
             Divider().overlay(Palette.line).padding(.vertical, 12)
             HStack {
                 if !isNew {
-                    Button("Delete set") { store.sets.removeAll { $0.id == draft.id }; app.panels.editingSet = nil }.buttonStyle(.plain).foregroundStyle(Palette.now)
+                    Button("Delete set") { store.deleteSet(draft.id); app.panels.editingSet = nil }.buttonStyle(.plain).foregroundStyle(Palette.now)
                 }
                 Spacer()
                 Button("Cancel") { app.panels.editingSet = nil }.keyboardShortcut(.cancelAction)

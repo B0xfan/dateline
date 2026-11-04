@@ -49,18 +49,19 @@ func syncKind(_ key: String) -> String { key.hasPrefix("e/") ? "e/" : key }
 public func syncUID(_ uid: String) -> String { uid.hasSuffix("@google.com") ? String(uid.dropLast(11)) : uid }
 
 /// Merges this device's records with the shared copy, record by record, the newest change winning.
-/// `local`: what this device holds now, empty values left out. A kind this device holds nothing of (new, emptied or unread) never removes anything,
-/// and a record this device never agreed on loses to the one already in iCloud: an empty or new device can only receive.
+/// `local`: what this device holds now, empty values left out. A record goes out as removed only when the person removed it (`removed`),
+/// or when it is gone while others of its kind are still here and `blocked` doesn't hold its kind; an emptied, new or unread device never removes anything.
+/// A record this device never agreed on is dated 0, so the copy already in iCloud comes first: an empty or new device can only receive.
 /// Returns what to change here (nil value = remove), the shared copy to write (nil = nothing new for it) and the new agreements.
-public func syncMerge(local: [String: Data], seen: [String: Seen], remote: [String: SyncRec], now: Double) -> (here: [String: Data?], cloud: [String: SyncRec]?, seen: [String: Seen]) {
-    let present = Set(local.keys.map(syncKind))
+public func syncMerge(local: [String: Data], seen: [String: Seen], remote: [String: SyncRec], now: Double, removed: Set<String> = [], blocked: Set<String> = []) -> (here: [String: Data?], cloud: [String: SyncRec]?, seen: [String: Seen]) {
+    let present = Set(local.keys.map(syncKind)).subtracting(blocked)
     var here: [String: Data?] = [:], cloud = remote, pushed = false, agreed = seen
     for k in Set(local.keys).union(seen.keys).union(remote.keys) {
         let lv = local[k], lh = fingerprint(lv), s = seen[k], theirs = remote[k]
         var mine: SyncRec?
         if let s, s.h == lh { mine = SyncRec(v: lv, t: s.t) }  // unchanged since the last agreement
-        else if lv != nil { mine = SyncRec(v: lv, t: s == nil && theirs != nil ? 0 : now) }  // changed here; first contact: iCloud's copy comes first
-        else if s != nil, present.contains(syncKind(k)) { mine = SyncRec(v: nil, t: now) }  // removed here
+        else if lv != nil { mine = SyncRec(v: lv, t: s == nil ? 0 : now) }  // changed here; first contact (also before iCloud has downloaded): any dated copy comes first
+        else if s != nil, removed.contains(k) || present.contains(syncKind(k)) { mine = SyncRec(v: nil, t: now) }  // removed here
         if let m = mine, theirs.map({ m.t > $0.t }) ?? true {
             if theirs != m { cloud[k] = m; pushed = true }
             agreed[k] = Seen(h: lh, t: m.t)
@@ -79,7 +80,9 @@ public struct SyncSettings {
     public var write: (String, Any) -> Void
     public static var real: SyncSettings {
         SyncSettings(read: { Dictionary(uniqueKeysWithValues: keys.compactMap { k in UserDefaults.standard.object(forKey: k).map { (k, $0) } }) },  // only what was chosen: an untouched default is never sent
-                     write: { k, v in UserDefaults.standard.set(v, forKey: k); Look.reload(); Alerts.reloadSounds() })
+                     write: { k, v in  // only the arrived key is saved: the reload must not save the other settings' defaults as choices
+                         UserDefaults.standard.set(v, forKey: k)
+                         let was = Look.saves; Look.saves = false; Look.reload(); Alerts.reloadSounds(); Look.saves = was })
     }
     public static var memory: SyncSettings {
         final class Box { var d: [String: Any] = [:] }
@@ -93,6 +96,7 @@ public struct SyncMemo: Codable, Equatable {
     var seen: [String: Seen] = [:]
     var uids: [String: String] = [:]  // this device's extras key -> the event's uid
     var alias: [String: String] = [:]  // a calendar id here -> the other device's name for it, so the name goes back unchanged
+    var removed: Set<String> = []  // records the person removed here since the last pass (also the last one of its kind)
 }
 
 public struct SyncState {
@@ -101,6 +105,7 @@ public struct SyncState {
     public var clock: () -> Double = { Date().timeIntervalSince1970 }
     public var problem: String?  // the shared copy is full or unreadable: nothing was changed
     var memo = SyncMemo()
+    var saved = SyncMemo()  // the memo as last saved
     var skip: Set<String> = []  // kinds whose saved copy did not read on this device: left out entirely
     var scanned: Date?
     var soon: Task<Void, Never>?
@@ -113,7 +118,9 @@ extension Store {
 
     func startSync(_ c: CloudStore) {
         cloud = c
-        if let v: SyncMemo = load("syncMemo") { sync.memo = v }  // unread: every record counts as first contact, so iCloud's copy wins and nothing is removed
+        if let v: SyncMemo = load("syncMemo") { sync.memo = v; sync.saved = v }  // unread: every record counts as first contact, so iCloud's copy wins and nothing is removed
+        // A kind whose saved copy didn't read starts over as first contact, so an edit saved over it later can't send the rest as removed.
+        if !sync.skip.isEmpty { sync.memo.seen = sync.memo.seen.filter { !sync.skip.contains(syncKind($0.key)) } }
         c.onChange { [weak self] in self?.syncNow() }
         // Look and alert sounds are changed outside the store: a pass every minute picks them up.
         sync.ticker = Task { [weak self] in
@@ -131,7 +138,11 @@ extension Store {
         }
     }
 
+    // Records removed by the person here (an event's extras cleared or deleted, the last calendar set deleted).
+    func syncRemoved(_ key: String) { sync.memo.removed.insert(key) }
+
     public func syncNow() {
+        defer { if sync.memo != sync.saved { sync.saved = sync.memo; save(sync.memo, "syncMemo") } }  // also what changed outside a pass (uids learned while the switch was off)
         guard let cloud, syncOn else { return }
         var remote: [String: SyncRec] = [:]
         if let raw = cloud.data() {
@@ -144,7 +155,10 @@ extension Store {
         let setsReady = canRead && taskAccess != .unknown
         if setsReady { let fixed = sets.map(localSet); if fixed != sets { sets = fixed } }  // set calendars that only now can be matched by name
         let skipped = { (k: String) in self.sync.skip.contains(syncKind(k)) || (k == "sets" && !setsReady) }
-        let m = syncMerge(local: syncRecords().filter { !skipped($0.key) }, seen: sync.memo.seen.filter { !skipped($0.key) }, remote: remote.filter { !skipped($0.key) }, now: sync.clock())
+        let local = syncRecords().filter { !skipped($0.key) }
+        let unmapped = extras.keys.contains { uidFor($0) == nil }  // an event not matched yet can't tell "gone" from "not read yet"
+        let m = syncMerge(local: local, seen: sync.memo.seen.filter { !skipped($0.key) }, remote: remote.filter { !skipped($0.key) }, now: sync.clock(),
+                          removed: sync.memo.removed, blocked: unmapped ? ["e/"] : [])
         if let out = m.cloud {
             let full = remote.merging(out) { $1 }
             guard let json = try? JSONEncoder().encode(full), let packed = try? (json as NSData).compressed(using: .zlib) as Data else { return }
@@ -152,11 +166,12 @@ extension Store {
             cloud.write(packed)
         }
         sync.problem = nil
-        applyHere(m.here)
-        var memo = sync.memo
-        memo.seen = m.seen.merging(sync.memo.seen.filter { skipped($0.key) }) { a, _ in a }
-        memo.uids = memo.uids.filter { extras[$0.key] != nil }
-        if memo != sync.memo { sync.memo = memo; save(memo, "syncMemo") }
+        let failed = applyHere(m.here)
+        var seen = m.seen.merging(sync.memo.seen.filter { skipped($0.key) }) { a, _ in a }
+        for k in failed { seen[k] = sync.memo.seen[k] }  // not applied, so not agreed: the newer copy keeps winning instead of being pushed over
+        sync.memo.seen = seen
+        sync.memo.removed = []
+        sync.memo.uids = sync.memo.uids.filter { extras[$0.key] != nil }
     }
 
     // The event a key belongs to, by its uid: "~uid" came from the other device, "calendar/uid" is an account's event, a plain key is looked up.
@@ -213,26 +228,31 @@ extension Store {
     }
 
     // The other device's newer records, written here. A value that does not read is skipped, never written over a good one.
-    func applyHere(_ here: [String: Data?]) {
-        guard !here.isEmpty else { return }
+    // Returns the records that could not be applied.
+    @discardableResult
+    func applyHere(_ here: [String: Data?]) -> [String] {
+        guard !here.isEmpty else { return [] }
+        var failed: [String] = []
         let dec = JSONDecoder()
         var ex = extras
         for (k, v) in here {
             if k.hasPrefix("e/") {
                 let uid = String(k.dropFirst(2)), x = v.flatMap { try? dec.decode(Extra.self, from: $0) }
-                if v != nil && x == nil { continue }
+                if v != nil && x == nil { failed.append(k); continue }
                 let keys = Set(ex.keys.filter { uidFor($0) == uid } + sync.memo.uids.filter { $0.value == uid }.map(\.key))  // also a key emptied here, so it comes back under its own name
                 for kk in keys.isEmpty ? ["~" + uid] : keys { ex[kk] = x }
-            } else if k == "sets", let v, let s = try? dec.decode([CalSet].self, from: v) {
-                sets = s.map(localSet)
-            } else if k == "emoji", let v, let e = try? dec.decode([String].self, from: v) {
-                recentEmoji = e
-            } else if k.hasPrefix("s/"), SyncSettings.keys.contains(String(k.dropFirst(2))), let v, let val = try? JSONSerialization.jsonObject(with: v, options: .fragmentsAllowed) {
-                sync.settings.write(String(k.dropFirst(2)), val)
+            } else if k == "sets" {
+                if v == nil { sets = [] }  // the other device deleted its last set
+                else if let s = v.flatMap({ try? dec.decode([CalSet].self, from: $0) }) { sets = s.map(localSet) } else { failed.append(k) }
+            } else if k == "emoji" {
+                if let e = v.flatMap({ try? dec.decode([String].self, from: $0) }) { recentEmoji = e } else if v != nil { failed.append(k) }
+            } else if k.hasPrefix("s/"), SyncSettings.keys.contains(String(k.dropFirst(2))) {
+                if let val = v.flatMap({ try? JSONSerialization.jsonObject(with: $0, options: .fragmentsAllowed) }) { sync.settings.write(String(k.dropFirst(2)), val) } else if v != nil { failed.append(k) }
             }
         }
         if ex != extras { extras = ex }
         refetch()  // the views pick up the new extras
+        return failed
     }
 }
 
@@ -297,6 +317,28 @@ extension Store {
     if var d = find(phone, "Dentist") { d.emoji = ""; phone.update(d) }
     phone.syncNow(); mac.syncNow()
     expect(find(mac, "Dentist")?.emoji == "" && find(mac, "Marco at the condo")?.tags == ["Condo", "Visitors"], "sync: an emoji removed on the iPhone is removed on the Mac, nothing else")
+
+    // A newer record this device can't read is skipped and not pushed over on the next pass.
+    func edited(_ change: (inout [String: SyncRec]) -> Void) {
+        guard let raw = cloud.raw, let d = try? (raw as NSData).decompressed(using: .zlib) as Data, var r = try? JSONDecoder().decode([String: SyncRec].self, from: d) else { return }
+        change(&r)
+        cloud.raw = try? (JSONEncoder().encode(r) as NSData).compressed(using: .zlib) as Data
+    }
+    t += 10
+    edited { $0["e/sample-9"] = SyncRec(v: Data("not an extra".utf8), t: t) }
+    let unreadable = cloud.raw
+    mac.syncNow(); t += 10; mac.syncNow()
+    expect(cloud.raw == unreadable && find(mac, "Marco at the condo")?.color == 5, "sync: a newer record that doesn't read is skipped and never pushed over")
+    edited { $0["e/sample-9"] = SyncRec(v: try? JSONEncoder().encode(Extra(tags: ["Condo", "Visitors"], plain: nil)), t: t) }
+
+    // Removing the last extras of all is still sent.
+    t += 10; phone.syncNow(); mac.syncNow()
+    if var c = find(phone, "Marco at the condo") { c.emoji = ""; c.color = nil; c.tags = []; phone.update(c) }
+    t += 10; phone.syncNow(); mac.syncNow()
+    expect(phone.extras.isEmpty && mac.extras.isEmpty, "sync: removing the very last extras on the iPhone removes them on the Mac")
+    if var c = find(mac, "Marco at the condo") { c.tags = ["Condo"]; mac.update(c) }
+    t += 10; mac.syncNow(); phone.syncNow()
+    expect(find(phone, "Marco at the condo")?.tags == ["Condo"], "sync: and new extras after that still arrive")
 
     // A copy that can't be read is left alone; the switch off sends nothing.
     let good = cloud.raw, junk = Data("junk".utf8)
