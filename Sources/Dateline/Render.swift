@@ -82,6 +82,12 @@ private final class ShotWindow: NSWindow {
         }
         License.shared.test = nil
         shot("day") { $0.mode = .day }
+        // shortcut: a pop-up does not draw off-screen, so this is its list on the pop-up colour, without the system frame and arrow; check the real one in the app.
+        if only.isEmpty || only.contains("more") {  // the "N more" pop-up, on the busiest sample day
+            let st = Store(sample: true), app = AppState(store: st, today: today)
+            let d = (0..<35).map { cal.date(byAdding: .day, value: $0 - 14, to: cal.startOfDay(for: today))! }.max { st.shown(on: $0).count < st.shown(on: $1).count }!
+            ok = save(MoreList(app: app, store: st, day: d, list: st.shown(on: d)) {}.background(Palette.pop).frame(width: 300, height: 420).background(Palette.side), dark: dark, to: "\(dir)/more-\(tag).png") && ok
+        }
         shot("week") { $0.mode = .week; $0.days = 7 }
         shot("week5") { $0.mode = .week; $0.days = 5 }
         shot("month") { $0.mode = .month }

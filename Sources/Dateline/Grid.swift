@@ -359,7 +359,7 @@ struct MonthView: View {
                     .onTapGesture { app.selectedID = it.id }
                 }
                 if list.count > shown.count {
-                    Text("\(list.count - shown.count) more").font(.ui(11)).foregroundStyle(Palette.text3).onTapGesture { app.open(day: d) }
+                    MoreButton(app: app, store: store, day: d, list: list, hidden: list.count - shown.count, size: 11)
                 }
                 Spacer(minLength: 0)
             }.padding(.horizontal, 8).padding(.vertical, 4)
@@ -368,6 +368,53 @@ struct MonthView: View {
         .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { app.newEvent(at: cal.date(byAdding: .hour, value: 9, to: d)!) }
+    }
+}
+
+// "N more" on a crowded month or quarter day: the whole day in a pop-up, so you stay on the month (James, 2026-11-04).
+struct MoreButton: View {
+    let app: AppState, store: Store  // not watched here: only the pop-up's list needs to redraw
+    let day: Date, list: [Item], hidden: Int, size: CGFloat
+    @State private var open = false
+
+    var body: some View {
+        Button { open = true } label: { Text("\(hidden) more").font(.ui(size)).foregroundStyle(Palette.text3).contentShape(Rectangle()) }
+            .buttonStyle(.plain).help("Show all of this day's events")
+            .popover(isPresented: $open, arrowEdge: .trailing) { MoreList(app: app, store: store, day: day, list: list) { open = false } }
+    }
+}
+
+// The pop-up's list; on its own so the off-screen pictures can draw it.
+struct MoreList: View {
+    @ObservedObject var app: AppState
+    @ObservedObject var store: Store
+    let day: Date, list: [Item], close: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button { close(); app.open(day: day) } label: { Text(dateText(day, "EEEE, MMMM d")).font(.ui(13, weight: .semibold)).foregroundStyle(Palette.text) }
+                .buttonStyle(.plain).help("Open this day")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(list) { it in
+                        let c = store.color(it)
+                        HStack(spacing: 6) {
+                            Mark(showAs: it.showAs, color: c)
+                            Text(it.allDay ? "all day" : timeText(it.start, short: true)).foregroundStyle(Palette.text3).fixedSize().frame(minWidth: 58, alignment: .leading)
+                            Text(it.shownTitle).foregroundStyle(Palette.text)
+                            Spacer(minLength: 0)
+                        }
+                        .font(.ui(12)).lineLimit(1).padding(.vertical, 3).padding(.horizontal, 6)
+                        .background(app.selectedID == it.id ? c.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true; close() }
+                        .onTapGesture { app.selectedID = it.id }
+                        .accessibilityElement(children: .combine).accessibilityAddTraits(.isButton)
+                        .accessibilityAction { app.selectedID = it.id; app.panels.panelOpen = true; close() }
+                    }
+                }
+            }.frame(maxHeight: 320).fixedSize(horizontal: false, vertical: true)
+        }.padding(12).frame(width: 260)
     }
 }
 
@@ -621,7 +668,7 @@ struct QuarterView: View {
                         .onTapGesture { app.selectedID = it.id }
                 }
                 if list.count > shown.count {
-                    Text("\(list.count - shown.count) more").font(.ui(10)).foregroundStyle(Palette.text3).onTapGesture { app.open(day: d) }
+                    MoreButton(app: app, store: store, day: d, list: list, hidden: list.count - shown.count, size: 10)
                 }
                 Spacer(minLength: 0)
             }.padding(.horizontal, 4).padding(.vertical, 4)
