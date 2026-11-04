@@ -155,6 +155,25 @@ func timingFile(_ path: String) -> Int32 {
     if !values().contains("Lunch") { print("in the window: \(values())") }
     expect(values().contains("Lunch"), "the add box shows its text")
     app.addBox.text = ""
+    // John 2026-11-04: typing in the add box showed no "What I understood" card, and Delete on a picked event did nothing.
+    w.identifier = NSUserInterfaceItemIdentifier("main-check")
+    w.makeKey()
+    let addField = fields(w.contentView?.superview).first { $0.placeholderString == AddBox.placeholder }
+    expect(addField != nil, "the add box is in the toolbar")
+    if let addField { w.makeFirstResponder(addField) }
+    settle()
+    (w.firstResponder as? NSTextView)?.insertText("Lunch tomorrow 1pm", replacementRange: NSRange(location: NSNotFound, length: 0))
+    settle()
+    expect(app.addBox.focused && !app.addBox.text.isEmpty, "typing in the add box shows the What I understood card")
+    app.addBox.text = ""; settle()
+    app.selectedID = store.items.first { $0.title == "Write proposal" }?.id; settle()  // a click on an event picks it; the add box may still hold the cursor
+    let del = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber, context: nil, characters: "\u{7f}", charactersIgnoringModifiers: "\u{7f}", isARepeat: false, keyCode: 51)!
+    expect(app.key(del) && app.panels.confirmDelete != nil, "Delete on a picked event asks to delete it")
+    app.panels.confirmDelete = nil; app.selectedID = nil; settle()
+    if let addField { w.makeFirstResponder(addField) }; settle()  // the cursor in the empty add box, nothing typed
+    app.selectedID = store.items.first { $0.title == "Write proposal" }?.id; settle()
+    expect(app.key(del) && app.panels.confirmDelete != nil, "Delete on a picked event works after clicking the empty add box")
+    app.panels.confirmDelete = nil; app.selectedID = nil; settle()
     w.close()
     let q = window(QuickAddView(app: app, store: store, quick: app.quick))
     settle()

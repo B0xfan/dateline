@@ -60,7 +60,7 @@ final class AppState: ObservableObject {
     @Published var mode: Mode = Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .day { didSet { if store.access != .sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") }; reload() } }
     @Published var days: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() { didSet { if Look.saves { UserDefaults.standard.set(days, forKey: "weekDays") }; reload() } }
     @Published var anchor: Date { didSet { reload(); if Look.saves && store.access != .sample { UserDefaults.standard.set(anchor, forKey: "anchor"); UserDefaults.standard.set(Date(), forKey: "anchorSaved") } } }
-    @Published var selectedID: String?
+    @Published var selectedID: String? { didSet { if selectedID != nil { addBox.focused = false; dropAddCursor() } } }  // a click on an event leaves the add box, so Delete reaches the event
     // The calendars sidebar on the left, hidden with the toolbar's first button or S (John 2026-10-28); kept across restarts.
     @Published var sidebarOpen = UserDefaults.standard.object(forKey: "sidebarOpen") as? Bool ?? true { didSet { if Look.saves { UserDefaults.standard.set(sidebarOpen, forKey: "sidebarOpen") } } }
     var addText: String { get { addBox.text } set { addBox.text = newValue } }
@@ -247,6 +247,13 @@ final class AppState: ObservableObject {
         panels.panelOpen = edit
     }
 
+    // Takes the cursor out of the add box only: the toolbar's focus switch does not always let go of it.
+    func dropAddCursor() {
+        for w in NSApp.windows where w.identifier?.rawValue.hasPrefix("main") == true {
+            if let f = (w.firstResponder as? NSTextView)?.delegate as? NSTextField, f.placeholderString == AddBox.placeholder { w.makeFirstResponder(nil) }
+        }
+    }
+
     // Return in the quick add box.
     func commitQuick() {
         guard !quick.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
@@ -386,14 +393,14 @@ final class AppState: ObservableObject {
         if panels.mapOpen, e.keyCode == 53 || (e.charactersIgnoringModifiers == "p" && e.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty) { panels.mapOpen = false; return true }
         if e.window?.identifier?.rawValue.hasPrefix("main") != true { return false }  // Settings, or the main window is closed
         let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
-        let responder = NSApp.keyWindow?.firstResponder
+        let responder = e.window?.firstResponder  // the window the key came from
         let typing = responder is NSText || responder is NSDatePicker
         if e.keyCode == 48, addBox.focused, mods.isEmpty || mods == .shift { commitAdd(edit: true); return true }  // Tab in the add box
         if mods == .command && e.charactersIgnoringModifiers == "z" && !typing { undo(); return true }
         if e.keyCode == 53 {  // Escape
             if panels.showShortcuts { panels.showShortcuts = false; return true }
             if panels.confirmDelete != nil { panels.confirmDelete = nil; return true }
-            if addBox.focused || !addText.isEmpty { addText = ""; addBox.focused = false; NSApp.keyWindow?.makeFirstResponder(nil); return true }
+            if addBox.focused || !addText.isEmpty { addText = ""; addBox.focused = false; dropAddCursor(); return true }
             if panels.panelOpen { panels.panelOpen = false; NSApp.keyWindow?.makeFirstResponder(nil); return true }
             if panels.openTaskID != nil { panels.openTaskID = nil; NSApp.keyWindow?.makeFirstResponder(nil); return true }
             if panels.tasksOpen { panels.tasksOpen = false; return true }

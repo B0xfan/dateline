@@ -395,6 +395,7 @@ struct Seg: View {
 }
 
 struct AddBox: View {
+    static let placeholder = "Add: Dinner with Ana Friday 7pm"
     @ObservedObject var app: AppState
     @ObservedObject var box: AddText
     @ObservedObject private var lic = License.shared
@@ -402,7 +403,7 @@ struct AddBox: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: lic.canEdit ? "plus" : "lock").font(.ui(11, weight: .semibold)).foregroundStyle(lic.canEdit ? Palette.accent : Palette.text3)
-            TextField(lic.canEdit ? "Add: Dinner with Ana Friday 7pm" : "Adding is off", text: $box.text)
+            TextField(lic.canEdit ? AddBox.placeholder : "Adding is off", text: $box.text, onEditingChanged: { box.focused = $0 })  // in the toolbar the focus switch alone missed the typing, so the preview card never showed
                 .textFieldStyle(.plain).focused($focused).disabled(!lic.canEdit)
                 .onSubmit { app.commitAdd() }
         }
