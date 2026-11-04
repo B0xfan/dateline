@@ -3,7 +3,7 @@
 'use strict';
 const fs = require('fs'), path = require('path'), assert = require('assert');
 const { execFileSync } = require('child_process');
-const { withSandboxObsidian } = require('/Users/johnhesch/Projects/A4/06 AI Team/AI Team Knowledge/Scripts/sandbox-obsidian.js');
+const { withSandboxObsidian } = require(process.env.HOME + '/Projects/A4/06 AI Team/AI Team Knowledge/Scripts/sandbox-obsidian.js');
 const DL = process.env.HOME + '/Projects/dateline/.build/debug/Dateline';
 const TASKS = '02 Planner/TaskNotes/Tasks/';
 const LIVE = process.env.HOME + '/Projects/A4/';
