@@ -110,7 +110,7 @@ struct CalHeader: View {
                 }
                 .foregroundStyle(T.text)
             }
-            .accessibilityLabel("\(app.mode.rawValue) view")
+            .accessibilityValue("\(app.mode.rawValue) view")  // the label stays the date the title reads
             .accessibilityHint("Changes the view")
             if let sub { Text(sub).font(.footnote).foregroundStyle(T.text2) }
         }
@@ -119,7 +119,7 @@ struct CalHeader: View {
     private func heading(_ a: Date) -> Text {
         switch app.mode {
         case .list, .month: Text(dateText(a, "MMMM") + " ") + Text(dateText(a, "yyyy")).foregroundColor(T.accent)  // the year in the accent colour
-        case .week: Text(dateText(a, "MMM d") + " to " + dateText(addDays(a, 2), cal.isDate(a, equalTo: addDays(a, 2), toGranularity: .month) ? "d" : "MMM d"))
+        case .week: Text(dateText(a, "MMM d") + " to " + dateText(app.days.last!, cal.isDate(a, equalTo: app.days.last!, toGranularity: .month) ? "d" : "MMM d"))
         case .day: Text(dateText(a, "EEEE, MMM d"))
         case .year: Text(dateText(a, "yyyy"))
         }
@@ -147,7 +147,7 @@ struct WeekStrip: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 4).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(dateText(d, "EEEE, MMMM d"))
+                    .accessibilityLabel(dateText(d, "EEEE, MMMM d") + (today ? ", today" : "") + (dots(d).isEmpty ? "" : ", has events"))
                     .accessibilityAddTraits(picked ? .isSelected : [])
                 }
             }
@@ -174,7 +174,7 @@ enum AgendaRow: Identifiable {
 /// A day's list: overdue tasks, then tasks with no time, then events and timed tasks by their time.
 @MainActor func agendaRows(_ store: Store, _ d: Date, now: Date) -> [AgendaRow] {
     let day = cal.startOfDay(for: d)
-    let timed = store.todos.filter { $0.timed && !$0.done && !isOverdue($0, now: now) && !store.hiddenLists.contains($0.listID) && $0.due.map { cal.isDate($0, inSameDayAs: d) } == true }
+    let timed = store.todos.filter { $0.timed && !isOverdue($0, now: now) && !store.hiddenLists.contains($0.listID) && $0.due.map { cal.isDate($0, inSameDayAs: d) } == true }
     func key(_ r: AgendaRow) -> Double {
         switch r {
         case .event(let it): max(0, it.start.timeIntervalSince(day))
@@ -191,11 +191,13 @@ struct AgendaView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     var body: some View {
-        let days = (0..<Self.span).map { addDays(app.anchor, $0) }.enumerated()
-            .filter { $0.offset < 2 || !store.shown(on: $0.element).isEmpty || !agendaRows(store, $0.element, now: app.today).isEmpty }.map(\.element)
+        let days = (0..<Self.span).map { i -> (day: Date, rows: [AgendaRow], allDay: [Item]) in
+            let d = addDays(app.anchor, i)
+            return (d, agendaRows(store, d, now: app.today), store.shown(on: d).filter(\.allDay))
+        }.enumerated().filter { $0.offset < 2 || !$0.element.rows.isEmpty || !$0.element.allDay.isEmpty }.map(\.element)
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(days.enumerated()), id: \.element) { i, d in AgendaDay(day: d, first: i == 0) }
+                ForEach(Array(days.enumerated()), id: \.element.day) { i, d in AgendaDay(day: d.day, rows: d.rows, allDay: d.allDay, first: i == 0) }
             }
             .padding(.horizontal, 16).padding(.bottom, 110)  // room under the tabs
         }
@@ -207,11 +209,12 @@ struct AgendaDay: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     let day: Date
+    let rows: [AgendaRow]
+    let allDay: [Item]
     let first: Bool
     var body: some View {
-        let rows = agendaRows(store, day, now: app.today), allDay = store.shown(on: day).filter(\.allDay)
         let n = cal.dateComponents([.day], from: cal.startOfDay(for: app.today), to: day).day ?? 99
-        let next = n == 0 ? store.shown(on: day).filter { !$0.allDay && $0.start > app.today }.min { $0.start < $1.start }?.id : nil
+        let next: String? = n == 0 ? rows.lazy.compactMap { if case .event(let it) = $0, it.start > app.today { it.id } else { nil } }.first : nil  // rows run in time order
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 (Text(n == 0 ? "TODAY" : n == 1 ? "TOMORROW" : dateText(day, "EEEE").uppercased()).foregroundColor(n == 0 ? T.accent : T.text)
@@ -265,7 +268,8 @@ struct AgendaEvent: View {
             HStack(alignment: .top, spacing: 12) {
                 Dot(color: store.color(it), size: 11).padding(.top, 4).frame(width: 14)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(it.start < day ? "Until \(timeText(it.end, short: true))" : "\(timeText(it.start, short: true)) to \(timeText(it.end, short: true))")
+                    Text(it.start >= day ? "\(timeText(it.start, short: true)) to \(timeText(it.end, short: true))"
+                         : cal.isDate(it.end, inSameDayAs: day) ? "Until \(timeText(it.end, short: true))" : "All day")  // a timed event running across several days
                         .font(.footnote.weight(.medium)).foregroundStyle(T.text2)
                     Text(it.shownTitle).font(.body.weight(.semibold)).foregroundStyle(T.text).lineLimit(1)
                     if !it.place.isEmpty { Text(it.place).font(.footnote).foregroundStyle(T.text2).lineLimit(1) }
