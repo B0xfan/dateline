@@ -23,6 +23,7 @@ public struct Spot: Equatable {
     public var name: String
     public var lat: Double, lon: Double
     public var radius: Double = 150
+    public init(name: String, lat: Double, lon: Double, radius: Double = 150) { self.name = name; self.lat = lat; self.lon = lon; self.radius = radius }
 }
 
 public enum TaskGroup: String, CaseIterable { case overdue = "Overdue", today = "Today", week = "Next 7 days", later = "Later", none = "No date" }
