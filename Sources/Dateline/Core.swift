@@ -374,6 +374,9 @@ func selftest() -> Int32 {
     expect(p.title == "Dinner" && p.start == at(10, 26, 19), "p.m. with dots: \(p.title) \(p.start)")
     p = parseSentence("Q4 PM sync", now: now)
     expect(p.title == "Q4 PM sync" && p.allDay, "PM after a word that is not a time stays: \(p.title)")
+    // The calendar centres the hour mark nearest now: 9:29 -> 9, 9:30 -> 10, 23:45 stays on 23.
+    let mark = { (h: Int, m: Int) in nowHour(cal.date(bySettingHour: h, minute: m, second: 0, of: now)!) }
+    expect(mark(9, 29) == 9 && mark(9, 30) == 10 && mark(0, 5) == 0 && mark(23, 45) == 23, "nearest hour mark to now")
     p = parseSentence("Gym today 6-7:30pm", now: now)
     expect(p.title == "Gym" && p.start == at(10, 26, 18) && p.end == at(10, 26, 19, 30), "range 6-7:30pm: \(p.start) \(p.end)")
     p = parseSentence("Workshop 2pm to 5pm on Nov 3", now: now)

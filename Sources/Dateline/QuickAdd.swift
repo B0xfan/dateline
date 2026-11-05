@@ -176,9 +176,11 @@ struct QuickSettings: View {
             HStack {
                 Text("Quick add from any app")
                 Spacer()
-                Button(quick.recordingKey ? "Press the new shortcut" : quick.name) { record() }
+                Text(quick.recordingKey ? "Press the new shortcut" : quick.name).foregroundStyle(quick.recordingKey ? Palette.accent : Palette.text)
+                    .padding(.horizontal, 8).padding(.vertical, 3).background(RoundedRectangle(cornerRadius: 5).fill(Palette.field))
+                Button(quick.recordingKey ? "Cancel" : "Change…") { quick.recordingKey ? stop() : record() }
             }
-            Text(quick.taken || quick.keyRefused ? "Another app already uses this shortcut. Pick a different one." : "Opens the add box on top of whatever app is in front. Use Control, Option or Command with a key; Esc cancels.")
+            Text(quick.taken || quick.keyRefused ? "Another app already uses this shortcut. Pick a different one." : quick.recordingKey ? "Press Control, Option or Command with a key. Esc cancels." : "Opens the add box on top of whatever app is in front. To use your own shortcut, click Change… and press the keys.")
                 .font(.ui(12)).foregroundStyle(quick.taken || quick.keyRefused ? Palette.now : Palette.text3).fixedSize(horizontal: false, vertical: true)
         }
         .padding(20).frame(width: 440)
