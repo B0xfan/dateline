@@ -11,6 +11,7 @@ enum T {
     static let bg = c(0xFFFFFF, 0x000000), bg2 = c(0xF2F2F7, 0x1C1C1E)
     static let text = c(0x1C1C1E, 0xF2F2F7), text2 = c(0x636366, 0xA1A1A6), line = c(0xE5E5EA, 0x2C2C2E)
     static let accent = c(0xD93A30, 0xFF5A4F), tint = c(0x0A64D6, 0x4C9BFF), late = c(0xC4321F, 0xFF6B5A)
+    static let top = c(0xFFFFFF, 0x1C1C1E), list = c(0xF2F2F7, 0x000000)  // the list screen: a lighter header layer over the list
 }
 
 /// "DETAILS" above a group of rows.

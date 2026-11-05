@@ -48,6 +48,7 @@ enum Demo {
 
     static func open(_ s: String, _ app: PhoneState) {
         switch s {
+        case "list": app.mode = .list
         case "day": app.mode = .day
         case "month": app.mode = .month
         case "year": app.mode = .year
@@ -90,6 +91,14 @@ enum SelfTest {
         syncSelftest { ok, name in check(ok, name) }  // a pretend iCloud in memory, never the real one
 
         check(store.activeSet?.name == "Family" && store.hidden.contains("work") && !store.hidden.contains("family"), "the Family set shows only its calendars")
+        check(app.mode == .list, "the calendar opens on the list")
+        let rows = agendaRows(store, mon, now: today)
+        let times: [Date] = rows.compactMap { if case .event(let it) = $0 { it.start } else { nil } }
+        if case .task(let t) = rows.first { check(t.title == "Pay condo fee", "the list starts with the overdue task") } else { check(false, "the list starts with the overdue task") }
+        check(!times.isEmpty && times == times.sorted(), "the list's events run in time order")
+        app.step(1)
+        check(app.anchor == addDays(mon, 7), "a swipe moves the list by a week")
+        app.goToday()
         app.mode = .week
         check(app.days == [mon, addDays(mon, 1), addDays(mon, 2)], "the week shows three days from today")
         app.step(1)

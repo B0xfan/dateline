@@ -24,7 +24,7 @@ struct DatelineApp: App {
 /// What the screens share: which tab and view are showing, the day in view, and the open sheets.
 @MainActor
 final class PhoneState: ObservableObject {
-    enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Month", year = "Year" }
+    enum Mode: String, CaseIterable { case list = "List", day = "Day", week = "Week", month = "Month", year = "Year" }
     enum Tab: String, CaseIterable {
         case calendar = "Calendar", tasks = "Tasks", places = "Places", settings = "Settings"
         var icon: String { ["calendar", "checklist", "mappin.and.ellipse", "gearshape"][Self.allCases.firstIndex(of: self)!] }
@@ -33,7 +33,7 @@ final class PhoneState: ObservableObject {
     let store: Store
     let sample: Bool  // sample calendars: tests and pictures
     @Published var today: Date
-    @Published var mode: Mode = .week { didSet { reload() } }
+    @Published var mode: Mode = .list { didSet { reload() } }  // the list is the main screen (approved mockup, John 2026-11-05)
     @Published var anchor: Date { didSet { reload() } }
     @Published var tab: Tab = .calendar
     @Published var path: [String] = []  // event ids open on the calendar tab
@@ -59,6 +59,7 @@ final class PhoneState: ObservableObject {
 
     private var range: (Date, Date) {
         switch mode {
+        case .list: return (startOfWeek(anchor), addDays(anchor, AgendaView.span))  // the week strip and the list's days
         case .day, .week: return (anchor, addDays(anchor, days.count))
         case .month: let g = monthGrid(anchor); return (g.first!, addDays(g.last!, 1))
         case .year: let y = cal.dateInterval(of: .year, for: anchor)!; return (y.start, y.end)
@@ -69,6 +70,7 @@ final class PhoneState: ObservableObject {
 
     func step(_ n: Int) {
         switch mode {
+        case .list: anchor = addDays(anchor, 7 * n)
         case .day: anchor = addDays(anchor, n)
         case .week: anchor = addDays(anchor, 3 * n)
         case .month: anchor = cal.date(byAdding: .month, value: n, to: anchor)!

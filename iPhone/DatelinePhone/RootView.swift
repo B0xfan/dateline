@@ -1,4 +1,4 @@
-// The four tabs, the add bar on the day and week views, and the sheets.
+// The four tabs, the round add button on the calendar, and the sheets.
 import SwiftUI
 import DatelineCore
 
@@ -22,10 +22,11 @@ struct RootView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            VStack(spacing: 12) {
-                if app.tab == .calendar && app.path.isEmpty && (app.mode == .day || app.mode == .week) { AddBar() }
+            HStack(spacing: 10) {
                 TabBar()
+                if app.tab == .calendar && app.path.isEmpty { AddButton() }
             }
+            .padding(.horizontal, 16)
         }
         .background(T.bg)
         .sheet(isPresented: Binding(get: { app.adding != nil }, set: { if !$0 { app.adding = nil } }), onDismiss: { app.sheetClosed() }) { AddSheet(start: app.adding ?? "") }
@@ -41,19 +42,17 @@ struct RootView: View {
     }
 }
 
-struct AddBar: View {
+/// The round + beside the tabs: opens the add box.
+struct AddButton: View {
     @EnvironmentObject var app: PhoneState
     var body: some View {
         Button { app.adding = "" } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "plus").fontWeight(.bold).foregroundStyle(T.tint)
-                Text("Add: Dinner with Ana Friday 7pm").foregroundStyle(T.text2)
-                Spacer()
-            }
-            .font(.subheadline).padding(.horizontal, 16).frame(height: 44).glass()
+            Image(systemName: "plus").font(.system(size: 24, weight: .semibold)).foregroundStyle(.white)
+                .frame(width: 62, height: 62).background(T.tint, in: Circle())
+                .shadow(color: .black.opacity(0.14), radius: 8, y: 2)
         }
-        .buttonStyle(.plain).padding(.horizontal, 16)
-        .accessibilityLabel("Add an event")
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add an event or task")
     }
 }
 
@@ -77,6 +76,6 @@ struct TabBar: View {
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
-        .padding(4).glass().padding(.horizontal, 16)
+        .padding(4).glass()
     }
 }
