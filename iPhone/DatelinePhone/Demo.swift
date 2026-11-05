@@ -150,6 +150,7 @@ enum SelfTest {
         check(!store.isRepeating(dinner), "a plain event is not a repeating one")
 
         // Direct handling through the phone's state: move, stretch, edit and delete each show an Undo banner and take back.
+        while app.undo.canUndo { _ = app.undo.undo() }  // the add above left its own undo; start from an empty list
         if let ev = store.between(addDays(mon, 2), addDays(mon, 3)).first(where: { $0.title == "Dentist" }) {
             let moved = DragMath.move(ev, minutes: 30), stretched = DragMath.stretch(ev, minutes: 60)
             check(app.change(moved, from: ev, "Moved") == nil && store.items.first { $0.id == ev.id }?.start == moved.start && app.toast?.text.hasPrefix("Moved") == true, "a move saves and shows the Undo banner")
