@@ -27,12 +27,6 @@ func dayShift(columns n: Int, from day: Date, in days: [Date]) -> Int {
     return cal.dateComponents([.day], from: day, to: days[edge]).day! + (i + n - edge)
 }
 
-/// The hour mark nearest the time, 0 to 23, which the calendar centres on.
-func nowHour(_ d: Date) -> Int {
-    let c = cal.dateComponents([.hour, .minute], from: d)
-    return min(23, (c.hour ?? 0) + ((c.minute ?? 0) >= 30 ? 1 : 0))
-}
-
 struct TimeGrid: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
@@ -105,10 +99,11 @@ struct TimeGrid: View {
                     }
                 }
                 // The time line sits mid-view on opening and each time Dateline comes back to the front (John 2026-11-05);
-                // centring the nearest hour mark keeps the line within half an hour of the middle.
-                .onAppear { DispatchQueue.main.async { sv.scrollTo(nowHour(app.now), anchor: .center) } }
+                // centring the current hour's row puts its half past mid-view, so the line is within half an hour of the middle.
+                .onAppear { DispatchQueue.main.async { sv.scrollTo(cal.component(.hour, from: app.now), anchor: .center) } }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                    withAnimation(.easeInOut(duration: 0.3)) { sv.scrollTo(nowHour(app.now), anchor: .center) }
+                    if store.access != .sample { app.tick(Date()) }  // the 30 second clock may not have run yet after a sleep
+                    withAnimation(.easeInOut(duration: 0.3)) { sv.scrollTo(cal.component(.hour, from: app.now), anchor: .center) }
                 }
             }
         }

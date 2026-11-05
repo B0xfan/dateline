@@ -219,6 +219,7 @@ private final class ShotWindow: NSWindow {
         tabs.addTabViewItem(item)
     }
     let w = ShotWindow(contentViewController: tabs)
+    w.isReleasedWhenClosed = false
     w.styleMask = [.titled, .closable]; w.toolbarStyle = .preference
     w.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) - 1)
     w.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
