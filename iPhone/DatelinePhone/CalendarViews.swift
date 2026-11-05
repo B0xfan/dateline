@@ -266,7 +266,7 @@ struct HourGrid: View {
                     }
                     .padding(.leading, wide ? gutter + 8 : gutter).padding(.top, 8)
                 }
-                .padding(.bottom, barRoom)  // room under the add bar and tabs
+                .padding(.bottom, min(barRoom, 260))  // room under the add bar and tabs
             }
             // Like the Mac: the current hour's row sits mid-view on opening and each time the app comes back to the front.
             .onAppear { DispatchQueue.main.async { centre(sv) } }
