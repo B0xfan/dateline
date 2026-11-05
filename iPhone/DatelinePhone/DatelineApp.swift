@@ -50,6 +50,7 @@ final class PhoneState: ObservableObject {
     var opened: [String: Item] = [:]  // events opened from outside the days in view (the map)
     var demoWidgets = false
     var demoEdit = false  // pictures only: open the event's edit sheet
+    var demoTask: String?  // pictures only: which task sheet the Tasks tab opens (edit, edit-place, new, lists)
 
     init(store: Store, today: Date, sample: Bool) {
         self.store = store; self.today = today; self.sample = sample
@@ -123,14 +124,14 @@ final class PhoneState: ObservableObject {
     private func save(_ t: ToDo) { if let f = store.updateTask(t) { problem = f.message } }
 
     /// The Mac's quick-add rules for a task: a day or time in the sentence becomes its due date.
-    func addTask(_ text: String) {
+    func addTask(_ text: String, listID: String? = nil) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         let p = parseSentence(text, now: today)
         let title = !p.dateGiven || p.title.isEmpty ? text : p.place.isEmpty ? p.title : "\(p.title) at \(p.place)"
         var t = ToDo(id: "", listID: "", title: title)
         if p.dateGiven { t.due = p.allDay ? cal.startOfDay(for: p.start) : p.start; t.timed = !p.allDay }
-        if case .failure(let f) = store.addTask(t, listID: nil) { problem = f.message }
+        if case .failure(let f) = store.addTask(t, listID: listID) { problem = f.message }
     }
 
     // Weather and sun for a day header, where Settings says (the town, else where the phone is).

@@ -60,6 +60,7 @@ enum Demo {
             let want = s == "edit" ? "Dentist" : "Holiday: no school"
             if let it = app.store.between(today, addDays(today, 7)).first(where: { $0.title == want }) { app.demoEdit = true; app.open(it) }
         case "tasks": app.tab = .tasks
+        case "task-edit", "task-edit-place", "task-new", "task-lists": app.tab = .tasks; app.demoTask = String(s.dropFirst(5))
         case "places": app.tab = .places
         case "email": app.email = app.emails.first
         case "settings": app.tab = .settings; License.shared.test = .bought(serial: 586300)
@@ -152,9 +153,28 @@ enum SelfTest {
             app.moveTask(t, days: 1)
             check(store.todos.first { $0.id == t.id }?.due == addDays(mon, 1), "swiping a task moves it to tomorrow")
         } else { check(false, "the sample has the plumber task") }
+        // The task sheet's due rules (the Mac panel's).
+        let plain = ToDo(id: "x", listID: "r-main", title: "x")
+        let dueToday = TaskEdit.hasDue(plain, true, now: today)
+        check(dueToday.due == mon && !dueToday.timed && TaskEdit.hasDue(TaskEdit.hasTime(dueToday, true), false, now: today).due == nil, "the due date switch gives today, and off clears it")
+        let at9 = TaskEdit.hasTime(dueToday, true)
+        check(at9.timed && at9.due == cal.date(byAdding: .hour, value: 9, to: mon) && TaskEdit.hasTime(at9, false).due == mon, "the time switch gives 9 AM, and off gives the whole day")
+        check(TaskEdit.date(at9, addDays(mon, 3)).due == cal.date(byAdding: .hour, value: 9, to: addDays(mon, 3)) && TaskEdit.date(dueToday, addDays(mon, 3)).due == addDays(mon, 3), "a new date keeps a timed task's time")
+        check(TaskEdit.hasTime(plain, true) == plain, "a task with no date cannot get a time")
+        if var t = store.todos.first(where: { $0.title == "Send invoice" }) {
+            t.title = "Send the invoice"; t.listID = "r-condo"; t.notes = "net 30"; t.remind = .leaving; t.place = Spot(name: "Bank", lat: 10.3, lon: -85.8)
+            check(store.updateTask(t) == nil && store.todos.first { $0.id == t.id } == t, "editing a task's name, list, notes and place saves")
+            check(store.deleteTask(t) == nil && !store.todos.contains { $0.id == t.id }, "deleting a task removes it")
+        } else { check(false, "the sample has the invoice task") }
+        let hid = store.hiddenLists
+        store.hiddenLists.insert("r-groc")
+        check(!app.store.todos.filter { !store.hiddenLists.contains($0.listID) }.contains { $0.listID == "r-groc" }, "a hidden list's tasks leave the Tasks tab")
+        store.hiddenLists = hid
         let n = store.todos.count
         app.addTask("Buy coffee tomorrow 9am")
         check(store.todos.count == n + 1 && store.todos.last.map { $0.title == "Buy coffee" && $0.timed && $0.due == cal.date(byAdding: .hour, value: 9, to: addDays(mon, 1)) } == true, "a typed task gets its day and time")
+        app.addTask("Buy limes", listID: "r-groc")
+        check(store.todos.last.map { $0.title == "Buy limes" && $0.listID == "r-groc" } == true, "a new task goes to the list picked")
         check(dayTasks(store, mon, now: today).contains { $0.title == "Pay condo fee" }, "an overdue task shows on today's tasks row")
 
         check(!License.shared.enter("DLK-K000001.not-a-real-key") && License.shared.status == .bought(serial: 0), "a wrong key is refused and changes nothing")
