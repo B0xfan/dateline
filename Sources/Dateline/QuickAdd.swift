@@ -115,20 +115,7 @@ struct QuickAddView: View {
             .overlay(alignment: .bottom) { Palette.line.frame(height: 1) }
             if !list.isEmpty {
                 section("FROM YOUR PAST EVENTS")
-                ForEach(Array(list.enumerated()), id: \.element.id) { i, it in
-                    let c = store.calendar(it.calendarID)
-                    HStack(spacing: 12) {
-                        Circle().fill(c?.color ?? .gray).frame(width: 8, height: 8)
-                        Text(it.title).fontWeight(.semibold).lineLimit(1)
-                        Text(([it.place, c?.title ?? ""].filter { !$0.isEmpty } + ["last on " + dateText(it.start, "MMM d")]).joined(separator: " · "))
-                            .font(.ui(12)).foregroundStyle(Palette.text2).lineLimit(1)
-                        Spacer(minLength: 0)
-                        if i == quick.sel { Key("Tab") }
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 8)
-                    .background(i == quick.sel ? Palette.accentSoft : .clear)
-                    .contentShape(Rectangle()).onTapGesture { quick.pick = it }
-                }
+                ForEach(Array(list.enumerated()), id: \.element.id) { i, it in suggestion(i, it) }
             }
             if !quick.text.trimmingCharacters(in: .whitespaces).isEmpty {
                 section("WHAT I UNDERSTOOD")
@@ -157,6 +144,22 @@ struct QuickAddView: View {
         .padding(.top, 8)
         .onAppear { focused = true }
         .onChange(of: quick.focus) { _, _ in focused = true }
+    }
+
+    // Its own function: inline in body, Xcode 26's compiler gave up type-checking the whole view.
+    func suggestion(_ i: Int, _ it: Item) -> some View {
+        let c = store.calendar(it.calendarID)
+        let parts: [String] = [it.place, c?.title ?? ""].filter { !$0.isEmpty } + ["last on " + dateText(it.start, "MMM d")]
+        return HStack(spacing: 12) {
+            Circle().fill(c?.color ?? .gray).frame(width: 8, height: 8)
+            Text(it.title).fontWeight(.semibold).lineLimit(1)
+            Text(parts.joined(separator: " · ")).font(.ui(12)).foregroundStyle(Palette.text2).lineLimit(1)
+            Spacer(minLength: 0)
+            if i == quick.sel { Key("Tab") }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 8)
+        .background(i == quick.sel ? Palette.accentSoft : .clear)
+        .contentShape(Rectangle()).onTapGesture { quick.pick = it }
     }
 
     func section(_ t: String) -> some View {
