@@ -428,6 +428,7 @@ struct DayView: View {
                     }
                     Spacer()
                     Text((s.lead.hasPrefix("starts") ? "in " : s.lead) + s.big).font(.title3.bold()).foregroundStyle(T.tint)
+                        .lineLimit(1).fixedSize()  // the countdown stays on one line; the title gives way and truncates
                 }
                 .padding(.horizontal, 12).padding(.vertical, 10).background(T.bg2, in: RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 16).padding(.top, 12)

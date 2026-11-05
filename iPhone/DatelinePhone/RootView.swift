@@ -65,14 +65,16 @@ struct TabBar: View {
                 Button { app.tab = t } label: {
                     VStack(spacing: 2) {
                         Image(systemName: t.icon).font(.system(size: 19))
-                        Text(t.rawValue).font(.caption2.weight(.semibold))
+                        Text(t.rawValue).font(.caption2.weight(.semibold)).lineLimit(1)
                     }
+                    .dynamicTypeSize(...DynamicTypeSize.large)  // like Apple's tab bars: labels stay one line; large text shows on press-and-hold
                     .frame(maxWidth: .infinity, minHeight: 54)
                     .foregroundStyle(on ? T.tint : T.text)
                     .background(on ? T.tint.opacity(0.14) : .clear, in: Capsule())
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .accessibilityShowsLargeContentViewer()
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
