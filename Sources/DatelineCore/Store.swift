@@ -313,12 +313,16 @@ public final class Store: ObservableObject {
         let subSoon = subEvents(from: now.addingTimeInterval(-86400), to: later).filter { sub($0.calendarID)?.kind == nil }  // not a sunrise line every day
         let accSoon = accEvents(from: now.addingTimeInterval(-86400), to: later)
         guard canRead else { soon = subSoon + accSoon; return }  // subscribed calendars and accounts need no calendar access
-        soon = source.events(from: now.addingTimeInterval(-86400), to: later).map(decorated) + subSoon + accSoon
+        let own = source.events(from: now.addingTimeInterval(-86400), to: later)
+        followIDs(own)  // a new event's id or uid from its server (SyncLogic.swift)
+        soon = own.map(decorated) + subSoon + accSoon
     }
 
     // Events between two dates, read without changing what the window shows (the map of places).
     public func between(_ a: Date, _ b: Date) -> [Item] {
-        (((canRead ? source.events(from: a, to: b).map(decorated) : []) + subEvents(from: a, to: b) + accEvents(from: a, to: b))).sorted { $0.start < $1.start }
+        let own = canRead ? source.events(from: a, to: b) : []
+        followIDs(own)  // before decorating, so an event whose id changed shows its extras at once
+        return ((own.map(decorated) + subEvents(from: a, to: b) + accEvents(from: a, to: b))).sorted { $0.start < $1.start }
     }
 
     // The last year's events, one per title, newest first (quick add's "From your past events").

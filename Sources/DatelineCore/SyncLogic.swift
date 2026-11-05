@@ -119,6 +119,22 @@ public struct SyncState {
 }
 
 extension Store {
+    // A new event on a Google or Exchange calendar can get the server's own uid, and on some servers a new id here, after it was first saved.
+    // Each read of the calendar keeps the uid of every event with extras current, and moves extras left under an id that is gone to the event's id now (same uid).
+    // The extras then sync under the uid the other device sees: the old record goes out as removed, the new one as added, never both.
+    func followIDs(_ read: [Item]) {
+        var ex = extras, byUID: [String: String]?, keys: Set<String>?
+        for it in read where !it.uid.isEmpty {
+            let k = key(it.id), uid = syncUID(it.uid)
+            if ex[k] != nil { if sync.memo.uids[k] != uid, !k.contains("/") { sync.memo.uids[k] = uid }; continue }
+            if byUID == nil { byUID = Dictionary(sync.memo.uids.map { ($0.value, $0.key) }) { a, _ in a }; keys = Set(read.map { key($0.id) }) }
+            guard let old = byUID?[uid], old != k, ex[old] != nil, keys?.contains(old) == false else { continue }  // the old id is not in this read: the event moved to the new one
+            ex[k] = ex[old]; ex[old] = nil
+            sync.memo.uids[k] = uid; sync.memo.uids[old] = nil; byUID?[uid] = k
+        }
+        if ex != extras { extras = ex }
+    }
+
     public var syncOn: Bool { sync.on ?? (UserDefaults.standard.object(forKey: "syncExtras") as? Bool ?? true) }
 
     func startSync(_ c: CloudStore) {
