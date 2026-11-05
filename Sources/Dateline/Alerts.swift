@@ -94,6 +94,12 @@ struct FullAlertView: View {
     let now: Date, next: Item?
     let close: () -> Void, snooze: () -> Void, open: (Item) -> Void
 
+    // Its own function so the Xcode 26 compiler can type-check the body in time.
+    private func whenLine(_ it: Item) -> String {
+        let cal: String = store.calendar(it.calendarID)?.title ?? ""
+        return "\(cal) · \(timeText(it.start)) to \(timeText(it.end))"
+    }
+
     var body: some View {
         let call = items.lazy.compactMap(callLink).first  // any of the events alerting together
         ZStack {
@@ -105,7 +111,7 @@ struct FullAlertView: View {
                         Text(it.shownTitle).font(.ui(items.count == 1 ? 26 : 20, weight: .bold)).fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 8) {
                             Circle().fill(store.color(it)).frame(width: 8, height: 8)
-                            Text((store.calendar(it.calendarID)?.title ?? "") + " · " + timeText(it.start) + " to " + timeText(it.end))
+                            Text(whenLine(it))
                         }.foregroundStyle(Palette.text2)
                         if let n = it.notes.split(separator: "\n").first { Text("Notes: " + n).foregroundStyle(Palette.text2).lineLimit(2) }
                     }
