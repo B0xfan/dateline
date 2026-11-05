@@ -11,7 +11,7 @@ cp App/Info.plist "$APP/Contents/Info.plist"
 # actool writes nothing yet exits 0 when the folder is not named AppIcon.icon, so check its output.
 mkdir -p "$APP/Contents/Resources"
 xcrun actool Icon/AppIcon.icon --compile "$APP/Contents/Resources" --platform macosx --minimum-deployment-target 14.0 --app-icon AppIcon \
-  --output-partial-info-plist "$(mktemp)" --errors --warnings >/dev/null
+  --output-partial-info-plist "$APP/../icon-partial.plist" --errors --warnings >"$APP/../icon.log" || { cat "$APP/../icon.log"; exit 1; }
 [ -f "$APP/Contents/Resources/Assets.car" ] && [ -f "$APP/Contents/Resources/AppIcon.icns" ] || { echo "actool wrote no app icon"; exit 1; }
 # Dateline's own Google sign-in key (Google Cloud project "Dateline", Desktop client), kept out of this public repo; backup in Bitwarden.
 GKEY="$HOME/Library/Application Support/Dateline/google_client.json"
