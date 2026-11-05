@@ -29,6 +29,8 @@ struct RootView: View {
             .padding(.horizontal, 16)
         }
         .background(T.bg)
+        .preferredColorScheme(Look.appearance == "Light" ? .light : Look.appearance == "Dark" ? .dark : nil)  // app.look changing redraws this
+        .onReceive(NotificationCenter.default.publisher(for: Look.synced)) { _ in app.lookChanged() }  // a Look choice arrived from the Mac
         .sheet(isPresented: Binding(get: { app.adding != nil }, set: { if !$0 { app.adding = nil } }), onDismiss: { app.sheetClosed() }) { AddSheet(start: app.adding ?? "") }
         .sheet(item: $app.email, onDismiss: { app.sheetClosed() }) { EmailSheet(find: $0) }
         .sheet(isPresented: $app.showUnlock) { UnlockView() }
@@ -64,9 +66,10 @@ struct TabBar: View {
                 let on = app.tab == t
                 Button { app.tab = t } label: {
                     VStack(spacing: 2) {
-                        Image(systemName: t.icon).font(.system(size: 19))
-                        Text(t.rawValue).font(.caption2.weight(.semibold)).lineLimit(1)
+                        Image(systemName: t.icon).font(.system(size: 19)).frame(height: 24)  // same box for every icon so the labels line up
+                        Text(t.rawValue).font(.caption2.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
                     }
+                    .padding(.horizontal, 6)  // room between the label and the highlight's edge
                     .dynamicTypeSize(...DynamicTypeSize.large)  // like Apple's tab bars: labels stay one line; large text shows on press-and-hold
                     .frame(maxWidth: .infinity, minHeight: 54)
                     .foregroundStyle(on ? T.tint : T.text)
