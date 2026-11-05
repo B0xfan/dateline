@@ -38,10 +38,19 @@ struct AddSheet: View {
 
     init(start: String) { _text = State(initialValue: start) }
 
+    /// The sentence as read, but a tapped time on the calendar is the start when the sentence gives none.
+    private func read() -> Parsed {
+        var p = parseSentence(text, now: app.today)
+        if let s = app.addStart, !p.dateGiven {
+            p.end = s.addingTimeInterval(p.lengthGiven ? p.end.timeIntervalSince(p.start) : 3600); p.start = s; p.allDay = false
+        }
+        return p
+    }
+
     private var empty: Bool { text.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
-        let p = parseSentence(text, now: app.today)
+        let p = read()
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -59,7 +68,7 @@ struct AddSheet: View {
                             ForEach(store.calendars.filter(\.writable)) { k in Text(k.title).tag(Optional(k.id)) }
                         }.pickerStyle(.menu).padding(.horizontal, 16).frame(minHeight: 44)
                     }.padding(.top, 12)
-                    if !empty {
+                    if !empty || app.addStart != nil {
                         SectionLabel("Dateline understood")
                         Understood(p: p, calendar: app.calendarFor(p, pick: pick))
                     }
@@ -78,7 +87,7 @@ struct AddSheet: View {
 
     private func add() {
         guard !empty else { return }
-        switch app.add(parseSentence(text, now: app.today), pick: pick) {
+        switch app.add(read(), pick: pick) {
         case .success: dismiss()
         case .failure(let f): if store.trialOver { app.unlockNext = true; dismiss() } else { problem = f.message }
         }

@@ -126,7 +126,7 @@ struct DetailsView: View {
     }
 
     private func delete(_ it: Item, series: Bool) {
-        if let f = store.delete(it, series: series) { if store.trialOver { app.showUnlock = true } else { problem = f.message } } else { app.path.removeAll { $0 == it.id } }
+        if let f = app.delete(it, series: series) { if store.trialOver { app.showUnlock = true } else { problem = f.message } } else { app.path.removeAll { $0 == it.id } }
     }
 
     private func weatherLine(_ it: Item, _ g: Geo) -> String? {

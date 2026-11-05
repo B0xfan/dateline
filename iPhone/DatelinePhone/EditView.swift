@@ -171,7 +171,7 @@ struct EditSheet: View {
         n.place = item.place.trimmingCharacters(in: .whitespaces)
         if n.place != original.place { n.geo = nil }  // a typed place has no spot on the map until it is looked up
         if n != original {
-            if let f = store.update(n) {
+            if let f = app.change(n, from: original, "Edited") {
                 if store.trialOver { app.unlockNext = true } else { problem = f.message; return }
             } else if app.opened[n.id] != nil { app.opened[n.id] = n }  // opened from outside the days in view: show the saved copy
         }

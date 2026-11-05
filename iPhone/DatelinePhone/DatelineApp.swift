@@ -21,6 +21,8 @@ struct DatelineApp: App {
     }
 }
 
+struct Toast: Identifiable { let id = UUID(); var text: String }
+
 /// What the screens share: which tab and view are showing, the day in view, and the open sheets.
 @MainActor
 final class PhoneState: ObservableObject {
@@ -50,6 +52,12 @@ final class PhoneState: ObservableObject {
     var opened: [String: Item] = [:]  // events opened from outside the days in view (the map)
     var demoWidgets = false
     var demoEdit = false  // pictures only: open the event's edit sheet
+    var demoDrag: DragLive?  // pictures only: an event held mid-drag
+    var demoHold = false  // pictures only: the Undo banner stays up
+    @Published var addStart: Date?  // a tap on an empty time: the add sheet starts there
+    @Published var toast: Toast?  // the Undo banner
+    @Published var dragUntil = Date.distantPast  // the day-to-day swipe stays quiet while an event is held and for a moment after
+    let undo = UndoStack()
     var demoTask: String?  // pictures only: which task sheet the Tasks tab opens (edit, edit-place, new, lists)
 
     init(store: Store, today: Date, sample: Bool) {
@@ -90,7 +98,7 @@ final class PhoneState: ObservableObject {
     func item(_ id: String) -> Item? { store.items.first { $0.id == id } ?? opened[id] }
 
     /// After a sheet closes: the unlock screen, when the ended trial refused what the sheet tried.
-    func sheetClosed() { if unlockNext { unlockNext = false; showUnlock = true } }
+    func sheetClosed() { addStart = nil; if unlockNext { unlockNext = false; showUnlock = true } }
 
     /// Where a new event goes: a typed /code, else the shown set's calendar, else the phone's default (as on the Mac).
     func calendarFor(_ p: Parsed, pick: String? = nil) -> CalInfo? {
@@ -108,7 +116,44 @@ final class PhoneState: ObservableObject {
             it.emoji = emoji
             if store.update(it) == nil { r = .success(it) }
         }
+        if case .success(let it) = r {
+            undo.push { [weak self] in self?.store.delete(it, series: true) }  // like the Mac: a repeating one goes whole
+            say("Added \(it.shownTitle)")
+        }
         return r
+    }
+
+    /// A saved change to an event (drag, stretch, edit): Undo puts `old` back.
+    @discardableResult
+    func change(_ new: Item, from old: Item, _ what: String) -> Failure? {
+        if let f = store.update(new) { return f }
+        undo.push { [weak self] in self?.store.update(old) }
+        say("\(what) \(old.shownTitle)")
+        return nil
+    }
+
+    /// Deletes one event; Undo puts it back as a copy. (A whole series has no undo, as on the Mac.)
+    @discardableResult
+    func delete(_ it: Item, series: Bool) -> Failure? {
+        if let f = store.delete(it, series: series) { return f }
+        guard !series else { return nil }
+        undo.push { [weak self] in self?.store.restore(it) == nil ? Failure("Couldn't put the event back.") : nil }
+        say("Deleted \(it.shownTitle)")
+        return nil
+    }
+
+    func say(_ text: String) {
+        let t = Toast(text: text)
+        toast = t
+        UIAccessibility.post(notification: .announcement, argument: text)
+        guard !demoHold else { return }
+        Task { try? await Task.sleep(nanoseconds: 5_000_000_000); if toast?.id == t.id { toast = nil } }
+    }
+
+    /// The Undo button and shake to undo.
+    func undoLast() {
+        toast = nil
+        if let f = undo.undo() { problem = f.message }
     }
 
     func toggle(_ t: ToDo) { var n = t; n.done.toggle(); save(n) }

@@ -193,15 +193,10 @@ struct DayColumn: View {
             .onEnded { v in
                 defer { drag = nil }
                 guard store.calendar(it.calendarID)?.writable == true else { return }
-                let mins = Int((v.translation.height / (hourH / 4)).rounded()) * 15
-                var new = it
-                if stretch {
-                    new.end = max(it.start.addingTimeInterval(15 * 60), it.end.addingTimeInterval(Double(mins) * 60))
-                } else {
-                    let shift = days.count > 1 ? dayShift(columns: Int((v.translation.width / colWidth).rounded()), from: day, in: days) : 0
-                    new.start = addDays(it.start, shift).addingTimeInterval(Double(mins) * 60)
-                    new.end = addDays(it.end, shift).addingTimeInterval(Double(mins) * 60)
-                }
+                let mins = DragMath.minutes(dy: v.translation.height, hourH: hourH)
+                let new: Item
+                if stretch { new = DragMath.stretch(it, minutes: mins) }
+                else { new = DragMath.move(it, minutes: mins, days: days.count > 1 ? dayShift(columns: Int((v.translation.width / colWidth).rounded()), from: day, in: days) : 0) }
                 if new == it { return }
                 if !stretch && NSEvent.modifierFlags.contains(.option) { app.copy(new) } else { app.save(new) }
             }

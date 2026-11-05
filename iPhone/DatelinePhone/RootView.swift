@@ -1,5 +1,6 @@
 // The four tabs, the round add button on the calendar, and the sheets.
 import SwiftUI
+import UIKit
 import DatelineCore
 
 struct RootView: View {
@@ -28,6 +29,9 @@ struct RootView: View {
             }
             .padding(.horizontal, 16)
         }
+        .overlay(alignment: .bottom) { if let t = app.toast { UndoBanner(toast: t).padding(.horizontal, 16).padding(.bottom, 92).transition(.move(edge: .bottom).combined(with: .opacity)) } }
+        .animation(.easeOut(duration: 0.2), value: app.toast?.id)
+        .background(ShakeToUndo { app.undoLast() })
         .background(T.bg)
         .preferredColorScheme(Look.appearance == "Light" ? .light : Look.appearance == "Dark" ? .dark : nil)  // app.look changing redraws this
         .onReceive(NotificationCenter.default.publisher(for: Look.synced)) { _ in app.lookChanged() }  // a Look choice arrived from the Mac
@@ -83,4 +87,32 @@ struct TabBar: View {
         }
         .padding(4).glass()
     }
+}
+
+/// The short banner after a change: what happened, and Undo.
+struct UndoBanner: View {
+    @EnvironmentObject var app: PhoneState
+    let toast: Toast
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(toast.text).font(.subheadline).lineLimit(2).foregroundStyle(T.text)
+            Spacer(minLength: 0)
+            Button("Undo") { app.undoLast() }.font(.body.weight(.semibold)).foregroundStyle(T.tint).frame(minWidth: 44, minHeight: 44)
+        }
+        .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 2).glass()
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Shake the phone to undo the last change, the way iPhone apps do. Lives in the background, so it only listens.
+struct ShakeToUndo: UIViewControllerRepresentable {
+    let action: () -> Void
+    final class Catcher: UIViewController {
+        var action: () -> Void = {}
+        override var canBecomeFirstResponder: Bool { true }
+        override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); becomeFirstResponder() }
+        override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) { if motion == .motionShake { action() } else { super.motionEnded(motion, with: event) } }
+    }
+    func makeUIViewController(context: Context) -> Catcher { let c = Catcher(); c.action = action; return c }
+    func updateUIViewController(_ c: Catcher, context: Context) { c.action = action }
 }

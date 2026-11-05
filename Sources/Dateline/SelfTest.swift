@@ -14,6 +14,19 @@ func selftest() -> Int32 {
     func at(_ m: Int, _ d: Int, _ h: Int, _ mi: Int = 0) -> Date { cal.date(from: DateComponents(year: 2026, month: m, day: d, hour: h, minute: mi))! }
 
     expect(weekNumber(now) == 44, "Oct 26 2026 is week 44")
+    // Direct handling (drag, stretch, tap on a slot, undo list) shared with the iPhone.
+    do {
+        let a = cal.startOfDay(for: now), e = Item(id: "d", calendarID: "w", title: "d", start: a.addingTimeInterval(9 * 3600), end: a.addingTimeInterval(10 * 3600), allDay: false, place: "", notes: "", showAs: .busy)
+        expect(DragMath.minutes(dy: 20, hourH: 56) == 15 && DragMath.minutes(dy: 6, hourH: 56) == 0 && DragMath.minutes(dy: -42, hourH: 56) == -45, "drag snaps to 15 minutes")
+        let m = DragMath.move(e, minutes: 45, days: 1)
+        expect(m.start == addDays(a, 1).addingTimeInterval(9.75 * 3600) && m.end.timeIntervalSince(m.start) == 3600, "a move keeps the length and can change the day")
+        expect(DragMath.stretch(e, minutes: 30).end == e.end.addingTimeInterval(1800) && DragMath.stretch(e, minutes: -9999).end == e.start.addingTimeInterval(900), "stretching never goes under 15 minutes")
+        expect(DragMath.slot(on: a, y: 56 * 14.6, hourH: 56) == a.addingTimeInterval(14.5 * 3600) && DragMath.slot(on: a, y: -30, hourH: 56) == a && DragMath.slot(on: a, y: 5000, hourH: 56) == a.addingTimeInterval(23.5 * 3600), "a tap on a slot starts at the half hour above it")
+        let u = UndoStack(); var log: [Int] = []
+        expect(u.undo() == nil && !u.canUndo, "undo with nothing to undo does nothing")
+        u.push { log.append(1); return nil }; u.push { log.append(2); return Failure("no") }
+        expect(u.undo()?.message == "no" && u.undo() == nil && log == [2, 1] && !u.canUndo, "undo runs newest first and reports a failure")
+    }
     expect(weekNumber(cal.date(from: DateComponents(year: 2027, month: 1, day: 1, hour: 12))!) == 53, "Jan 1 2027 is in week 53 of 2026")
     expect(startOfWeek(at(11, 1, 12)) == at(10, 26, 0), "week starts Monday")
     expect(monthGrid(now).count == 35 && monthGrid(now).first == at(9, 28, 0), "October 2026 grid: 5 weeks from Sep 28")

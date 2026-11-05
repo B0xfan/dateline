@@ -21,7 +21,7 @@ struct CalendarTab: View {
             .background(T.bg)
             .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in  // swipe left or right for the next or last days
                 let x = v.translation.width
-                if abs(x) > 80 && abs(x) > abs(v.translation.height) * 2 { app.step(x < 0 ? 1 : -1) }
+                if abs(x) > 80 && abs(x) > abs(v.translation.height) * 2 && Date() > app.dragUntil { app.step(x < 0 ? 1 : -1) }
             })
             .navigationTitle(dateText(app.anchor, "EEE, MMM d"))  // the details screen's back button
             .toolbar(.hidden, for: .navigationBar)
@@ -450,6 +450,7 @@ struct HourGrid: View {
     @EnvironmentObject var store: Store
     @Environment(\.scenePhase) private var scenePhase
     @State private var away = false
+    @GestureState private var held: DragLive? = nil  // the event held in a finger now; it clears itself when the finger lifts or the touch is cancelled
     let days: [Date]
     let wide: Bool
     private let hourH: CGFloat = 56
@@ -473,12 +474,18 @@ struct HourGrid: View {
                         }
                     }
                     HStack(spacing: 0) {
-                        ForEach(days, id: \.self) { column($0) }
+                        ForEach(days, id: \.self) { d in column(d).zIndex(live?.day == d ? 1 : 0) }
                     }
                     .padding(.leading, wide ? gutter + 8 : gutter).padding(.top, 8)
                 }
                 .padding(.bottom, min(barRoom, 200))  // room under the tabs
             }
+            .scrollDisabled(held != nil)
+            .onChange(of: held?.id) {
+                if held != nil { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); app.dragUntil = .distantFuture }
+                else { app.dragUntil = Date().addingTimeInterval(0.4) }
+            }
+            .onChange(of: held?.minutes) { if held != nil { UISelectionFeedbackGenerator().selectionChanged() } }
             // Like the Mac: the current hour's row sits mid-view on opening and each time the app comes back to the front.
             .onAppear { DispatchQueue.main.async { centre(sv) } }
             .onChange(of: app.anchor) { centre(sv) }
@@ -500,20 +507,60 @@ struct HourGrid: View {
         return CGFloat(m) / 60 * hourH
     }
 
+    private var live: DragLive? { held ?? app.demoDrag }
+
+    /// The event as it would be saved if the finger lifted now.
+    private func lifted(_ it: Item, _ l: DragLive, column: Date) -> Item {
+        if l.stretch { return DragMath.stretch(it, minutes: l.minutes) }
+        return DragMath.move(it, minutes: l.minutes, days: shift(l, from: column))
+    }
+
+    /// Whole days over, from the column it started in; it stays inside the days on screen.
+    private func shift(_ l: DragLive, from day: Date) -> Int {
+        guard !l.stretch, let i = days.firstIndex(of: day) else { return 0 }
+        return dayShift(columns: min(max(l.columns, -i), days.count - 1 - i), from: day, in: days)
+    }
+
     private func column(_ day: Date) -> some View {
         let list = store.shown(on: day).filter { !$0.allDay }
         let ln = lanes(list)
         let timed = store.todos.filter { $0.timed && !$0.done && !store.hiddenLists.contains($0.listID) && $0.due.map { cal.isDate($0, inSameDayAs: day) } == true }
         return GeometryReader { g in ZStack(alignment: .topLeading) {
+            // A tap on an empty time starts a new event there (events and tasks sit above and take their own taps).
+            Color.clear.contentShape(Rectangle())
+                .gesture(SpatialTapGesture().onEnded { v in app.addStart = DragMath.slot(on: day, y: v.location.y, hourH: hourH); app.adding = "" })
+                .accessibilityHidden(true)
             ForEach(list) { it in
                 let pos = ln[it.id] ?? (0, 1)
                 let w = g.size.width / CGFloat(max(pos.1, 1))
                 let top = y(it.start, day)
-                if let m = app.drive[it.id], top > 0 {
+                let l = live?.id == it.id ? live : nil
+                let shown = l.map { lifted(it, $0, column: day) } ?? it
+                let cols = l.map { l in l.stretch ? 0 : days.firstIndex(of: day).map { i in min(max(l.columns, -i), days.count - 1 - i) } ?? 0 } ?? 0
+                if let m = app.drive[it.id], top > 0, l == nil {
                     let h = CGFloat(m) / 60 * hourH
                     DriveBlock(minutes: m, color: store.color(it)).frame(width: w - 4, height: min(h, top)).offset(x: CGFloat(pos.0) * w + 2, y: top - min(h, top) - 2)
                 }
-                EventBlock(it: it, wide: wide).frame(width: w - 4, height: max(22, y(it.end, day) - top - 2)).offset(x: CGFloat(pos.0) * w + 2, y: top)
+                let h0 = max(22, y(it.end, day) - top - 2)
+                let h = l == nil ? h0 : max(22, CGFloat(shown.end.timeIntervalSince(shown.start)) / 3600 * hourH - 2)
+                let writable = store.calendar(it.calendarID)?.writable == true
+                EventBlock(it: shown, wide: wide, lifted: l != nil)
+                    .frame(width: w - 4, height: h)
+                    .gesture(hold(it, column: day, width: g.size.width, stretch: false), including: writable ? .all : .none)
+                    .overlay(alignment: .bottom) {
+                        if writable {
+                            Color.clear.frame(height: min(22, h0 / 2)).contentShape(Rectangle())
+                                .onTapGesture { app.open(it) }
+                                .gesture(hold(it, column: day, width: g.size.width, stretch: true))
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in app.say("This calendar is read only.") }, including: writable ? .none : .all)
+                    .accessibilityAction(named: "Move 15 minutes later") { if writable { _ = app.change(DragMath.move(it, minutes: 15), from: it, "Moved") } }
+                    .accessibilityAction(named: "Move 15 minutes earlier") { if writable { _ = app.change(DragMath.move(it, minutes: -15), from: it, "Moved") } }
+                    .overlay(alignment: top < 44 ? .bottom : .top) { if l != nil { HoldPill(it: shown).offset(y: top < 44 ? 30 : -30) } }
+                    .offset(x: CGFloat(pos.0) * w + 2 + CGFloat(cols) * g.size.width, y: top + (l.map { $0.stretch ? 0 : CGFloat($0.minutes) / 60 * hourH } ?? 0))
+                    .zIndex(l != nil ? 2 : 0)
             }
             ForEach(timed) { t in
                 TimedTask(t: t, color: store.taskList(t.listID)?.color ?? T.tint)
@@ -528,6 +575,41 @@ struct HourGrid: View {
         .frame(height: 24 * hourH)
         .overlay(alignment: .leading) { Rectangle().fill(T.line).frame(width: 1) }
     }
+
+    /// Press and hold, then drag: moves the event (anywhere on it) or changes its length (its bottom edge). 15 minute steps.
+    private func hold(_ it: Item, column: Date, width: CGFloat, stretch: Bool) -> some Gesture {
+        func live(_ v: SequenceGesture<LongPressGesture, DragGesture>.Value) -> DragLive? {
+            guard case .second(true, let d?) = v else { return nil }
+            return DragLive(id: it.id, day: column, stretch: stretch, minutes: DragMath.minutes(dy: d.translation.height, hourH: hourH), columns: Int((d.translation.width / width).rounded()))
+        }
+        return LongPressGesture(minimumDuration: 0.35).sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
+            .updating($held) { v, state, _ in if let l = live(v) { state = l } }
+            .onEnded { v in
+                guard let l = live(v) else { return }
+                let new = lifted(it, l, column: column)
+                guard new != it else { return }
+                if let f = app.change(new, from: it, stretch ? "Changed the length of" : "Moved") { if store.trialOver { app.showUnlock = true } else { app.problem = f.message } }
+            }
+    }
+}
+
+/// An event held in a finger: which one, how far (in 15 minute steps and whole columns), and whether the bottom edge is being pulled.
+struct DragLive: Equatable {
+    var id: String
+    var day: Date
+    var stretch: Bool
+    var minutes: Int
+    var columns: Int
+}
+
+/// The time it would have, above a held event.
+struct HoldPill: View {
+    let it: Item
+    var body: some View {
+        Text("\(dateText(it.start, "EEE")) \(timeText(it.start, short: true)) to \(timeText(it.end, short: true))")
+            .font(.caption.weight(.semibold)).foregroundStyle(.white).lineLimit(1).fixedSize()
+            .padding(.horizontal, 10).padding(.vertical, 4).background(T.tint, in: Capsule())
+    }
 }
 
 struct EventBlock: View {
@@ -535,22 +617,28 @@ struct EventBlock: View {
     @EnvironmentObject var store: Store
     let it: Item
     let wide: Bool
+    var lifted = false  // held in a finger: raised, with a grip at the bottom edge
     var body: some View {
         let c = store.color(it)
-        Button { app.open(it) } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(it.shownTitle).fontWeight(.semibold).lineLimit(wide ? 1 : 3).minimumScaleFactor(wide ? 1 : 0.8)
-                Text(wide ? ([timeText(it.start, short: true) + " to " + timeText(it.end, short: true)] + (it.place.isEmpty ? [] : [it.place])).joined(separator: " · ") : timeText(it.start, short: true))
-                    .foregroundStyle(wide ? T.text2 : T.text).lineLimit(1)
-            }
-            .font(wide ? .subheadline : .caption).foregroundStyle(T.text)
-            .padding(.leading, wide ? 10 : 6).padding(.trailing, 4).padding(.vertical, 4)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(c.opacity(0.18))
-            .overlay(alignment: .leading) { Rectangle().fill(c).frame(width: wide ? 4 : 3) }
-            .clipShape(RoundedRectangle(cornerRadius: wide ? 8 : 6))
+        VStack(alignment: .leading, spacing: 0) {
+            Text(it.shownTitle).fontWeight(.semibold).lineLimit(wide ? 1 : 3).minimumScaleFactor(wide ? 1 : 0.8)
+            Text(wide ? ([timeText(it.start, short: true) + " to " + timeText(it.end, short: true)] + (it.place.isEmpty ? [] : [it.place])).joined(separator: " · ") : timeText(it.start, short: true))
+                .foregroundStyle(wide ? T.text2 : T.text).lineLimit(1)
         }
-        .buttonStyle(.plain)
+        .font(wide ? .subheadline : .caption).foregroundStyle(T.text)
+        .padding(.leading, wide ? 10 : 6).padding(.trailing, 4).padding(.vertical, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(lifted ? c.opacity(0.35) : c.opacity(0.18))
+        .background(lifted ? T.bg : .clear)
+        .overlay(alignment: .leading) { Rectangle().fill(c).frame(width: wide ? 4 : 3) }
+        .overlay(alignment: .bottom) { if lifted { Capsule().fill(c).frame(width: 28, height: 4).padding(.bottom, 3) } }
+        .clipShape(RoundedRectangle(cornerRadius: wide ? 8 : 6))
+        .shadow(color: .black.opacity(lifted ? 0.28 : 0), radius: 8, y: 3)
+        .scaleEffect(lifted ? 1.03 : 1)
+        .contentShape(Rectangle())
+        .onTapGesture { app.open(it) }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
     }
 }
 

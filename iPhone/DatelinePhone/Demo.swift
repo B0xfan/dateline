@@ -59,6 +59,15 @@ enum Demo {
         case "edit", "edit-invite":
             let want = s == "edit" ? "Dentist" : "Holiday: no school"
             if let it = app.store.between(today, addDays(today, 7)).first(where: { $0.title == want }) { app.demoEdit = true; app.open(it) }
+        case "drag", "resize", "undo-toast", "tap-new":
+            let day = addDays(cal.startOfDay(for: today), 2)  // the dentist, Wednesday 8:30
+            let dentist = app.store.between(today, addDays(today, 7)).first { $0.title == "Dentist" }
+            switch s {
+            case "drag": app.mode = .week; app.demoDrag = dentist.map { DragLive(id: $0.id, day: day, stretch: false, minutes: 60, columns: -1) }  // an hour later, one day earlier
+            case "resize": app.anchor = day; app.mode = .day; app.demoDrag = dentist.map { DragLive(id: $0.id, day: day, stretch: true, minutes: 45, columns: 0) }
+            case "undo-toast": app.mode = .week; app.demoHold = true; app.say("Moved Dentist")
+            default: app.mode = .week; app.addStart = cal.date(byAdding: .minute, value: 14 * 60 + 30, to: addDays(cal.startOfDay(for: today), 1)); app.adding = ""
+            }
         case "tasks": app.tab = .tasks
         case "task-edit", "task-edit-place", "task-new", "task-lists": app.tab = .tasks; app.demoTask = String(s.dropFirst(5))
         case "places": app.tab = .places
@@ -139,6 +148,21 @@ enum SelfTest {
         check(whole.start == mon && whole.end == addDays(mon, 1) && EventEdit.allDay(whole, false).start == cal.date(byAdding: .hour, value: 9, to: mon), "the all day switch sets the day, and off gives 9 AM for an hour")
         check(EventEdit.date(dinner, addDays(mon, 2)).start == cal.date(byAdding: .hour, value: 10, to: addDays(mon, 2)), "a new date keeps the time")
         check(!store.isRepeating(dinner), "a plain event is not a repeating one")
+
+        // Direct handling through the phone's state: move, stretch, edit and delete each show an Undo banner and take back.
+        if let ev = store.between(addDays(mon, 2), addDays(mon, 3)).first(where: { $0.title == "Dentist" }) {
+            let moved = DragMath.move(ev, minutes: 30), stretched = DragMath.stretch(ev, minutes: 60)
+            check(app.change(moved, from: ev, "Moved") == nil && store.items.first { $0.id == ev.id }?.start == moved.start && app.toast?.text.hasPrefix("Moved") == true, "a move saves and shows the Undo banner")
+            app.undoLast()
+            check(store.items.first { $0.id == ev.id }?.start == ev.start && app.toast == nil, "Undo moves it back and clears the banner")
+            check(app.change(stretched, from: ev, "Changed the length of") == nil && store.items.first { $0.id == ev.id }?.end == stretched.end, "a stretch saves")
+            app.undoLast()
+            check(store.items.first { $0.id == ev.id }?.end == ev.end, "Undo gives it its old length")
+            check(app.delete(ev, series: false) == nil && !store.items.contains { $0.id == ev.id }, "delete takes it off")
+            app.undoLast()
+            check(store.between(addDays(mon, 2), addDays(mon, 3)).contains { $0.title == "Dentist" && $0.start == ev.start }, "Undo of a delete puts it back")
+        } else { check(false, "the sample has the dentist on Wednesday") }
+        check(!app.undo.canUndo && app.undo.undo() == nil, "nothing left to undo")
 
         let mail = app.emails.count
         if case .success(let d) = app.add(app.emails[0].parsed, emoji: app.emails[0].emoji) {
