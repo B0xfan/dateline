@@ -171,8 +171,6 @@ struct Sidebar: View {
     @ObservedObject var store: Store
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // The sliver keeps the scroll view off the top edge, as in the side panels: touching it, the sidebar's clicks land a toolbar's height above its rows.
-            Color.clear.frame(height: 1)
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     FromEmailList(app: app, inbox: app.emails)
@@ -217,8 +215,6 @@ struct Sidebar: View {
             Divider().overlay(Palette.line)
             Text("Your data stays on this Mac").font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 8)
         }
-        .padding(.top, 26)  // half the toolbar's height: the measured gap grows twice as fast as this number
-        .ignoresSafeArea(.container, edges: .top)
     }
 
     func listRow(_ l: CalInfo) -> some View {
