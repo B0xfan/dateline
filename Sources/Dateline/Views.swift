@@ -149,6 +149,8 @@ struct Sidebar: View {
     @ObservedObject var store: Store
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // The sliver keeps the scroll view off the top edge, as in the side panels: touching it, the rows are drawn a toolbar's height below where their clicks land.
+            Color.clear.frame(height: 1)
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     FromEmailList(app: app, inbox: app.emails)
@@ -193,8 +195,6 @@ struct Sidebar: View {
             Divider().overlay(Palette.line)
             Text("Your data stays on this Mac").font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 8)
         }
-        .padding(.top, 26)  // half the toolbar's height: the measured gap grows twice as fast as this number
-        .ignoresSafeArea(.container, edges: .top)
     }
 
     func listRow(_ l: CalInfo) -> some View {
@@ -472,26 +472,35 @@ struct Understood: View {
     }
 }
 
-// Dateline, Settings (Command comma): the quick add shortcut, and the Look tab (Phase 3).
+// Dateline, Settings (Command comma). Eight tabs at most, all wide enough to show every tab, so none is pushed into
+// the toolbar's » menu, which shows them greyed out (John 2026-11-05). The render draws these same tabs (settings-window).
+@MainActor func settingsTabs(_ app: AppState) -> [(tag: String, label: String, icon: String, view: AnyView)] {
+    func stack(_ parts: [AnyView]) -> AnyView {
+        AnyView(VStack(alignment: .leading, spacing: 0) { ForEach(parts.indices, id: \.self) { i in if i > 0 { Divider() }; parts[i] } })
+    }
+    var tabs: [(tag: String, label: String, icon: String, view: AnyView)] = [
+        ("quick", "General", "gearshape", stack([AnyView(QuickSettings(app: app, quick: app.quick)), AnyView(LicenseSettings()), AnyView(UpdateSettings())])),
+        ("accounts", "Accounts", "person.crop.circle", AnyView(AccountSettings(store: app.store))),
+        ("look", "Look", "paintpalette", stack([AnyView(LookSettings(app: app)), AnyView(MenuBarSettings(app: app))])),
+        ("week", "Week", "calendar", AnyView(WeekSettings(app: app))),
+        ("alerts", "Alerts", "bell", AnyView(AlertSettings(app: app, store: app.store))),
+        ("zones", "Time & weather", "globe", stack([AnyView(ZoneSettings(app: app)), AnyView(WeatherSettings(app: app))])),
+        ("assistant", "Assistant", "sparkles", AnyView(AssistantSettings(app: app, a: Assistant.shared))),
+    ]
+    if app.store.a4Here { tabs.insert(("a4", "A4 tasks", "checklist", AnyView(A4Settings(store: app.store))), at: 6) }
+    return tabs.map { ($0.tag, $0.label, $0.icon, AnyView($0.view.frame(minWidth: 700, alignment: .topLeading))) }
+}
+
 struct SettingsView: View {
     @ObservedObject var app: AppState
-    @AppStorage("settingsTab") private var tab = "quick"  // the attachments hint opens Accounts
+    @AppStorage("settingsTab") private var tab = "quick"  // the attachments hint opens Accounts, Enter key opens General
     var body: some View {
+        let tabs = settingsTabs(app)
         TabView(selection: $tab) {
-            QuickSettings(app: app, quick: app.quick).tabItem { Label("Quick add", systemImage: "plus.square") }.tag("quick")
-            AccountSettings(store: app.store).tabItem { Label("Accounts", systemImage: "person.crop.circle") }.tag("accounts")
-            LookSettings(app: app).tabItem { Label("Look", systemImage: "paintpalette") }.tag("look")
-            WeekSettings(app: app).tabItem { Label("Week", systemImage: "calendar") }.tag("week")
-            AlertSettings(app: app, store: app.store).tabItem { Label("Alerts", systemImage: "bell") }.tag("alerts")
-            ZoneSettings(app: app).tabItem { Label("Time zones", systemImage: "globe") }.tag("zones")
-            if app.store.a4Here { A4Settings(store: app.store).tabItem { Label("A4 tasks", systemImage: "checklist") }.tag("a4") }
-            MenuBarSettings(app: app).tabItem { Label("Menu bar", systemImage: "menubar.rectangle") }.tag("menubar")
-            WeatherSettings(app: app).tabItem { Label("Weather", systemImage: "cloud.sun") }.tag("weather")
-            AssistantSettings(app: app, a: Assistant.shared).tabItem { Label("Assistant", systemImage: "sparkles") }.tag("assistant")
-            UpdateSettings().tabItem { Label("Updates", systemImage: "arrow.down.circle") }.tag("updates")
-            LicenseSettings().tabItem { Label("License", systemImage: "key") }.tag("license")
+            ForEach(tabs, id: \.tag) { t in t.view.tabItem { Label(t.label, systemImage: t.icon) }.tag(t.tag) }
         }
-        .onAppear { if tab == "a4" && !app.store.a4Here { tab = "quick" } }  // an older copy may have left the hidden A4 tab picked
+        // A tab picked in an older copy, now folded into another, or the hidden A4 tab.
+        .onAppear { tab = ["menubar": "look", "weather": "zones", "updates": "quick", "license": "quick"][tab] ?? (tabs.contains { $0.tag == tab } ? tab : "quick") }
     }
 }
 

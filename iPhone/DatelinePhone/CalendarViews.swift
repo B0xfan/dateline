@@ -235,6 +235,7 @@ struct DayView: View {
 struct HourGrid: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
+    @Environment(\.scenePhase) private var scenePhase
     let days: [Date]
     let wide: Bool
     private let hourH: CGFloat = 56
@@ -260,15 +261,14 @@ struct HourGrid: View {
                 }
                 .padding(.bottom, 170)  // room under the add bar and tabs
             }
-            .onAppear { sv.scrollTo(firstHour, anchor: .top) }
-            .onChange(of: app.anchor) { sv.scrollTo(firstHour, anchor: .top) }
+            // Like the Mac: the current hour's row sits mid-view on opening and each time the app comes back to the front.
+            .onAppear { DispatchQueue.main.async { centre(sv) } }
+            .onChange(of: app.anchor) { centre(sv) }
+            .onChange(of: scenePhase) { if scenePhase == .active { if !app.sample { app.today = Date() }; centre(sv) } }  // the minute clock may not have run yet after a sleep
         }
     }
 
-    /// Opens on the hour before now on today, else at 8 AM.
-    private var firstHour: Int {
-        days.contains { cal.isDate($0, inSameDayAs: app.today) } ? max(0, cal.component(.hour, from: app.today) - 1) : 8
-    }
+    private func centre(_ sv: ScrollViewProxy) { sv.scrollTo(cal.component(.hour, from: app.today), anchor: .center) }
 
     private func y(_ t: Date, _ day: Date) -> CGFloat {
         let m = min(1440, max(0, t.timeIntervalSince(day) / 60))

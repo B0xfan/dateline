@@ -61,7 +61,7 @@ struct TrialEndedStrip: View {
     }
 }
 
-@MainActor func openLicense(_ openSettings: OpenSettingsAction) { UserDefaults.standard.set("license", forKey: "settingsTab"); openSettings() }
+@MainActor func openLicense(_ openSettings: OpenSettingsAction) { UserDefaults.standard.set("quick", forKey: "settingsTab"); openSettings() }
 
 /// Settings, License: the trial or the bought state, Buy, and the box for the key.
 struct LicenseSettings: View {

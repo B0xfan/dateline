@@ -6,16 +6,11 @@ import DatelineCore
 var hourH: CGFloat { Look.hourHeight }
 let gutter: CGFloat = 52
 
-private struct ScrollTop: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
 
 struct TimeGrid: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
     @ObservedObject private var here = Here.shared
-    @State private var scrolled = false
 
     var body: some View {
         let days = app.visibleDays
@@ -82,20 +77,14 @@ struct TimeGrid: View {
                             DayColumn(app: app, store: store, day: d, days: days, items: store.shown(on: d).filter { !$0.allDay })
                         }
                     }
-                    .background(GeometryReader { g in Color.clear.preference(key: ScrollTop.self, value: g.frame(in: .named("hours")).minY) })
                 }
-                .coordinateSpace(name: "hours")
-                // Height changes as the view scrolls; only saved once the opening scroll has landed, or the first draw would save midnight.
-                .onPreferenceChange(ScrollTop.self) { y in
-                    guard scrolled, Look.saves, store.access != .sample else { return }
-                    let hour = max(0, min(23, Int((-y / hourH).rounded())))
-                    if hour != UserDefaults.standard.object(forKey: "topHour") as? Int { UserDefaults.standard.set(hour, forKey: "topHour") }
+                // The time line sits mid-view on opening and each time Dateline comes back to the front (John 2026-11-05);
+                // centring the current hour's row puts its half past mid-view, so the line is within half an hour of the middle.
+                .onAppear { DispatchQueue.main.async { sv.scrollTo(cal.component(.hour, from: app.now), anchor: .center) } }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    if store.access != .sample { app.tick(Date()) }  // the 30 second clock may not have run yet after a sleep
+                    withAnimation(.easeInOut(duration: 0.3)) { sv.scrollTo(cal.component(.hour, from: app.now), anchor: .center) }
                 }
-                // Reopens where it was left; the first time, at the start of the working day (Settings, Week).
-                .onAppear { DispatchQueue.main.async {
-                    sv.scrollTo((Look.saves && store.access != .sample ? UserDefaults.standard.object(forKey: "topHour") as? Int : nil) ?? WorkWeek.from / 60, anchor: .top)
-                    DispatchQueue.main.async { scrolled = true }
-                } }
             }
         }
         .background(Palette.win)

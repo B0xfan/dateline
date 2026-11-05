@@ -51,7 +51,7 @@ struct WeekSettings: View {
                         }
                     }
                 }
-                row("Working hours", "The calendar opens scrolled to the start of your day. Hours outside work are lightly striped.") {
+                row("Working hours", "Hours outside work are lightly striped. The calendar always opens on the current time.") {
                     HStack(spacing: 8) {
                         time(WorkWeek.from, in: 0..<WorkWeek.to) { WorkWeek.from = $0 }
                         Text("to").foregroundStyle(Palette.text3)

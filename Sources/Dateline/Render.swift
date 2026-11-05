@@ -26,13 +26,18 @@ private final class ShotWindow: NSWindow {
     RunLoop.main.run(until: Date().addingTimeInterval(max(wait, 1)))
     if let change { change(); RunLoop.main.run(until: Date().addingTimeInterval(4)) }  // side panels slide in slowly in a hidden window
     defer { w.close() }
+    return capture(w, to: path)
+}
+
+@MainActor private func capture(_ w: NSWindow, to path: String) -> Bool {
+    let width = w.frame.width, height = w.frame.height
     var picture: CGImage?, done = false
     Task {
         defer { done = true }
         do {
             let found = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
             guard let win = found.windows.first(where: { $0.windowID == CGWindowID(w.windowNumber) }) else { print("window not listed"); return }
-            let c = SCStreamConfiguration(); c.width = Int(width * 2); c.height = 1600; c.showsCursor = false
+            let c = SCStreamConfiguration(); c.width = Int(width * 2); c.height = Int(height * 2); c.showsCursor = false
             picture = try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: win), configuration: c)
         } catch { print("capture failed: \(error)") }
     }
@@ -188,17 +193,48 @@ private final class ShotWindow: NSWindow {
         }
         do {  // Phase 9 (approved mockup section 4): Settings, Assistant, with two things Claude did, the newest one undoable.
             let a = AppState(store: Store(sample: true), today: today), ai = Assistant.test(a)
-            ai.on = true
+            ai.on = true; ai.apps = ["Q6L2SF6YDW:com.anthropic.claudefordesktop": "Claude"]
             let moved = Assistant.Line(when: today.addingTimeInterval(-25 * 60), text: "Moved \"Dentist\" to Thu 4:00 PM")
             ai.log = [moved, Assistant.Line(when: today.addingTimeInterval(-40 * 60), text: "Looked at Nov 2 to Nov 8")]
             ai.undos[moved.id] = { nil }
             ok = save(AssistantSettings(app: a, a: ai, claudeHere: true, connected: true).frame(width: 760, alignment: .top).background(Palette.win), dark: dark, width: 760, to: "\(dir)/assistant-\(tag).png") && ok
         }
+        if only.isEmpty || only.contains("settings-window") { ok = settingsWindow(dark: dark, dir: dir, tag: tag) && ok }
         let app = AppState(store: Store(sample: true), today: today)
         app.quick.text = "Lunch with Sam tomorrow 1pm /Personal -a15m -r1w"
         ok = save(QuickAddView(app: app, store: app.store, quick: app.quick).padding(40).frame(width: 1380, height: 800, alignment: .top).background(Color(red: 0.45, green: 0.5, blue: 0.7)), dark: dark, to: "\(dir)/quick-add-\(tag).png") && ok
         app.quick.pick = app.quickSuggestions.first
         ok = save(QuickAddView(app: app, store: app.store, quick: app.quick).padding(40).frame(width: 1380, height: 800, alignment: .top).background(Color(red: 0.45, green: 0.5, blue: 0.7)), dark: dark, to: "\(dir)/quick-add-picked-\(tag).png") && ok
+    }
+    return ok
+}
+
+// The Settings window as the system draws it (a toolbar tab bar), on every tab: fails when any tab is pushed into
+// the toolbar's » menu, and prints each tab's size, so a folded-together tab that grows too tall shows up here.
+@MainActor private func settingsWindow(dark: Bool, dir: String, tag: String) -> Bool {
+    let app = AppState(store: .sampleWithA4(), today: sampleToday ?? Date())
+    let tabs = NSTabViewController(); tabs.tabStyle = .toolbar
+    for t in settingsTabs(app) {
+        let vc = NSHostingController(rootView: t.view.font(.ui(13)).background(Palette.pop)); vc.sizingOptions = .preferredContentSize
+        let item = NSTabViewItem(viewController: vc); item.label = t.label; item.image = NSImage(systemSymbolName: t.icon, accessibilityDescription: nil)
+        tabs.addTabViewItem(item)
+    }
+    let w = ShotWindow(contentViewController: tabs)
+    w.isReleasedWhenClosed = false
+    w.styleMask = [.titled, .closable]; w.toolbarStyle = .preference
+    w.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) - 1)
+    w.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+    w.orderFrontRegardless()
+    defer { w.close() }
+    var ok = true
+    for (i, item) in tabs.tabViewItems.enumerated() {
+        tabs.selectedTabViewItemIndex = i
+        RunLoop.main.run(until: Date().addingTimeInterval(1))
+        let shown = Set((w.toolbar?.visibleItems ?? []).map(\.itemIdentifier)), all = (w.toolbar?.items ?? []).filter { ![.flexibleSpace, .space].contains($0.itemIdentifier) }
+        let hidden = all.filter { !shown.contains($0.itemIdentifier) }.map(\.label)
+        print("settings \(item.label): \(Int(w.frame.width)) x \(Int(w.frame.height)), \(all.count - hidden.count) of \(all.count) tabs shown\(hidden.isEmpty ? "" : ", in the » menu: \(hidden.joined(separator: ", "))")")
+        if !hidden.isEmpty { ok = false }
+        ok = capture(w, to: "\(dir)/settings-window-\(tag)-\(i + 1).png") && ok
     }
     return ok
 }

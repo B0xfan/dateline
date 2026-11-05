@@ -124,7 +124,16 @@ public func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60) -
 
 // Words not taken as a date, time or mark make the title; after "at <place>" they make the place.
 private func parsePlain(_ text: String, now: Date, defaultMinutes: Int) -> Parsed {
-    let words = text.split(separator: " ").map(String.init)
+    // "9:30 AM" or "9 p.m." typed as two words joins into one time word, so the AM never stays in the title.
+    var words: [String] = []
+    for w in text.split(separator: " ").map(String.init) {
+        let ap = w.lowercased().filter { $0 != "." && $0 != "," }
+        let joined = (words.last ?? "").lowercased() + ap
+        // Only a real time ("Q4 PM" stays), and never a day number ("Nov 3 PM" keeps its date).
+        if ap == "am" || ap == "pm", clock(joined) != nil || timeRange(joined) != nil, monthIndex(words.dropLast().last?.lowercased() ?? "") == nil {
+            words[words.count - 1] += ap
+        } else { words.append(w) }
+    }
     var used = Set<Int>()
     var day: Date? = nil
     var startMin: Int? = nil, endMin: Int? = nil, duration: Int? = nil, startSure = false
