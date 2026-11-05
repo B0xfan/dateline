@@ -368,6 +368,27 @@ extension Store {
     mac.syncNow(); phone.sync.on = true; t += 10; phone.syncNow()
     expect(find(phone, "Marco at the condo")?.tags == ["New"] && find(mac, "Marco at the condo")?.tags == ["New"], "sync: a change made with the switch off loses to a later one on the Mac")
 
+    // A new event on a Google or Exchange calendar: its uid (and on some servers its id) changes once the server has it. The extras follow it.
+    let macSrc = mac.source as! SampleCalendar, phoneSrc = phone.source as! SampleCalendar
+    func serverGave(_ src: SampleCalendar, _ title: String, uid: String, id: String? = nil) {
+        guard let i = src.events.firstIndex(where: { $0.title == title }) else { return }
+        src.events[i].uid = uid; if let id { src.events[i].id = id }
+    }
+    t += 10
+    if var g = find(mac, "Gym") { g.emoji = "🏋️"; mac.update(g) }  // made on the Mac before the server answered
+    mac.syncNow()
+    serverGave(macSrc, "Gym", uid: "server-gym")  // the server's own uid, the one the iPhone sees
+    serverGave(phoneSrc, "Gym", uid: "server-gym")
+    _ = mac.between(addDays(Date(), -60), addDays(Date(), 60))  // the Mac reads its calendar again
+    t += 10; mac.syncNow(); phone.syncNow()
+    expect(find(phone, "Gym")?.emoji == "🏋️", "sync: a new event's extras reach the iPhone after the server gives it its own uid")
+    serverGave(macSrc, "Gym", uid: "server-gym-2", id: "gym-new-id")  // a server that also changes the event's id here
+    serverGave(phoneSrc, "Gym", uid: "server-gym-2")
+    let count = mac.extras.count
+    t += 10; let seenGym = find(mac, "Gym")?.emoji; mac.syncNow(); phone.syncNow()
+    expect(seenGym == "🏋️" && mac.extras.count == count && mac.extras["gym-new-id"]?.emoji == "🏋️", "sync: an event whose id changed keeps its extras on the Mac, under one key")
+    expect(find(phone, "Gym")?.emoji == "🏋️" && phone.extras.values.filter { $0.emoji == "🏋️" }.count == 1, "sync: and on the iPhone, once, not twice")
+
     // Deleting the last calendar set deletes it on the other device too.
     t += 10; phone.syncNow(); mac.syncNow()
     for s in mac.sets { mac.deleteSet(s.id) }
