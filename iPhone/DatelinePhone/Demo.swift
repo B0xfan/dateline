@@ -59,6 +59,10 @@ enum Demo {
         case "places": app.tab = .places
         case "email": app.email = app.emails.first
         case "settings": app.tab = .settings; License.shared.test = .bought(serial: 586300)
+        case let page where page.hasPrefix("settings-"):  // one settings page, e.g. settings-week
+            app.tab = .settings; License.shared.test = .bought(serial: 586300)
+            let parts = page.dropFirst(9).components(separatedBy: "+")  // settings-accounts+iCloud opens an account's calendars
+            app.settingsPath = parts.map { $0 == "icloud" ? (app.store.calendars.first?.account ?? $0) : $0 }
         case "unlock": License.shared.test = .trial(daysLeft: 3); app.showUnlock = true
         case "widgets": app.demoWidgets = true
         default: app.mode = .week

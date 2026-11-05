@@ -40,6 +40,8 @@ final class PhoneState: ObservableObject {
     @Published var adding: String?  // the add sheet's starting text; nil = closed
     @Published var email: EmailFind?
     @Published var showUnlock = false
+    @Published var settingsPath: [String] = []  // the settings pages open, e.g. ["accounts", "iCloud"]
+    @Published var look = 0  // bumped when a Look choice changes here or arrives from the Mac, so the screens redraw in it
     var unlockNext = false  // an add refused by the ended trial: the unlock screen opens once the add sheet has closed
     @Published var problem: String?
     // shortcut: only the sample fills this; the phone does not run the shared drive planner (Trips) yet, which also schedules the leave alerts (a later step).
@@ -64,6 +66,8 @@ final class PhoneState: ObservableObject {
         case .year: let y = cal.dateInterval(of: .year, for: anchor)!; return (y.start, y.end)
         }
     }
+
+    func lookChanged() { look += 1 }
 
     func reload() { let r = range; store.show(from: addDays(r.0, -7), to: addDays(r.1, 7)) }
 
