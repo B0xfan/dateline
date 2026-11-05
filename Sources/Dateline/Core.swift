@@ -126,7 +126,11 @@ private func parsePlain(_ text: String, now: Date, defaultMinutes: Int) -> Parse
     var words: [String] = []
     for w in text.split(separator: " ").map(String.init) {
         let ap = w.lowercased().filter { $0 != "." && $0 != "," }
-        if ap == "am" || ap == "pm", words.last?.last?.isNumber == true { words[words.count - 1] += ap } else { words.append(w) }
+        let joined = (words.last ?? "").lowercased() + ap
+        // Only a real time ("Q4 PM" stays), and never a day number ("Nov 3 PM" keeps its date).
+        if ap == "am" || ap == "pm", clock(joined) != nil || timeRange(joined) != nil, monthIndex(words.dropLast().last?.lowercased() ?? "") == nil {
+            words[words.count - 1] += ap
+        } else { words.append(w) }
     }
     var used = Set<Int>()
     var day: Date? = nil
@@ -368,6 +372,8 @@ func selftest() -> Int32 {
     expect(p.title == "Market and More delivery" && p.start == at(10, 27, 9, 30) && p.end == at(10, 27, 10), "AM typed as its own word is read, not left in the title: \(p.title)")
     p = parseSentence("Dinner 7 p.m.", now: now)
     expect(p.title == "Dinner" && p.start == at(10, 26, 19), "p.m. with dots: \(p.title) \(p.start)")
+    p = parseSentence("Q4 PM sync", now: now)
+    expect(p.title == "Q4 PM sync" && p.allDay, "PM after a word that is not a time stays: \(p.title)")
     p = parseSentence("Gym today 6-7:30pm", now: now)
     expect(p.title == "Gym" && p.start == at(10, 26, 18) && p.end == at(10, 26, 19, 30), "range 6-7:30pm: \(p.start) \(p.end)")
     p = parseSentence("Workshop 2pm to 5pm on Nov 3", now: now)
