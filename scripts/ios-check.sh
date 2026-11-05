@@ -37,6 +37,18 @@ for mode in light dark; do
     xcrun simctl io "$UDID" screenshot "$OUT/$s-$mode.png" >/dev/null 2>&1 || rc=1
   done
 done
+# Large text, as on John's phone: the week and day must still fit (TestFlight fixes 2026-11-05).
+xcrun simctl ui "$UDID" appearance light
+for size in extra-extra-large accessibility-large; do
+  xcrun simctl ui "$UDID" content_size $size
+  for s in week day; do
+    xcrun simctl terminate "$UDID" $BID >/dev/null 2>&1 || true
+    xcrun simctl launch "$UDID" $BID --sample -demo $s >/dev/null || rc=1
+    sleep 6
+    xcrun simctl io "$UDID" screenshot "$OUT/$s-$size.png" >/dev/null 2>&1 || rc=1
+  done
+done
+xcrun simctl ui "$UDID" content_size large
 xcrun simctl terminate "$UDID" $BID >/dev/null 2>&1 || true
 ls -la "$OUT"
 exit $rc

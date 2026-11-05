@@ -77,14 +77,14 @@ public func syncMerge(local: [String: Data], seen: [String: Seen], remote: [Stri
 
 /// Look and alert sound choices: the real saved settings, or a dictionary in memory for the checks and pictures.
 public struct SyncSettings {
-    public static let keys = ["lookAppearance", "lookFont", "lookScale", "lookPack", "lookHour", "alertSounds"]
+    public static let keys = ["lookAppearance", "lookFont", "lookScale", "lookPack", "lookHour", "alertSounds", "weatherF"]  // weatherF: Celsius or Fahrenheit (John 2026-11-05)
     public var read: () -> [String: Any]
     public var write: (String, Any) -> Void
     public static var real: SyncSettings {
         SyncSettings(read: { Dictionary(uniqueKeysWithValues: keys.compactMap { k in UserDefaults.standard.object(forKey: k).map { (k, $0) } }) },  // only what was chosen: an untouched default is never sent
                      write: { k, v in  // only the arrived key is saved: the reload must not save the other settings' defaults as choices
                          UserDefaults.standard.set(v, forKey: k)
-                         let was = Look.saves; Look.saves = false; Look.reload(); Alerts.reloadSounds(); Look.saves = was
+                         let was = Look.saves; Look.saves = false; Look.reload(); Alerts.reloadSounds(); WeatherPrefs.fahrenheit = UserDefaults.standard.bool(forKey: "weatherF"); Look.saves = was
                          Look.apply(); NotificationCenter.default.post(name: Look.synced, object: nil) })  // the Mac window redraws in the new Look
     }
     public static var memory: SyncSettings {

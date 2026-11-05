@@ -152,12 +152,14 @@ struct WeekView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     @ObservedObject private var weather = WeatherStore.shared
+    @ScaledMetric(relativeTo: .caption2) private var gutterRaw: CGFloat = 44
+    private var gutter: CGFloat { min(gutterRaw, 80) }  // grows with the phone's text size, capped so three days still fit
 
     var body: some View {
         let days = app.days
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                Color.clear.frame(width: 44, height: 1)
+                Color.clear.frame(width: gutter, height: 1)
                 ForEach(days, id: \.self) { d in
                     let today = cal.isDate(d, inSameDayAs: app.today)
                     VStack(spacing: 2) {
@@ -172,7 +174,7 @@ struct WeekView: View {
             .padding(.top, 10).padding(.bottom, 6)
             .overlay(alignment: .bottom) { Rectangle().fill(T.line).frame(height: 1) }
             HStack(alignment: .top, spacing: 0) {
-                Text("tasks").font(.caption2).foregroundStyle(T.text2).padding(.leading, 6).padding(.top, 6).frame(width: 44, alignment: .leading)
+                Text("tasks").font(.caption2).foregroundStyle(T.text2).lineLimit(1).minimumScaleFactor(0.6).padding(.leading, 6).padding(.top, 6).frame(width: gutter, alignment: .leading)
                 ForEach(days, id: \.self) { d in
                     VStack(alignment: .leading, spacing: 3) {
                         let open = dayTasks(store, d, now: app.today).filter { !$0.done }
@@ -240,6 +242,9 @@ struct HourGrid: View {
     let days: [Date]
     let wide: Bool
     private let hourH: CGFloat = 56
+    @ScaledMetric(relativeTo: .caption2) private var gutterRaw: CGFloat = 44
+    private var gutter: CGFloat { min(gutterRaw, 80) }  // same as the week's day headers
+    @ScaledMetric private var barRoom: CGFloat = 170  // the add bar and tabs grow with the text size too
 
     var body: some View {
         ScrollViewReader { sv in
@@ -249,7 +254,8 @@ struct HourGrid: View {
                         ForEach(0..<24, id: \.self) { h in
                             ZStack(alignment: .topLeading) {  // the line sits 8 below the row's top, so a row scrolled to the top keeps its label
                                 Rectangle().fill(T.line).frame(height: 1).offset(y: 8)
-                                Text(h == 12 ? "Noon" : minuteText(h * 60, short: true)).font(.caption2).foregroundStyle(T.text2)
+                                Text(h == 12 ? "Noon" : minuteText(h * 60, short: true)).font(.caption2).foregroundStyle(T.text2).lineLimit(1).minimumScaleFactor(0.6)
+                                    .frame(maxWidth: gutter - 8, alignment: .leading)
                                     .padding(.trailing, 2).background(T.bg).offset(x: 6, y: 1)
                             }
                             .frame(height: hourH, alignment: .top).id(h)
@@ -258,9 +264,9 @@ struct HourGrid: View {
                     HStack(spacing: 0) {
                         ForEach(days, id: \.self) { column($0) }
                     }
-                    .padding(.leading, wide ? 52 : 44).padding(.top, 8)
+                    .padding(.leading, wide ? gutter + 8 : gutter).padding(.top, 8)
                 }
-                .padding(.bottom, 170)  // room under the add bar and tabs
+                .padding(.bottom, barRoom)  // room under the add bar and tabs
             }
             // Like the Mac: the current hour's row sits mid-view on opening and each time the app comes back to the front.
             .onAppear { DispatchQueue.main.async { centre(sv) } }
@@ -322,7 +328,7 @@ struct EventBlock: View {
         let c = store.color(it)
         Button { app.open(it) } label: {
             VStack(alignment: .leading, spacing: 0) {
-                Text(it.shownTitle).fontWeight(.semibold).lineLimit(wide ? 1 : 2)
+                Text(it.shownTitle).fontWeight(.semibold).lineLimit(wide ? 1 : 3).minimumScaleFactor(wide ? 1 : 0.8)
                 Text(wide ? ([timeText(it.start, short: true) + " to " + timeText(it.end, short: true)] + (it.place.isEmpty ? [] : [it.place])).joined(separator: " · ") : timeText(it.start, short: true))
                     .foregroundStyle(wide ? T.text2 : T.text).lineLimit(1)
             }
