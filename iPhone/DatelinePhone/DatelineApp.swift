@@ -49,6 +49,7 @@ final class PhoneState: ObservableObject {
     @Published var emails: [EmailFind] = []  // events found in emails shared to Dateline
     var opened: [String: Item] = [:]  // events opened from outside the days in view (the map)
     var demoWidgets = false
+    var demoEdit = false  // pictures only: open the event's edit sheet
 
     init(store: Store, today: Date, sample: Bool) {
         self.store = store; self.today = today; self.sample = sample
@@ -91,16 +92,17 @@ final class PhoneState: ObservableObject {
     func sheetClosed() { if unlockNext { unlockNext = false; showUnlock = true } }
 
     /// Where a new event goes: a typed /code, else the shown set's calendar, else the phone's default (as on the Mac).
-    func calendarFor(_ p: Parsed) -> CalInfo? {
+    func calendarFor(_ p: Parsed, pick: String? = nil) -> CalInfo? {
         let writable = store.calendars.filter(\.writable)
-        if let code = p.calendarCode, let c = matchCalendar(code, in: writable, hidden: store.hidden) { return c }
+        if let code = p.calendarCode, let c = matchCalendar(code, in: writable, hidden: store.hidden) { return c }  // a typed /code beats the menu
+        if let pick, let c = writable.first(where: { $0.id == pick }) { return c }
         if let s = store.activeSet, let c = writable.first(where: { $0.id == s.defaultCalendar }) { return c }
         return writable.first { $0.id == store.defaultCalendarID } ?? writable.first
     }
 
     @discardableResult
-    func add(_ p: Parsed, emoji: String = "") -> Result<Item, Failure> {
-        var r = store.add(p, calendarID: calendarFor(p)?.id)
+    func add(_ p: Parsed, emoji: String = "", pick: String? = nil) -> Result<Item, Failure> {
+        var r = store.add(p, calendarID: calendarFor(p, pick: pick)?.id)
         if case .success(var it) = r, !emoji.isEmpty {
             it.emoji = emoji
             if store.update(it) == nil { r = .success(it) }

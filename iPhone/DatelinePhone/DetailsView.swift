@@ -1,6 +1,7 @@
-// One event (approved mockup "Event details"): when to leave, the details, notes, directions and delete. Edit changes the name and place.
+// One event (approved mockup "Event details"): when to leave, the details, notes, directions and delete. Edit opens the edit sheet.
 import SwiftUI
 import UIKit
+import MapKit
 import DatelineCore
 
 struct DetailsView: View {
@@ -9,8 +10,6 @@ struct DetailsView: View {
     @ObservedObject private var weather = WeatherStore.shared
     let id: String
     @State private var editing = false
-    @State private var title = ""
-    @State private var place = ""
     @State private var askDelete = false
     @State private var problem: String?
 
@@ -21,6 +20,7 @@ struct DetailsView: View {
         .background(T.bg)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
+        .onAppear { if app.demoEdit { app.demoEdit = false; editing = true } }
         .alert(problem ?? "", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) { Button("OK") {} }
     }
 
@@ -31,11 +31,7 @@ struct DetailsView: View {
                 HStack(alignment: .top, spacing: 12) {
                     Bar(color: c, height: 56)
                     VStack(alignment: .leading, spacing: 2) {
-                        if editing {
-                            TextField("Name", text: $title).font(.title2.bold())
-                        } else {
-                            Text(it.shownTitle).font(.title2.bold())
-                        }
+                        Text(it.shownTitle).font(.title2.bold())
                         Text(whenText(it.start, it.end, allDay: it.allDay)).font(.subheadline).foregroundStyle(T.text2)
                     }
                 }
@@ -56,9 +52,10 @@ struct DetailsView: View {
                 SectionLabel("Details")
                 Card {
                     Row(label: "Where") {
-                        if editing { TextField("Place", text: $place) } else { Text(it.place.isEmpty ? "None" : it.place).foregroundStyle(it.place.isEmpty ? T.text2 : T.text) }
+                        Text(it.place.isEmpty ? "None" : it.place).foregroundStyle(it.place.isEmpty ? T.text2 : T.text)
                     }
                     Row(label: "Calendar") { Dot(color: c); Text(store.calendar(it.calendarID)?.title ?? "") }
+                    Row(label: "Show as") { Text(it.showAs.rawValue) }
                     Row(label: "Alerts", last: it.tags.isEmpty) { Text(alertsLine(it)) }
                     if !it.tags.isEmpty {
                         Row(label: "Tags", last: true) {
@@ -66,6 +63,29 @@ struct DetailsView: View {
                                 Text(t).font(.footnote).padding(.horizontal, 10).padding(.vertical, 2).background(T.line, in: Capsule())
                             }
                         }
+                    }
+                }
+                if let call = callLink(it) {
+                    SectionLabel("Video call")
+                    Card {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(call.service).fontWeight(.semibold)
+                                Text((call.url.host ?? "") + call.url.path).font(.footnote).foregroundStyle(T.text2).lineLimit(1).truncationMode(.middle)
+                            }
+                            Spacer(minLength: 0)
+                            Button("Join") { UIApplication.shared.open(call.url) }.buttonStyle(.borderedProminent).accessibilityLabel("Join \(call.service) call")
+                        }.padding(.horizontal, 16).padding(.vertical, 10)
+                    }
+                }
+                if let g = it.geo, !it.place.isEmpty {
+                    SectionLabel("Map")
+                    Card {
+                        Map(initialPosition: .region(MKCoordinateRegion(center: g.coord, latitudinalMeters: 1200, longitudinalMeters: 1200)), interactionModes: []) {
+                            Marker(it.place, coordinate: g.coord).tint(c)
+                        }
+                        .frame(height: 150).clipShape(RoundedRectangle(cornerRadius: 12)).accessibilityLabel("Map of \(it.place)")
+                        if let w = weatherLine(it, g) { Text(w).font(.footnote).foregroundStyle(T.text2).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 10) }
                     }
                 }
                 if !it.notes.isEmpty {
@@ -80,8 +100,10 @@ struct DetailsView: View {
                         Button { directions(it) } label: { Text("Directions").frame(maxWidth: .infinity, minHeight: 50).background(T.bg2, in: RoundedRectangle(cornerRadius: 12)) }
                             .foregroundStyle(T.tint)
                     }
+                    if store.calendar(it.calendarID)?.writable == true {
                     Button { askDelete = true } label: { Text("Delete").frame(maxWidth: .infinity, minHeight: 50).background(T.bg2, in: RoundedRectangle(cornerRadius: 12)) }
                         .foregroundStyle(T.late)
+                    }
                 }
                 .font(.callout.weight(.semibold)).buttonStyle(.plain)
                 .padding(.horizontal, 16).padding(.top, 20)
@@ -89,31 +111,28 @@ struct DetailsView: View {
             .padding(.bottom, 120)
         }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(editing ? "Done" : "Edit") {
-                    if editing { save(it) } else { title = it.title; place = it.place; editing = true }
-                }
-                .fontWeight(editing ? .semibold : .regular)
-            }
+            ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true } }
         }
+        .sheet(isPresented: $editing, onDismiss: app.sheetClosed) { EditSheet(it).environmentObject(app).environmentObject(store) }
         .confirmationDialog("Delete \(it.title)?", isPresented: $askDelete, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                if let f = store.delete(it) { if store.trialOver { app.showUnlock = true } else { problem = f.message } } else { app.path.removeAll { $0 == it.id } }
+            // A repeating event asks which ones go; the core's delete takes "this and every later" as `series`.
+            if store.isRepeating(it) {
+                Button("This event only", role: .destructive) { delete(it, series: false) }
+                Button("All future events", role: .destructive) { delete(it, series: true) }
+            } else {
+                Button("Delete", role: .destructive) { delete(it, series: false) }
             }
         }
     }
 
-    private func save(_ it: Item) {
-        var n = it
-        let t = title.trimmingCharacters(in: .whitespaces)
-        n.title = t.isEmpty ? it.title : t
-        n.place = place.trimmingCharacters(in: .whitespaces)
-        if n.place != it.place { n.geo = nil }  // a typed place has no spot on the map until it is looked up
-        if n != it {
-            if let f = store.update(n) { if store.trialOver { app.showUnlock = true } else { problem = f.message } }
-            else if app.opened[n.id] != nil { app.opened[n.id] = n }  // opened from outside the days in view: show the saved copy
-        }
-        editing = false
+    private func delete(_ it: Item, series: Bool) {
+        if let f = store.delete(it, series: series) { if store.trialOver { app.showUnlock = true } else { problem = f.message } } else { app.path.removeAll { $0 == it.id } }
+    }
+
+    private func weatherLine(_ it: Item, _ g: Geo) -> String? {
+        guard WeatherPrefs.on, let f = WeatherStore.shared.forecast(g) else { return nil }
+        if !it.allDay, let h = f.hours[wxHourKey(it.start)] { return "\(degrees(h.temp)) and \(wxLook(h.code).words.lowercased()) at \(timeText(it.start)) · \(h.rain)% chance of rain" }
+        return f.days[wxDayKey(it.start)].map { "\(wxLook($0.code).words), high \(degrees($0.hi)), low \(degrees($0.lo))" }
     }
 
     private func driveLine(_ it: Item, _ m: Int) -> String {

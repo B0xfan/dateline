@@ -56,6 +56,9 @@ enum Demo {
         case "details", "details2":
             let title = s == "details" ? "Dentist" : "Marco at the condo"
             if let it = app.store.between(today, addDays(today, 7)).first(where: { $0.title == title }) { app.open(it) }
+        case "edit", "edit-invite":
+            let want = s == "edit" ? "Dentist" : "Holiday: no school"
+            if let it = app.store.between(today, addDays(today, 7)).first(where: { $0.title == want }) { app.demoEdit = true; app.open(it) }
         case "tasks": app.tab = .tasks
         case "places": app.tab = .places
         case "email": app.email = app.emails.first
@@ -125,6 +128,16 @@ enum SelfTest {
         var moved = added; moved.title = "Dinner with Ana and Sam"; moved.place = "Casa Luna"
         check(store.update(moved) == nil && store.between(addDays(mon, 4), addDays(mon, 5)).first { $0.id == added.id }?.title == moved.title, "editing the name and place saves")
         check(store.delete(moved) == nil && !store.between(addDays(mon, 4), addDays(mon, 5)).contains { $0.id == added.id }, "deleting the event takes it off the calendar")
+
+        // The edit sheet's time rules (the Mac panel's).
+        let dinner = Item(id: "t", calendarID: "family", title: "t", start: cal.date(byAdding: .hour, value: 10, to: mon)!, end: cal.date(byAdding: .hour, value: 11, to: mon)!, allDay: false, place: "", notes: "", showAs: .busy)
+        let later = EventEdit.start(dinner, dinner.start.addingTimeInterval(7200))
+        check(later.end.timeIntervalSince(later.start) == 3600, "moving the start keeps the length")
+        check(EventEdit.end(dinner, dinner.start.addingTimeInterval(-600)).end == dinner.start.addingTimeInterval(300), "the end stays at least five minutes after the start")
+        let whole = EventEdit.allDay(dinner, true)
+        check(whole.start == mon && whole.end == addDays(mon, 1) && EventEdit.allDay(whole, false).start == cal.date(byAdding: .hour, value: 9, to: mon), "the all day switch sets the day, and off gives 9 AM for an hour")
+        check(EventEdit.date(dinner, addDays(mon, 2)).start == cal.date(byAdding: .hour, value: 10, to: addDays(mon, 2)), "a new date keeps the time")
+        check(!store.isRepeating(dinner), "a plain event is not a repeating one")
 
         let mail = app.emails.count
         if case .success(let d) = app.add(app.emails[0].parsed, emoji: app.emails[0].emoji) {

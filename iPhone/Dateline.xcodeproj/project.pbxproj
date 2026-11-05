@@ -13,6 +13,7 @@
 		D100000000000000000000CB /* CalendarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000067 /* CalendarViews.swift */; };
 		D100000000000000000000CC /* MonthYear.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000068 /* MonthYear.swift */; };
 		D100000000000000000000CD /* DetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000069 /* DetailsView.swift */; };
+		D100000000000000000000E1 /* EditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000E0 /* EditView.swift */; };
 		D100000000000000000000CE /* AddViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000000000000006A /* AddViews.swift */; };
 		D100000000000000000000CF /* TasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000000000000006B /* TasksView.swift */; };
 		D100000000000000000000D0 /* PlacesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000000000000006C /* PlacesView.swift */; };
@@ -30,6 +31,7 @@
 		D10000000000000000000067 /* CalendarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarViews.swift; sourceTree = "<group>"; };
 		D10000000000000000000068 /* MonthYear.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthYear.swift; sourceTree = "<group>"; };
 		D10000000000000000000069 /* DetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsView.swift; sourceTree = "<group>"; };
+		D10000000000000000000E0 /* EditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditView.swift; sourceTree = "<group>"; };
 		D1000000000000000000006A /* AddViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddViews.swift; sourceTree = "<group>"; };
 		D1000000000000000000006B /* TasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TasksView.swift; sourceTree = "<group>"; };
 		D1000000000000000000006C /* PlacesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesView.swift; sourceTree = "<group>"; };
@@ -70,6 +72,7 @@
 				D10000000000000000000067 /* CalendarViews.swift */,
 				D10000000000000000000068 /* MonthYear.swift */,
 				D10000000000000000000069 /* DetailsView.swift */,
+				D10000000000000000000E0 /* EditView.swift */,
 				D1000000000000000000006A /* AddViews.swift */,
 				D1000000000000000000006B /* TasksView.swift */,
 				D1000000000000000000006C /* PlacesView.swift */,
@@ -166,6 +169,7 @@
 				D100000000000000000000CB /* CalendarViews.swift in Sources */,
 				D100000000000000000000CC /* MonthYear.swift in Sources */,
 				D100000000000000000000CD /* DetailsView.swift in Sources */,
+				D100000000000000000000E1 /* EditView.swift in Sources */,
 				D100000000000000000000CE /* AddViews.swift in Sources */,
 				D100000000000000000000CF /* TasksView.swift in Sources */,
 				D100000000000000000000D0 /* PlacesView.swift in Sources */,

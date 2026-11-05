@@ -408,6 +408,8 @@ public final class Store: ObservableObject {
         }
     }
 
+    public func isRepeating(_ it: Item) -> Bool { isAcc(it.calendarID) ? accRepeats(it) : source.repeats(it) }
+
     // `series`: this and every later occurrence (undo of adding a repeating event).
     @discardableResult
     public func delete(_ it: Item, series: Bool = false) -> Failure? {

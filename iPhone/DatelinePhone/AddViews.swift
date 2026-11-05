@@ -33,6 +33,7 @@ struct AddSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text: String
     @State private var problem: String?
+    @State private var pick: String?  // nil = Dateline chooses, as on the Mac's add box
     @FocusState private var focused: Bool
 
     init(start: String) { _text = State(initialValue: start) }
@@ -52,9 +53,15 @@ struct AddSheet: View {
                         .padding(.horizontal, 16).padding(.top, 6)
                     Text("Type it the way you'd say it. Dateline fills in the rest.")
                         .font(.footnote).foregroundStyle(T.text2).padding(.horizontal, 20).padding(.top, 6)
+                    Card {
+                        Picker("Calendar", selection: $pick) {
+                            Text("Automatic").tag(String?.none)
+                            ForEach(store.calendars.filter(\.writable)) { k in Text(k.title).tag(Optional(k.id)) }
+                        }.pickerStyle(.menu).padding(.horizontal, 16).frame(minHeight: 44)
+                    }.padding(.top, 12)
                     if !empty {
                         SectionLabel("Dateline understood")
-                        Understood(p: p, calendar: app.calendarFor(p))
+                        Understood(p: p, calendar: app.calendarFor(p, pick: pick))
                     }
                 }
             }
@@ -62,7 +69,7 @@ struct AddSheet: View {
             .navigationTitle("New event").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Add", action: add).fontWeight(.semibold).disabled(empty || app.calendarFor(p) == nil) }
+                ToolbarItem(placement: .confirmationAction) { Button("Add", action: add).fontWeight(.semibold).disabled(empty || app.calendarFor(p, pick: pick) == nil) }
             }
         }
         .onAppear { focused = true }
@@ -71,7 +78,7 @@ struct AddSheet: View {
 
     private func add() {
         guard !empty else { return }
-        switch app.add(parseSentence(text, now: app.today)) {
+        switch app.add(parseSentence(text, now: app.today), pick: pick) {
         case .success: dismiss()
         case .failure(let f): if store.trialOver { app.unlockNext = true; dismiss() } else { problem = f.message }
         }

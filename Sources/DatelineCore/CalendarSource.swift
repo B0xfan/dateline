@@ -23,6 +23,7 @@ public protocol CalendarSource: AnyObject {
     func add(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure>
     func update(_ it: Item, before: Item?) -> Result<String?, Failure>  // the event's identifier now: moving calendars can change it
     func delete(_ it: Item, series: Bool) -> Result<Bool, Failure>  // true when no other occurrence is left
+    func repeats(_ it: Item) -> Bool  // part of a repeating event (the phone asks "this one or all future" before deleting)
     func copyAlerts(from old: Item, to new: Item)  // also after `old` was deleted, for undo
 
     func reminderLists() -> [CalInfo]
@@ -157,6 +158,7 @@ public final class AppleCalendar: CalendarSource {
         return .success(e.eventIdentifier)
     }
 
+    public func repeats(_ it: Item) -> Bool { event(it)?.hasRecurrenceRules == true }
     public func delete(_ it: Item, series: Bool) -> Result<Bool, Failure> {
         guard let e = event(it) else { return .failure(Failure("That event is gone.")) }
         let alarms = e.alarms ?? [], oneTime = !e.hasRecurrenceRules
@@ -367,6 +369,7 @@ public final class SampleCalendar: CalendarSource {
         events[i] = calendarPart(it)
         return .success(it.id)
     }
+    public func repeats(_ it: Item) -> Bool { false }
     public func delete(_ it: Item, series: Bool) -> Result<Bool, Failure> {
         guard events.contains(where: { $0.id == it.id }) else { return .failure(Failure("That event is gone.")) }
         events.removeAll { $0.id == it.id }
