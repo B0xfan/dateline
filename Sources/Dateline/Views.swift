@@ -171,6 +171,8 @@ struct Sidebar: View {
     @ObservedObject var store: Store
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // The sliver keeps the scroll view off the top edge, as in the side panels: touching it, the sidebar's clicks land a toolbar's height above its rows.
+            Color.clear.frame(height: 1)
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     FromEmailList(app: app, inbox: app.emails)
