@@ -125,6 +125,7 @@ func selftest() -> Int32 {
     expect(callIn(link: "https://zoom.us/j/1", notes: "https://meet.google.com/abc-defg-hij") == "Zoom", "the event's own link wins")
     expect(callIn(notes: "https://evilzoom.us/j/1 https://notteams.live.com/meet/x") == nil, "a look-alike address is not a call")
     expect(callIn(notes: "see https://zoom.us/pricing and https://meet.google.com/") == nil, "a plain Zoom or Meet page is not a call")
+    expect(callIn(notes: "zoommtg://zoom.us/j/1 ftp://meet.google.com/abc-defg-hij") == nil, "only web links open as a call")
     var tagged = it2("Tagged", at(10, 26, 9), at(10, 26, 10)); tagged.tags = ["Condo"]; tagged.emoji = "🏠"
     expect(sameInCalendar(tagged, it2("Tagged", at(10, 26, 9), at(10, 26, 10))), "emoji and tags never reach the calendar")
 

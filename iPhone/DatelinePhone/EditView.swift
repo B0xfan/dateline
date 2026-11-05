@@ -52,11 +52,14 @@ struct EditSheet: View {
                         LabeledContent("Calendar") { HStack { Dot(color: store.calendar(item.calendarID)?.color ?? T.text2); Text(store.calendar(item.calendarID)?.title ?? "") } }
                     } else {
                         Picker("Calendar", selection: $item.calendarID) {
-                            ForEach(writable) { k in Text(k.title + " (" + k.account + ")").tag(k.id) }
+                            // grouped under each account, so the chosen row shows only the calendar's name and never truncates at big text
+                            ForEach(Array(Set(writable.map(\.account))).sorted(), id: \.self) { acct in
+                                Section(acct) { ForEach(writable.filter { $0.account == acct }) { k in Text(k.title).tag(k.id) } }
+                            }
                         }
                     }
                 }
-                if locked { Section { Text("This calendar is read only. You can still add an emoji, a color and tags.").font(.footnote).foregroundStyle(T.text2) } }
+                if locked { Section { Text("This calendar is read only. You can still add an emoji, a color, tags and travel.").font(.footnote).foregroundStyle(T.text2) } }
                 when
                 Section("Show as") {
                     Picker("Show as", selection: $item.showAs) { ForEach(ShowAs.allCases, id: \.self) { Text($0.rawValue).tag($0) } }

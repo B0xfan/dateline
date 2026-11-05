@@ -87,7 +87,8 @@ public func callLink(in texts: [String]) -> Call? {
     func on(_ h: String, _ d: String) -> Bool { h == d || h.hasSuffix("." + d) }  // never a look-alike such as evilzoom.us
     for text in texts where !text.isEmpty {
         for m in linkFinder?.matches(in: text, range: NSRange(text.startIndex..., in: text)) ?? [] {
-            guard let u = m.url, let h = u.host?.lowercased() else { continue }
+            // web links only: event text is untrusted, so a zoommtg:// or other app scheme with a matching host is never opened
+            guard let u = m.url, let s = u.scheme?.lowercased(), s == "https" || s == "http", let h = u.host?.lowercased() else { continue }
             let path = u.path.lowercased()
             if on(h, "zoom.us"), ["/j/", "/my/", "/w/"].contains(where: path.hasPrefix) { return Call(service: "Zoom", url: u) }
             if h == "meet.google.com", path.count > 4 { return Call(service: "Google Meet", url: u) }
