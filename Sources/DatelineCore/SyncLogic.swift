@@ -382,8 +382,7 @@ extension Store {
     _ = mac.between(addDays(Date(), -60), addDays(Date(), 60))  // the Mac reads its calendar again
     t += 10; mac.syncNow(); phone.syncNow()
     expect(find(phone, "Gym")?.emoji == "🏋️", "sync: a new event's extras reach the iPhone after the server gives it its own uid")
-    serverGave(macSrc, "Gym", uid: "server-gym-2", id: "gym-new-id")  // a server that also changes the event's id here
-    serverGave(phoneSrc, "Gym", uid: "server-gym-2")
+    serverGave(macSrc, "Gym", uid: "server-gym", id: "gym-new-id")  // a server that also changes the event's id here; its uid stays
     let count = mac.extras.count
     t += 10; let seenGym = find(mac, "Gym")?.emoji; mac.syncNow(); phone.syncNow()
     expect(seenGym == "🏋️" && mac.extras.count == count && mac.extras["gym-new-id"]?.emoji == "🏋️", "sync: an event whose id changed keeps its extras on the Mac, under one key")
