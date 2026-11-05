@@ -236,6 +236,7 @@ struct HourGrid: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     @Environment(\.scenePhase) private var scenePhase
+    @State private var away = false
     let days: [Date]
     let wide: Bool
     private let hourH: CGFloat = 56
@@ -264,7 +265,14 @@ struct HourGrid: View {
             // Like the Mac: the current hour's row sits mid-view on opening and each time the app comes back to the front.
             .onAppear { DispatchQueue.main.async { centre(sv) } }
             .onChange(of: app.anchor) { centre(sv) }
-            .onChange(of: scenePhase) { if scenePhase == .active { if !app.sample { app.today = Date() }; centre(sv) } }  // the minute clock may not have run yet after a sleep
+            .onChange(of: scenePhase) {
+                if scenePhase == .background { away = true }  // a pulled-down Control Center only reaches .inactive: no jump back
+                else if scenePhase == .active && away {
+                    away = false
+                    if !app.sample { app.today = Date() }  // the minute clock may not have run yet after a sleep
+                    centre(sv)
+                }
+            }
         }
     }
 
