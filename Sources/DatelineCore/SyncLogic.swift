@@ -445,7 +445,7 @@ extension Store {
     t += 10; if var v = find(mac, "Site visit") { v.emoji = "🦺"; mac.update(v) }
     mac.syncNow()
     serverGave(macSrc, "Site visit", uid: "server-site")
-    _ = mac.between(addDays(Date(), -60), addDays(Date(), 60))
+    t += 10; _ = mac.between(addDays(Date(), -60), addDays(Date(), 60))  // later than the Mac's last pass, as a real clock is
     t += 10; mac.syncNow(); phone.syncNow(); mac.syncNow(); phone.syncNow()
     expect(find(mac, "Site visit")?.emoji == "🦺" && find(phone, "Site visit")?.emoji == "🦺" && find(phone, "Site visit")?.tags == [], "sync: the Mac's newer change to a new event is kept on both")
     expect(mac.extras.keys.filter { $0.hasPrefix("~") && $0.contains("server-site") }.isEmpty && phone.extras.values.filter { $0.emoji == "🦺" }.count == 1, "sync: once on each device")
