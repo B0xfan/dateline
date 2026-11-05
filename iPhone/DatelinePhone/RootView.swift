@@ -28,7 +28,7 @@ struct RootView: View {
             }
         }
         .background(T.bg)
-        .preferredColorScheme(app.look >= 0 && Look.appearance == "Light" ? .light : Look.appearance == "Dark" ? .dark : nil)  // reads app.look so a change redraws
+        .preferredColorScheme(Look.appearance == "Light" ? .light : Look.appearance == "Dark" ? .dark : nil)  // app.look changing redraws this
         .onReceive(NotificationCenter.default.publisher(for: Look.synced)) { _ in app.lookChanged() }  // a Look choice arrived from the Mac
         .sheet(isPresented: Binding(get: { app.adding != nil }, set: { if !$0 { app.adding = nil } }), onDismiss: { app.sheetClosed() }) { AddSheet(start: app.adding ?? "") }
         .sheet(item: $app.email, onDismiss: { app.sheetClosed() }) { EmailSheet(find: $0) }

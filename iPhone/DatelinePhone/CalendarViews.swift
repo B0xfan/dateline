@@ -217,7 +217,8 @@ struct DayView: View {
                         Text(s.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                     }
                     Spacer()
-                    Text((s.lead.hasPrefix("starts") ? "in " : s.lead) + s.big).font(.title3.bold()).foregroundStyle(T.tint)
+                    Text((s.lead.hasPrefix("starts") ? "in " : s.lead) + s.big).font(.subheadline.weight(.semibold)).foregroundStyle(T.tint)
+                        .lineLimit(1).minimumScaleFactor(0.8).layoutPriority(1)  // the title's size, on one line (John 2026-11-05: too large at big text)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 10).background(T.bg2, in: RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 16).padding(.top, 12)

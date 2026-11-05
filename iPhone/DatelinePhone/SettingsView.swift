@@ -26,7 +26,7 @@ struct SettingsView: View {
                     Toggle("Emoji, colors, tags, notes, sets", isOn: $sync)
                         .onChange(of: sync) { _, on in if on { store.syncNow() } }
                 } header: { Text("Sync with your Mac") } footer: {
-                    Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "Through your own iCloud. Look, alert sounds and °F or °C you change here change on the Mac too.\n\nMac only, not on the phone: menu bar icon, Quick add shortcut key, Assistant for AI apps, A4 tasks, Check for Updates.")
+                    Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "Through your own iCloud. Look and °F or °C you change here change on the Mac too.\n\nMac only, not on the phone: menu bar icon, Quick add shortcut key, Assistant for AI apps, A4 tasks, Check for Updates.")
                 }
             }
             .navigationTitle("Settings")
@@ -49,9 +49,10 @@ struct SettingsView: View {
     }
 
     private var weekSummary: String {
-        let order = (0..<7).map { (WorkWeek.firstWeekday - 1 + $0) % 7 + 1 }.filter(WorkWeek.days.contains)
-        guard let a = order.first, let b = order.last else { return "No days" }
-        return order.count == 1 ? cal.shortWeekdaySymbols[a - 1] : cal.shortWeekdaySymbols[a - 1] + "–" + cal.shortWeekdaySymbols[b - 1]
+        let all = (0..<7).map { (WorkWeek.firstWeekday - 1 + $0) % 7 + 1 }, at = all.indices.filter { WorkWeek.days.contains(all[$0]) }
+        guard let a = at.first, let b = at.last else { return "No days" }
+        let names = at.map { cal.shortWeekdaySymbols[all[$0] - 1] }
+        return at.count > 2 && b - a + 1 == at.count ? names[0] + "–" + names.last! : names.joined(separator: ", ")  // Mon–Fri, but Mon, Wed, Fri spelled out
     }
 
     private var statusName: String {
@@ -175,7 +176,7 @@ struct SetEditor: View {
                     }
                 }
                 if !isNew {
-                    Section { Button("Delete this set", role: .destructive) { store.sets.removeAll { $0.id == draft.id }; dismiss() } }
+                    Section { Button("Delete this set", role: .destructive) { store.deleteSet(draft.id); dismiss() } }
                 }
             }
             .navigationTitle(isNew ? "New set" : "Edit set")
@@ -199,6 +200,7 @@ struct LookPage: View {
     @EnvironmentObject var store: Store
     @State private var tick = 0
     var body: some View {
+        let _ = tick  // redraws after a change without rebuilding the list (which would jump to the top)
         List {
             Section("Appearance") {
                 Picker("Appearance", selection: bind(Look.appearance) { Look.appearance = $0 }) {
@@ -218,7 +220,6 @@ struct LookPage: View {
                 .font(.system(size: 15, design: Look.design)).padding(.vertical, 4 * Look.packFactor)
             } header: { Text("Preview") } footer: { Text("Shared with the Mac: change it here or there, both follow.") }
         }
-        .id(tick)
         .navigationTitle("Look")
     }
 
@@ -231,6 +232,7 @@ struct WeekPage: View {
     @EnvironmentObject var app: PhoneState
     @State private var tick = 0
     var body: some View {
+        let _ = tick
         let order = (0..<7).map { (WorkWeek.firstWeekday - 1 + $0) % 7 + 1 }
         List {
             Section {
@@ -267,7 +269,6 @@ struct WeekPage: View {
                 Button { app.tab = .places } label: { line(nil, .clear, "Places and drive times", "") }.buttonStyle(.plain)
             } header: { Text("Leave alerts") } footer: { Text("Uses the phone's location for the drive time, the same places as the Mac.") }
         }
-        .id(tick)
         .navigationTitle("Week")
     }
 
@@ -305,6 +306,7 @@ struct WeatherPage: View {
     @State private var finding = false
     @State private var note: String?
     var body: some View {
+        let _ = tick
         List {
             Section {
                 Toggle("Show the weather on days and events", isOn: Binding(get: { WeatherPrefs.on }, set: { WeatherPrefs.on = $0; changed() }))
@@ -334,7 +336,6 @@ struct WeatherPage: View {
                 }
             } header: { Text("Time zones") } footer: { Text(note ?? "Swipe a city left to remove it. The Mac's sidebar card choice stays on the Mac.") }
         }
-        .id(tick)
         .navigationTitle("Time & weather")
     }
 
