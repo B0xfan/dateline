@@ -127,13 +127,13 @@ extension Store {
         for it in read where !it.uid.isEmpty {
             let k = key(it.id), uid = syncUID(it.uid)
             if ex[k] != nil {
-                guard sync.memo.uids[k] != uid, !k.contains("/") else { continue }
+                guard sync.memo.uids[k] != uid, !k.contains("/"), !sync.applying else { continue }  // mid-pass the agreements are not current yet: the next read does it
                 if let was = sync.memo.uids[k] {
                     let old = "e/" + was, new = "e/" + uid, mine = sync.memo.stamps[old] ?? sync.memo.seen[old]?.t ?? 0
                     if let theirs = ex["~" + uid] {  // the other device changed it under the new uid before this one knew it: the newer change wins
                         if (sync.memo.seen[new]?.t ?? 0) >= mine { ex[k] = theirs } else { sync.memo.stamps[new] = mine }
                         ex["~" + uid] = nil
-                    }
+                    } else if sync.memo.seen[new] == nil { sync.memo.seen[new] = sync.memo.seen[old] }  // keeps its date, so a change made here before the next pass isn't taken as first contact
                     syncRemoved(old)  // a recorded removal goes out even while another event's extras are unmatched
                 }
                 sync.memo.uids[k] = uid; continue
@@ -192,7 +192,6 @@ extension Store {
         if setsReady { let fixed = sets.map(localSet); if fixed != sets { sets = fixed } }  // set calendars that only now can be matched by name
         let skipped = { (k: String) in self.sync.skip.contains(syncKind(k)) || (k == "sets" && !setsReady) }
         let local = syncRecords().filter { !skipped($0.key) }
-        let removedBefore = sync.memo.removed, stampsBefore = sync.memo.stamps  // what this pass sends; a change made during it (a read in applyHere) waits for the next
         let unmapped = extras.keys.contains { uidFor($0) == nil }  // an event not matched yet can't tell "gone" from "not read yet"
         let m = syncMerge(local: local, seen: sync.memo.seen.filter { !skipped($0.key) }, remote: remote.filter { !skipped($0.key) }, now: sync.clock(),
                           removed: sync.memo.removed, blocked: unmapped ? ["e/"] : [], stamps: sync.memo.stamps)
@@ -212,8 +211,8 @@ extension Store {
         if !m.here.isEmpty { let now = syncRecords(); for k in m.here.keys where !failed.contains(k) { if let t = seen[k]?.t { seen[k] = Seen(h: fingerprint(now[k]), t: t) } } }
         let sent = sync.problem == nil
         sync.memo.seen = seen
-        sync.memo.removed = sent ? sync.memo.removed.filter { skipped($0) || !removedBefore.contains($0) } : sync.memo.removed  // left-out kinds keep their removals for a later pass
-        sync.memo.stamps = sent ? sync.memo.stamps.filter { skipped($0.key) || stampsBefore[$0.key] != $0.value } : sync.memo.stamps
+        sync.memo.removed = sent ? sync.memo.removed.filter(skipped) : sync.memo.removed  // left-out kinds keep their removals for a later pass
+        sync.memo.stamps = sent ? sync.memo.stamps.filter { skipped($0.key) } : sync.memo.stamps
         sync.memo.uids = sync.memo.uids.filter { extras[$0.key] != nil }
     }
 
@@ -426,6 +425,7 @@ extension Store {
     expect(mac.extras["gym-new-id"]?.emoji == "🏋️" && find(mac, "Call with Lee")?.emoji == "", "sync: two events with one uid in the same read keep their own extras")
     macSrc.events[lee].uid = leeUID
     // The iPhone changes a new event under the server's uid before the Mac has read it: the iPhone's newer change wins on both.
+    mac.show(from: addDays(Date(), -60), to: addDays(Date(), 60))  // as in the app, the Mac also reads its calendar during a pass
     t += 10
     if var d = find(mac, "Design review") { d.emoji = "📐"; mac.update(d) }
     mac.syncNow()
@@ -433,9 +433,22 @@ extension Store {
     t += 10; phone.syncNow()
     t += 10; if var d = find(phone, "Design review") { d.tags = ["Late"]; phone.update(d) }
     phone.syncNow()
-    t += 10; mac.syncNow(); t += 10; mac.syncNow(); phone.syncNow(); mac.syncNow()
+    t += 10; mac.syncNow(); _ = mac.between(addDays(Date(), -60), addDays(Date(), 60)); t += 10; mac.syncNow(); phone.syncNow(); mac.syncNow()
     expect(find(mac, "Design review")?.tags == ["Late"] && find(phone, "Design review")?.tags == ["Late"], "sync: the iPhone's newer change to a new event is kept on both")
     expect(mac.extras.keys.filter { $0.hasPrefix("~server-design") }.isEmpty && mac.extras.values.filter { $0.tags == ["Late"] }.count == 1, "sync: under one key on the Mac")
+    // The Mac's change is the newer one: it made it under the old uid after the iPhone's.
+    t += 10; if var v = find(mac, "Site visit") { v.emoji = "🏗️"; mac.update(v) }
+    mac.syncNow(); t += 10; phone.syncNow()
+    serverGave(phoneSrc, "Site visit", uid: "server-site")
+    t += 10; if var v = find(phone, "Site visit") { v.tags = ["Early"]; phone.update(v) }
+    phone.syncNow()
+    t += 10; if var v = find(mac, "Site visit") { v.emoji = "🦺"; mac.update(v) }
+    mac.syncNow()
+    serverGave(macSrc, "Site visit", uid: "server-site")
+    _ = mac.between(addDays(Date(), -60), addDays(Date(), 60))
+    t += 10; mac.syncNow(); phone.syncNow(); mac.syncNow(); phone.syncNow()
+    expect(find(mac, "Site visit")?.emoji == "🦺" && find(phone, "Site visit")?.emoji == "🦺" && find(phone, "Site visit")?.tags == [], "sync: the Mac's newer change to a new event is kept on both")
+    expect(mac.extras.keys.filter { $0.hasPrefix("~") && $0.contains("server-site") }.isEmpty && phone.extras.values.filter { $0.emoji == "🦺" }.count == 1, "sync: once on each device")
     mac.extras["gone"] = nil
 
     // Deleting the last calendar set deletes it on the other device too.
