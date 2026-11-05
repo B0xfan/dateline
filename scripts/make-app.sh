@@ -7,6 +7,12 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks"
 cp "$(swift build -c release --show-bin-path)/Dateline" "$APP/Contents/MacOS/Dateline"
 cp App/Info.plist "$APP/Contents/Info.plist"
+# The app icon (Icon Composer file, shared with the iPhone app): Assets.car gives the glass looks on macOS 26, AppIcon.icns covers macOS 14 and 15.
+# actool writes nothing yet exits 0 when the folder is not named AppIcon.icon, so check its output.
+mkdir -p "$APP/Contents/Resources"
+xcrun actool Icon/AppIcon.icon --compile "$APP/Contents/Resources" --platform macosx --minimum-deployment-target 14.0 --app-icon AppIcon \
+  --output-partial-info-plist "$(mktemp)" --errors --warnings >/dev/null
+[ -f "$APP/Contents/Resources/Assets.car" ] && [ -f "$APP/Contents/Resources/AppIcon.icns" ] || { echo "actool wrote no app icon"; exit 1; }
 # Dateline's own Google sign-in key (Google Cloud project "Dateline", Desktop client), kept out of this public repo; backup in Bitwarden.
 GKEY="$HOME/Library/Application Support/Dateline/google_client.json"
 [ -f "$GKEY" ] && { mkdir -p "$APP/Contents/Resources"; cp "$GKEY" "$APP/Contents/Resources/google_client.json"; }

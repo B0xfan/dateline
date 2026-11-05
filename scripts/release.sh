@@ -30,7 +30,7 @@ LAST=$(gh release list --repo "$REPO" --limit 1 --json tagName -q '.[0].tagName'
 N=$(( ${LAST##*.} + 1 )); [ -n "$LAST" ] || N=2
 VER="0.1.$N"; TAG="v$VER"
 
-[ -z "$(git status --porcelain -- Sources Package.swift Package.resolved App scripts)" ] || { echo "Uncommitted or new app files: commit them first"; exit 1; }  # new files too, so every release matches a commit
+[ -z "$(git status --porcelain -- Sources Package.swift Package.resolved App Icon scripts)" ] || { echo "Uncommitted or new app files: commit them first"; exit 1; }  # new files too, so every release matches a commit
 scripts/local-build.sh >/dev/null
 
 OUT=build/release; APP="$OUT/Dateline.app"

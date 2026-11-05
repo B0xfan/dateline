@@ -18,6 +18,9 @@ jobs:
         run: |
           xcodebuild build -project iPhone/Dateline.xcodeproj -scheme DatelinePhone -configuration Debug \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath dd CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+          # An Xcode too old for Icon Composer files copies the icon folder as-is and builds an app with no icon, so check it was compiled.
+          app="$(find dd/Build/Products -maxdepth 3 -name DatelinePhone.app | head -1)"
+          [ -f "$app/Assets.car" ] && ls "$app"/AppIcon*.png >/dev/null || { echo "the iPhone app has no compiled icon"; exit 1; }
       - name: Checks and screen pictures
         run: scripts/ios-check.sh "$(find dd/Build/Products -maxdepth 3 -name DatelinePhone.app | head -1)" ios-shots
       - uses: actions/upload-artifact@v4
