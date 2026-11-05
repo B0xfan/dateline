@@ -2,14 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>Dateline shows, adds and changes the events in your calendars.</string>
-	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>Dateline shows your reminders as tasks on the calendar.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Dateline uses where you are for the sunrise, the weather and drive times.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Dateline shows, adds and changes the events in your calendars.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Dateline reads the home and work address on your own contact card, only when you pick Home or Work for a place reminder.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Dateline uses where you are for the sunrise, the weather and drive times.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Dateline shows your reminders as tasks on the calendar.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 </dict>
