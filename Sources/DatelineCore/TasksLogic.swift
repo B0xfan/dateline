@@ -20,7 +20,7 @@ public struct ToDo: Identifiable, Equatable {
 /// A task dropped on an hour (both apps) gets that day and time. A repeating A4 task's time belongs to its rule in A4, so it takes only the day.
 public func dropped(_ t: ToDo, at time: Date) -> ToDo {
     var n = t
-    if t.a4?.repeating == true { n.due = t.timed ? sameClock(t.due!, on: time) : cal.startOfDay(for: time) } else { if !t.timed { n.a4?.ring = true }; n.due = time; n.timed = true }
+    if t.a4?.repeating == true { n.due = t.timed ? t.due.map { sameClock($0, on: time) } ?? time : cal.startOfDay(for: time) } else { if !t.timed { n.a4?.ring = true }; n.due = time; n.timed = true }
     return n
 }
 

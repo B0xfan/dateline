@@ -24,7 +24,9 @@ struct Understood: View {
                     VStack(alignment: .leading, spacing: 2) { Text(dateText(p.start, "EEEE, MMM d")); Text(p.allDay ? "All day" : timeText(p.start, short: true)) }
                 }
             }.guessed(unsure.contains("when"), note: whenNote)
-            if !p.place.isEmpty { Row(label: "Where") { Text(p.place) }.guessed(unsure.contains("place")) }
+            if !p.place.isEmpty || unsure.contains("place") {  // a place the reader couldn't find still shows, outlined, as on the Mac
+                Row(label: "Where") { Text(p.place.isEmpty ? "Not in the email" : p.place).foregroundStyle(p.place.isEmpty ? T.text2 : T.text) }.guessed(unsure.contains("place"))
+            }
             Row(label: "Calendar") {
                 Dot(color: calendar?.color ?? T.text2)
                 Text(calendar?.title ?? "No calendar can take new events")
