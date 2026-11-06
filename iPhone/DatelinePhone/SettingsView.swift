@@ -301,17 +301,19 @@ struct WeekPage: View {
 }
 
 struct AlertsPage: View {
+    @EnvironmentObject var app: PhoneState
+    @Environment(\.scenePhase) private var phase
     @State private var badge = DateBadge.on
     @State private var blocked = false  // iOS has badges off for Dateline
     var body: some View {
         List {
             Section {
                 Toggle("Today's date on the icon", isOn: $badge)
-                    .onChange(of: badge) { DateBadge.on = badge; Task { blocked = !(await DateBadge.update(ask: true)) } }
+                    .onChange(of: badge) { if app.sample { return }; DateBadge.on = badge; Task { blocked = !(await DateBadge.update(ask: true)) } }
             } footer: {
                 Text(blocked && badge ? "Badges are off for Dateline. Turn on Badges in notification settings to see the date." : "The number on Dateline's icon is today's date, as in the iPhone's own Calendar. It changes at midnight.")
             }
-            .task { if badge { blocked = !(await DateBadge.update(ask: false)) } }
+            .task(id: phase) { if badge, !app.sample, phase == .active { blocked = !(await DateBadge.update(ask: false)) } }  // again on coming back from iOS Settings
             Section {
                 line(nil, .clear, "Event alerts", "iPhone Calendar", opens: false)
                 line(nil, .clear, "Mac sounds", Alerts.kinds.prefix(2).map { Alerts.soundName($0.0) }.joined(separator: ", "), opens: false)

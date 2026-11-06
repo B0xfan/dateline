@@ -30,34 +30,39 @@ struct DatelineApp: App {
     var body: some Scene {
         WindowGroup { RootView().environmentObject(app).environmentObject(app.store) }
             .onChange(of: phase) {
-                guard phase == .active else { return }
-                app.store.refreshSubs()  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
-                if !app.sample { Task { await DateBadge.update(ask: true) } }  // the pictures and checks never touch the real icon or ask
+                // the pictures and checks never touch the real icon or ask; on leaving too, in case midnight passed with Dateline open
+                if !app.sample, phase != .inactive { Task { await DateBadge.update(ask: phase == .active) } }
+                if phase == .active { app.store.refreshSubs() }  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
             }
     }
 }
 
 /// Today's date as the number on the app icon, as Fantastical and BusyCal do (John 2026-11-06). iOS lets no app redraw its own icon,
 /// so a quiet notification at each midnight (a number only: no banner, no sound) moves the number on while Dateline is closed.
-enum DateBadge {
+@MainActor enum DateBadge {
     static var on: Bool {
         get { UserDefaults.standard.object(forKey: "dateBadge") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "dateBadge") }
     }
     // shortcut: 30 midnights ahead (iOS holds 64 waiting); a phone that doesn't open Dateline for a month keeps the last number.
     static let ahead = 30
-    /// Sets today's number and the next midnights'. Returns false when iOS has badges off for Dateline.
+    private static var turn = 0  // the newest update wins: an older one still running stops at its next step
+    /// Sets today's number and the next midnights'. Returns false only when iOS has badges off for Dateline (not while it hasn't asked yet).
     @discardableResult static func update(ask: Bool) async -> Bool {
-        let c = UNUserNotificationCenter.current()
+        turn += 1; let me = turn
+        let c = UNUserNotificationCenter.current(), cal = Calendar.autoupdatingCurrent  // follows the phone's time zone on a trip
         c.removePendingNotificationRequests(withIdentifiers: (1...ahead).map { "date-badge-\($0)" })
         guard on else { try? await c.setBadgeCount(0); return true }
         let s = await c.notificationSettings()
         if s.authorizationStatus == .notDetermined {
-            guard ask, (try? await c.requestAuthorization(options: [.badge])) == true else { return false }
+            guard ask else { return true }
+            guard (try? await c.requestAuthorization(options: [.badge])) == true else { return false }
         } else if s.authorizationStatus == .denied || s.badgeSetting != .enabled { return false }
+        guard turn == me, on else { return true }
         let today = cal.startOfDay(for: Date())
         try? await c.setBadgeCount(cal.component(.day, from: today))
         for i in 1...ahead {
+            guard turn == me, on else { return true }
             let day = cal.date(byAdding: .day, value: i, to: today)!
             let n = UNMutableNotificationContent()
             n.badge = NSNumber(value: cal.component(.day, from: day))
