@@ -22,7 +22,7 @@ struct CalendarTab: View {
             .background(T.bg)
             .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in  // swipe left or right for the next or last days
                 let x = v.translation.width
-                if abs(x) > 80 && abs(x) > abs(v.translation.height) * 2 && Date() > app.dragUntil { app.step(x < 0 ? 1 : -1) }
+                if app.mode != .list && abs(x) > 80 && abs(x) > abs(v.translation.height) * 2 && Date() > app.dragUntil { app.step(x < 0 ? 1 : -1) }  // the list's week strip glides on its own
             })
             .onChange(of: vsc, initial: true) { app.sideways = vsc == .compact }
             .toolbar(app.sideways ? .hidden : .visible, for: .tabBar)  // turned sideways the hours need the height
@@ -116,11 +116,39 @@ struct SetMenu: View {
 }
 
 /// The list screen's week: day names, the date, and a coloured dot per calendar with events. Tap a day to start the list there.
+/// The weeks sit side by side and follow the finger, settling one week at a time (John 2026-11-06: a steady flow, not jumps).
 struct WeekStrip: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
+    @State private var week: Int?  // the week showing, counted from this week
+    private static let reach = 104  // two years each way
+
     var body: some View {
-        let first = startOfWeek(app.anchor)
+        let base = startOfWeek(app.today)
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                ForEach(-Self.reach...Self.reach, id: \.self) { w in row(addDays(base, 7 * w)).containerRelativeFrame(.horizontal) }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging).scrollIndicators(.hidden)
+        .scrollPosition(id: $week)
+        .onAppear { week = index(app.anchor, base) }
+        .onChange(of: base) { week = index(app.anchor, base) }
+        .onChange(of: app.anchor) { let w = index(app.anchor, base); if week != w { withAnimation(.smooth) { week = w } } }  // Today or a tap elsewhere glides there too
+        .onChange(of: week) {  // settled on another week: the list starts on the same weekday there
+            guard let w = week, w != index(app.anchor, base) else { return }
+            let weekday = cal.dateComponents([.day], from: startOfWeek(app.anchor), to: app.anchor).day ?? 0
+            app.anchor = addDays(base, 7 * w + weekday)
+        }
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)  // seven days across: like Apple's own week strip, it stops growing before the numbers clip
+    }
+
+    private func index(_ d: Date, _ base: Date) -> Int {
+        min(Self.reach, max(-Self.reach, Int(((cal.dateComponents([.day], from: base, to: startOfWeek(d)).day ?? 0)) / 7)))
+    }
+
+    private func row(_ first: Date) -> some View {
         HStack(spacing: 0) {
             ForEach((0..<7).map { addDays(first, $0) }, id: \.self) { d in
                 let today = cal.isDate(d, inSameDayAs: app.today), picked = cal.isDate(d, inSameDayAs: app.anchor)
@@ -140,7 +168,6 @@ struct WeekStrip: View {
             }
         }
         .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 10)
-        .dynamicTypeSize(...DynamicTypeSize.xxLarge)  // seven days across: like Apple's own week strip, it stops growing before the numbers clip
     }
 
     /// Up to three colours of the day's events, in order, each once.
