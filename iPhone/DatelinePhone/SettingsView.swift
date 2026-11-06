@@ -324,6 +324,7 @@ struct WeatherPage: View {
     @State private var note: String?
     @State private var town = WeatherPrefs.town
     @State private var found: [Town] = []
+    @State private var foundFor = ""  // the text the matches are for, so Done never takes a match for older text
     @State private var townNote: String?
     var body: some View {
         let _ = tick
@@ -335,7 +336,7 @@ struct WeatherPage: View {
                 }.pickerStyle(.segmented)
                 LabeledContent("Town for the days") {
                     TextField("Where I am", text: $town).multilineTextAlignment(.trailing).submitLabel(.done)
-                        .onSubmit { if town.trimmingCharacters(in: .whitespaces).isEmpty { pick(nil) } else if let t = found.first { pick(t) } }
+                        .onSubmit { let t = town.trimmingCharacters(in: .whitespaces); if t.isEmpty { pick(nil) } else if foundFor == t, let m = found.first { pick(m) } }
                 }
                 // Matches as you type, from Open-Meteo's free town search (as on the Mac).
                 ForEach(found) { t in Button(t.label) { pick(t) } }
@@ -343,12 +344,12 @@ struct WeatherPage: View {
             .task(id: town) {
                 guard !WeatherStore.sample else { return }  // the pictures never reach the network
                 let t = town.trimmingCharacters(in: .whitespaces)
-                if t.isEmpty || t == WeatherPrefs.town { found = []; townNote = nil; if t.isEmpty, !WeatherPrefs.town.isEmpty { pick(nil) }; return }
+                if t.isEmpty || t == WeatherPrefs.town { found = []; townNote = nil; return }  // an emptied box clears the town only on Done, not mid-edit
                 try? await Task.sleep(for: .milliseconds(300))  // wait for a pause in the typing
                 guard !Task.isCancelled else { return }
                 let list = await searchTowns(t)
                 guard !Task.isCancelled else { return }  // the text changed while this search ran
-                found = list
+                found = list; foundFor = t
                 townNote = list.isEmpty ? "No town called \u{201C}\(t)\u{201D} found. Try another spelling." : nil
             }
             Section {
@@ -357,8 +358,8 @@ struct WeatherPage: View {
                         VStack(alignment: .leading, spacing: 2) {
                             // The nickname shows in place of the city; empty shows the city (as on the Mac).
                             TextField(z.city, text: Binding(get: { z.nick }, set: { v in
-                                if let i = Zones.list.firstIndex(where: { $0.id == z.id }) { Zones.list[i].nick = v; changed() }
-                            })).submitLabel(.done).accessibilityLabel("Nickname for \(z.city)")
+                                if let i = Zones.list.firstIndex(where: { $0.id == z.id }) { Zones.list[i].nick = v }
+                            })).submitLabel(.done).onSubmit(changed)  // the calendar redraws once, on Done or on leaving the page.accessibilityLabel("Nickname for \(z.city)")
                             Text(z.place).font(.footnote).foregroundStyle(T.text2).lineLimit(1)
                         }
                         Spacer()
@@ -377,6 +378,7 @@ struct WeatherPage: View {
         }
         .navigationTitle("Time & weather")
         .toolbar { if Zones.list.count > 1 { EditButton() } }
+        .onDisappear(perform: changed)
     }
 
     private func changed() { tick += 1; app.reload() }
@@ -652,7 +654,8 @@ struct SubColors: View {
                     Circle().fill(Palette.tags[i]).frame(width: 24, height: 24)
                         .overlay(Circle().strokeBorder(Palette.tags[i], lineWidth: 2).padding(-4).opacity(pick == i ? 1 : 0))
                         .frame(maxWidth: .infinity, minHeight: 44)
-                }.buttonStyle(.plain).accessibilityLabel(["Red", "Orange", "Green", "Teal", "Blue", "Purple", "Pink", "Gray"][i])  // the 8 Palette.tags, in order.accessibilityAddTraits(pick == i ? .isSelected : [])
+                }.buttonStyle(.plain).accessibilityLabel(["Red", "Orange", "Green", "Teal", "Blue", "Purple", "Pink", "Gray"][i])  
+                .accessibilityAddTraits(pick == i ? .isSelected : [])  // the 8 Palette.tags, in order
             }
         }
     }

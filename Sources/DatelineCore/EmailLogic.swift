@@ -31,7 +31,7 @@ public func assistantDate(_ v: Any?) -> Date? {
 
 // MARK: reading the email file
 
-public struct Mail: Equatable {
+public struct Mail: Equatable, Sendable {
     public var from = "", subject = "", body = ""
     public var date: Date?
     public init(from: String = "", subject: String = "", body: String = "", date: Date? = nil) { self.from = from; self.subject = subject; self.body = body; self.date = date }

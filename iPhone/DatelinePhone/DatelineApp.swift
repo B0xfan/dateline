@@ -45,7 +45,7 @@ final class PhoneState: ObservableObject {
     let store: Store
     let sample: Bool  // sample calendars: tests and pictures
     @Published var today: Date
-    @Published var mode: Mode = .list { didSet { reload(); turnRule() } }  // the list is the main screen (approved mockup, John 2026-11-05)
+    @Published var mode: Mode = .list { didSet { listDay = nil; reload(); turnRule() } }  // the list is the main screen (approved mockup, John 2026-11-05)
     @Published var anchor: Date { didSet { listDay = nil; reload() } }
     @Published var listDay: Date?  // the day at the top of the list as it scrolls; the month title and week strip follow it (John 2026-11-06)
     @Published var tab: Tab = .calendar { didSet { turnRule() } }
@@ -64,6 +64,7 @@ final class PhoneState: ObservableObject {
     @Published var drive: [String: Int] = [:]  // minutes of driving before an event with a place
     @Published var emails: [EmailFind] = []  // events found in emails opened in Dateline
     @Published var pickingEmail = false  // the Files picker for an email file
+    private var readingEmail = false
     var emailNext = false  // "From an email file" on the add sheet: the picker opens once the sheet has closed
     var opened: [String: Item] = [:]  // events opened from outside the days in view (the map)
     var demoWidgets = false
@@ -137,16 +138,29 @@ final class PhoneState: ObservableObject {
     /// as on the Mac, then shown in the email sheet to check before adding. Nothing leaves the phone.
     // shortcut: the Mac's orange "guessed" outlines and its time note aren't shown in the phone sheet; add them if a guessed time slips through.
     func readEmail(_ url: URL) async {
-        let scoped = url.startAccessingSecurityScopedResource()
-        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        let data = size < 30_000_000 ? try? Data(contentsOf: url) : nil
-        if scoped { url.stopAccessingSecurityScopedResource() }
-        guard let data else { problem = size >= 30_000_000 ? "This email is too big to read (over 30 MB)." : "Dateline couldn't open that email file."; return }
-        let m = readMail(data), d = await readEvent(m, now: today)
+        guard !readingEmail else { problem = "Dateline is still reading the last email. Try again in a moment."; return }  // one at a time, as on the Mac
+        readingEmail = true; defer { readingEmail = false }
+        say("Reading the email…")
+        // Off the main thread: a big email's file and its parts take a moment. A copy iOS made for Dateline (its Inbox folder) is removed once read.
+        let read = await Task.detached { () -> (Int, Mail?) in
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            let data = size < 30_000_000 ? try? Data(contentsOf: url) : nil
+            let inbox = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Inbox").standardizedFileURL.path + "/"
+            if url.standardizedFileURL.path.hasPrefix(inbox) { try? FileManager.default.removeItem(at: url) }  // only Dateline's own copy, never the user's file
+            return (size, data.map(readMail))
+        }.value
+        guard let m = read.1 else { problem = read.0 >= 30_000_000 ? "This email is too big to read (over 30 MB)." : "Dateline couldn't open that email file."; return }
+        let d = await readEvent(m, now: today)
+        if toast?.text == "Reading the email…" { toast = nil }
         guard d.problem.isEmpty, let s = d.start else { problem = d.problem.isEmpty ? "Dateline couldn't find a date in that email." : d.problem; return }
         let f = EmailFind(from: m.fromName.isEmpty ? m.subject : m.fromName, quote: d.quotes.first ?? m.subject,
                           parsed: Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes))
-        emails.insert(f, at: 0); email = f
+        emails.insert(f, at: 0)
+        // Opens over the calendar; an add or search sheet closes first. If another sheet is up, the envelope at the top keeps it.
+        adding = nil; searching = false
+        if email == nil { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in if self?.email == nil { self?.email = f } } }
     }
 
     /// Where a new event goes: a typed /code, else the shown set's calendar, else the phone's default (as on the Mac).
@@ -216,14 +230,15 @@ final class PhoneState: ObservableObject {
     }
 
     /// A task dropped on an hour (as on the Mac): it gets that day and time. A repeating A4 task's time belongs to its rule, so it takes only the day.
-    func drop(taskID: String, at time: Date) {
-        guard let t = store.todos.first(where: { $0.id == taskID }) else { return }
+    @discardableResult func drop(taskID: String, at time: Date) -> Bool {
+        guard let t = store.todos.first(where: { $0.id == taskID }) else { return false }
         var n = t
         if t.a4?.repeating == true { n.due = t.timed ? sameClock(t.due!, on: time) : cal.startOfDay(for: time) } else { if !t.timed { n.a4?.ring = true }; n.due = time; n.timed = true }
-        guard n != t else { return }
-        if let f = store.updateTask(n) { if store.trialOver { showUnlock = true } else { problem = f.message }; return }
+        guard n != t else { return false }
+        if let f = store.updateTask(n) { if store.trialOver { showUnlock = true } else { problem = f.message }; return false }
         undo.push { [weak self] in self?.store.updateTask(t) }
-        say("Moved \(t.title) to \(timeText(n.due!))")
+        say("Moved \(t.title) to \(n.timed ? timeText(n.due!) : dateText(n.due!, "EEEE, MMM d"))")
+        return true
     }
 
     private func save(_ t: ToDo) { if let f = store.updateTask(t) { problem = f.message } }

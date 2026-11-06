@@ -224,7 +224,8 @@ struct AgendaView: View {
         }
         .scrollPosition(id: $top)
         .onChange(of: top) { if let top, !cal.isDate(top, inSameDayAs: app.listDay ?? app.anchor) { app.listDay = top } }
-        .onChange(of: app.anchor) { top = app.anchor }  // a new start day: back to the top of the list
+        .onChange(of: app.anchor) { top = app.anchor }
+        .onChange(of: app.listDay) { if app.listDay == nil { top = app.anchor } }  // a new start day (even the same one, as Today): back to the top
         .onAppear { if app.demoScroll { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { top = days[days.count / 2].day } } }
         .background(T.grouped)
     }
@@ -639,8 +640,7 @@ struct HourGrid: View {
         // A task dragged here from the tasks row (or a timed task moved) gets this day and time, in 15 minute steps as on the Mac.
         .dropDestination(for: String.self) { ids, loc in
             guard let id = ids.first, id.hasPrefix("task:") else { return false }
-            app.drop(taskID: String(id.dropFirst(5)), at: cal.date(byAdding: .minute, value: min(95, max(0, Int(loc.y / hourH * 4))) * 15, to: day)!)
-            return true
+            return app.drop(taskID: String(id.dropFirst(5)), at: cal.date(byAdding: .minute, value: min(95, max(0, Int(loc.y / hourH * 4))) * 15, to: day)!)
         }
     }
 
