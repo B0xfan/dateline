@@ -140,7 +140,7 @@ final class PhoneState: ObservableObject {
     func readEmail(_ url: URL) async {
         guard !readingEmail else { problem = "Dateline is still reading the last email. Try again in a moment."; return }  // one at a time, as on the Mac
         readingEmail = true; defer { readingEmail = false }
-        say("Reading the email…")
+        say("Reading the email…"); defer { if toast?.text == "Reading the email…" { toast = nil } }  // cleared on every way out, failures too
         // Off the main thread: a big email's file and its parts take a moment. A copy iOS made for Dateline (its Inbox folder) is removed once read.
         let read = await Task.detached { () -> (Int, Mail?) in
             let scoped = url.startAccessingSecurityScopedResource()
@@ -153,7 +153,6 @@ final class PhoneState: ObservableObject {
         }.value
         guard let m = read.1 else { problem = read.0 >= 30_000_000 ? "This email is too big to read (over 30 MB)." : "Dateline couldn't open that email file."; return }
         let d = await readEvent(m, now: today)
-        if toast?.text == "Reading the email…" { toast = nil }
         guard d.problem.isEmpty, let s = d.start else { problem = d.problem.isEmpty ? "Dateline couldn't find a date in that email." : d.problem; return }
         let f = EmailFind(from: m.fromName.isEmpty ? m.subject : m.fromName, quote: d.quotes.first ?? m.subject,
                           parsed: Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes))

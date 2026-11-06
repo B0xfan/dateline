@@ -359,7 +359,7 @@ struct WeatherPage: View {
                             // The nickname shows in place of the city; empty shows the city (as on the Mac).
                             TextField(z.city, text: Binding(get: { z.nick }, set: { v in
                                 if let i = Zones.list.firstIndex(where: { $0.id == z.id }) { Zones.list[i].nick = v }
-                            })).submitLabel(.done).onSubmit(changed)  // the calendar redraws once, on Done or on leaving the page.accessibilityLabel("Nickname for \(z.city)")
+                            })).submitLabel(.done).onSubmit(changed).accessibilityLabel("Nickname for \(z.city)")  // the calendar redraws once, on Done or on leaving the page
                             Text(z.place).font(.footnote).foregroundStyle(T.text2).lineLimit(1)
                         }
                         Spacer()
@@ -654,7 +654,7 @@ struct SubColors: View {
                     Circle().fill(Palette.tags[i]).frame(width: 24, height: 24)
                         .overlay(Circle().strokeBorder(Palette.tags[i], lineWidth: 2).padding(-4).opacity(pick == i ? 1 : 0))
                         .frame(maxWidth: .infinity, minHeight: 44)
-                }.buttonStyle(.plain).accessibilityLabel(["Red", "Orange", "Green", "Teal", "Blue", "Purple", "Pink", "Gray"][i])  
+                }.buttonStyle(.plain).accessibilityLabel(["Red", "Orange", "Green", "Teal", "Blue", "Purple", "Pink", "Gray"][i])
                 .accessibilityAddTraits(pick == i ? .isSelected : [])  // the 8 Palette.tags, in order
             }
         }
