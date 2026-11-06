@@ -222,6 +222,9 @@ enum SelfTest {
             check(store.todos.first { $0.id == t.id } == t, "Undo takes the dropped task back")
         } else { check(false, "the new task is there to drop") }
 
+        let mail = readMail(Data("From: Maya <maya@example.com>\nSubject: =?utf-8?Q?Cena_s=C3=A1bado?=\nContent-Type: text/plain\n\nDinner at Pangas Saturday at 7".utf8))
+        check(mail.fromName == "Maya" && mail.subject == "Cena sábado" && mail.body.hasPrefix("Dinner"), "an email file is read as on the Mac")
+
         check(!License.shared.enter("DLK-K000001.not-a-real-key") && License.shared.status == .bought(serial: 0), "a wrong key is refused and changes nothing")
         check(!store.trialOver, "the sample calendars never lock, whatever the trial")
 

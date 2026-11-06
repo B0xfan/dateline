@@ -269,24 +269,6 @@ final class Assistant: ObservableObject {
     private func iso(_ d: Date) -> String { isoOut.timeZone = cal.timeZone; return isoOut.string(from: d) }
 }
 
-/// A title or place from the AI app: one line, no control characters, at most 200 characters, so the ask-first popup shows what will really be saved.
-func plain(_ v: Any?) -> String {
-    let s = (v as? String ?? "").unicodeScalars.map { CharacterSet.controlCharacters.contains($0) || $0 == "\u{2028}" || $0 == "\u{2029}" ? " " : String($0) }.joined()
-    return String(s.trimmingCharacters(in: .whitespaces).prefix(200))
-}
-
-/// "2026-11-02T15:00:00-06:00", "2026-11-02T15:00" (the calendar's time zone) or "2026-11-02". Pure, so the self-test can check it.
-func assistantDate(_ v: Any?) -> Date? {
-    guard let s = v as? String else { return nil }
-    let i = ISO8601DateFormatter()
-    if let d = i.date(from: s) { return d }
-    i.formatOptions.insert(.withFractionalSeconds)
-    if let d = i.date(from: s) { return d }
-    let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = cal.timeZone
-    for format in ["yyyy-MM-dd'T'HH:mmXXXXX", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"] { f.dateFormat = format; if let d = f.date(from: s) { return d } }
-    return nil
-}
-
 func unixAddress(_ path: String) -> sockaddr_un {
     var a = sockaddr_un()
     a.sun_family = sa_family_t(AF_UNIX); a.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)

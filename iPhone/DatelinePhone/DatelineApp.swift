@@ -61,7 +61,9 @@ final class PhoneState: ObservableObject {
     @Published var problem: String?
     // shortcut: only the sample fills this; the phone does not run the shared drive planner (Trips) yet, which also schedules the leave alerts (a later step).
     @Published var drive: [String: Int] = [:]  // minutes of driving before an event with a place
-    @Published var emails: [EmailFind] = []  // events found in emails shared to Dateline
+    @Published var emails: [EmailFind] = []  // events found in emails opened in Dateline
+    @Published var pickingEmail = false  // the Files picker for an email file
+    var emailNext = false  // "From an email file" on the add sheet: the picker opens once the sheet has closed
     var opened: [String: Item] = [:]  // events opened from outside the days in view (the map)
     var demoWidgets = false
     var demoEdit = false  // pictures only: open the event's edit sheet
@@ -127,7 +129,23 @@ final class PhoneState: ObservableObject {
     func item(_ id: String) -> Item? { store.items.first { $0.id == id } ?? opened[id] }
 
     /// After a sheet closes: the unlock screen, when the ended trial refused what the sheet tried.
-    func sheetClosed() { addStart = nil; if unlockNext { unlockNext = false; showUnlock = true } }
+    func sheetClosed() { addStart = nil; if unlockNext { unlockNext = false; showUnlock = true }; if emailNext { emailNext = false; pickingEmail = true } }
+
+    /// An email file opened in Dateline (from Files, "Open in", or the add sheet): read on the phone with Apple Intelligence,
+    /// as on the Mac, then shown in the email sheet to check before adding. Nothing leaves the phone.
+    // shortcut: the Mac's orange "guessed" outlines and its time note aren't shown in the phone sheet; add them if a guessed time slips through.
+    func readEmail(_ url: URL) async {
+        let scoped = url.startAccessingSecurityScopedResource()
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let data = size < 30_000_000 ? try? Data(contentsOf: url) : nil
+        if scoped { url.stopAccessingSecurityScopedResource() }
+        guard let data else { problem = size >= 30_000_000 ? "This email is too big to read (over 30 MB)." : "Dateline couldn't open that email file."; return }
+        let m = readMail(data), d = await readEvent(m, now: today)
+        guard d.problem.isEmpty, let s = d.start else { problem = d.problem.isEmpty ? "Dateline couldn't find a date in that email." : d.problem; return }
+        let f = EmailFind(from: m.fromName.isEmpty ? m.subject : m.fromName, quote: d.quotes.first ?? m.subject,
+                          parsed: Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes))
+        emails.insert(f, at: 0); email = f
+    }
 
     /// Where a new event goes: a typed /code, else the shown set's calendar, else the phone's default (as on the Mac).
     func calendarFor(_ p: Parsed, pick: String? = nil) -> CalInfo? {
@@ -224,7 +242,7 @@ final class PhoneState: ObservableObject {
     func sun(_ d: Date) -> (rise: Date, set: Date)? { WorkWeek.sun ? headerSpot().flatMap { sunTimes(d, at: $0) } : nil }
 }
 
-/// An event read out of an email shared to Dateline (the share step itself comes later; the sample shows one).
+/// An event read out of an email file opened in Dateline.
 struct EmailFind: Identifiable {
     let id = UUID()
     var from: String, quote: String

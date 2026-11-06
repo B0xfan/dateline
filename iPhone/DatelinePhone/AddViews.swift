@@ -1,4 +1,5 @@
-// Add by typing and Event from email (approved mockups): the sentence is read by the same parser as the Mac's quick add.
+// Add by typing and Event from email (approved mockups): the sentence is read by the same parser as the Mac's quick add,
+// an email file by the same reader as the Mac's Make Event from Email File.
 import SwiftUI
 import DatelineCore
 
@@ -69,6 +70,12 @@ struct AddSheet: View {
                     .padding(14).frame(maxWidth: .infinity, alignment: .leading)
                     .background(T.card, in: RoundedRectangle(cornerRadius: 12))
                     .padding(.horizontal, 16).padding(.top, 6)
+                    Button { app.emailNext = true; dismiss() } label: {
+                        Label("From an email file", systemImage: "envelope").font(.subheadline.weight(.medium)).foregroundStyle(T.tint)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.plain).padding(.horizontal, 20)
+                    .accessibilityHint("Pick an email saved in Files; Dateline reads the event out of it")
                     Card {
                         Picker("Calendar", selection: $pick) {
                             Text("Automatic").tag(String?.none)
