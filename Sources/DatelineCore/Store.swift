@@ -142,6 +142,7 @@ public final class Store: ObservableObject {
     @Published public var todos: [ToDo] = []
     @Published public var taskAccess: Access = .unknown
     public var taskFetch = 0  // only the newest Reminders read is kept
+    public var renamed: [String: String] = [:]  // old task id -> id after Undo put it back
     @Published public var a4On = UserDefaults.standard.object(forKey: "a4On") as? Bool ?? true
     @Published public var a4Folder = UserDefaults.standard.string(forKey: "a4Folder") ?? a4DefaultFolder
     public var a4Fetch = 0  // only the newest read of the A4 folder is kept

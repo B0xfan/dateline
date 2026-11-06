@@ -95,13 +95,18 @@ extension Store {
         if taskList(listID ?? "")?.account == a4Account { return .failure(Failure("New A4 tasks are added in Obsidian.")) }
         guard canReadTasks else { return .failure(Failure("Dateline can't see Reminders. Turn it on in System Settings, Privacy & Security, Reminders.")) }
         let saved = source.addReminder(t, listID: listID)
-        if case .success(let t) = saved { todos.append(t) }  // shows at once; the change notification reloads
+        if case .success(let new) = saved {
+            taskFetch += 1  // a read already running has the old list
+            todos.append(new)
+            if new.id != t.id, !t.id.isEmpty { renamed[t.id] = new.id }  // Undo of a delete: older Undo steps still name the old id
+        }  // shows at once; the change notification reloads
         return saved
     }
 
     // Saves a changed task (tick, edits in the task details, a drop on the calendar).
     @discardableResult
     public func updateTask(_ t: ToDo) -> Failure? {
+        var t = t; t.id = current(t.id)
         let old = todos.first { $0.id == t.id }
         if t.a4 != nil { return updateA4(t, old: old) }
         if let f = source.updateReminder(t, old: old) { reloadReminders(); return f }
@@ -113,10 +118,15 @@ extension Store {
     // The task for undo of an add.
     @discardableResult
     public func deleteTask(_ t: ToDo) -> Failure? {
+        var t = t; t.id = current(t.id)
         if let f = source.deleteReminder(t) { return f }
+        taskFetch += 1  // a read already running would bring it back
         todos.removeAll { $0.id == t.id }
         return nil
     }
+
+    // A task deleted and put back by Undo has a new id; follow the chain.
+    func current(_ id: String) -> String { var id = id; while let n = renamed[id] { id = n }; return id }
 
     // A typed place, found on the map (no location permission needed for this).
     public func locate(_ text: String) async -> Spot? {

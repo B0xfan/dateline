@@ -36,6 +36,8 @@ public protocol CalendarSource: AnyObject {
 @MainActor
 public final class AppleCalendar: CalendarSource {
     private let ek = EKEventStore()
+    // What a deleted reminder had beyond ToDo (repeats, phone-set alerts, priority, link), so Undo puts back the whole task.
+    private var removed: [String: (rules: [EKRecurrenceRule]?, alarms: [EKAlarm]?, priority: Int, url: URL?)] = [:]
     private var observer: Any?
     private var deletedAlarms: [String: [EKAlarm]] = [:]
     public var shownElsewhere: (String, Bool) -> Bool = { _, _ in false }
@@ -232,6 +234,9 @@ public final class AppleCalendar: CalendarSource {
         let r = EKReminder(eventStore: ek)
         r.calendar = c
         apply(t, old: nil, to: r)
+        if let k = removed.removeValue(forKey: t.id) {  // Undo of a delete
+            r.recurrenceRules = k.rules; r.alarms = k.alarms; r.priority = k.priority; r.url = k.url
+        }
         do { try ek.save(r, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
         return .success(Self.todo(r))
     }
@@ -246,7 +251,9 @@ public final class AppleCalendar: CalendarSource {
 
     public func deleteReminder(_ t: ToDo) -> Failure? {
         guard let r = ek.calendarItem(withIdentifier: t.id) as? EKReminder else { return Failure("That task is gone.") }
+        let keep = (r.recurrenceRules?.map { $0.copy() as! EKRecurrenceRule }, r.alarms?.map { $0.copy() as! EKAlarm }, r.priority, r.url)
         do { try ek.remove(r, commit: true) } catch { return Failure(error.localizedDescription) }
+        removed[t.id] = keep
         return nil
     }
 

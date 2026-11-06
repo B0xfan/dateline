@@ -306,7 +306,12 @@ final class AppState: ObservableObject {
             self.selectedID = back.id
             return nil
         }
-        panels.toast = Toast(text: it.title, calendar: store.calendar(it.calendarID)?.title ?? "")
+        undoToast(it.title, store.calendar(it.calendarID)?.title ?? "")
+    }
+
+    // The "Deleted … Undo" note, gone after 6 seconds.
+    private func undoToast(_ text: String, _ calendar: String) {
+        panels.toast = Toast(text: text, calendar: calendar)
         let t = panels.toast
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in if self?.panels.toast == t { self?.panels.toast = nil } }
     }
@@ -321,14 +326,11 @@ final class AppState: ObservableObject {
         if panels.openTaskID == t.id { panels.openTaskID = nil }
         undoStack.append { [weak self] in
             guard let self else { return nil }
-            if case .failure(let f) = self.store.addTask(t, listID: t.listID) { return f }
+            if case .failure(let f) = self.store.addTask(t, listID: t.listID) { return Failure("Couldn't put the task back: \(f.message)") }
             return nil
         }
-        panels.toast = Toast(text: t.title, calendar: store.taskList(t.listID)?.title ?? "Reminders")
-        let n = panels.toast
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in if self?.panels.toast == n { self?.panels.toast = nil } }
+        undoToast(t.title, store.taskList(t.listID)?.title ?? "Reminders")
     }
-
 
     func saveTask(_ new: ToDo) {
         guard let old = store.todos.first(where: { $0.id == new.id }), old != new else { return }

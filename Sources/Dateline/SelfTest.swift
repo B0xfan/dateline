@@ -295,11 +295,16 @@ func selftest() -> Int32 {
     MainActor.assumeIsolated {
         let a = AppState(store: Store(sample: true), today: now)
         guard let t = a.store.todos.first(where: { $0.a4 == nil }) else { expect(false, "the sample has a Reminders task"); return }
+        var ticked = t; ticked.done.toggle()
+        a.saveTask(ticked)
         a.panels.openTaskID = t.id
-        a.deleteTask(t)
+        a.deleteTask(ticked)
         let gone = !a.store.todos.contains { $0.id == t.id } && a.panels.openTaskID == nil && a.panels.toast?.text == t.title
         a.undo()
-        expect(gone && a.store.todos.contains { $0.title == t.title && $0.listID == t.listID && $0.due == t.due }, "deleting a task: gone with an Undo note, Undo puts it back")
+        let back = a.store.todos.first { $0.title == t.title && $0.listID == t.listID && $0.due == t.due }
+        a.undo()  // the tick before the delete still undoes, though the task came back with a new id
+        let first = a.store.todos.first { $0.id == back?.id }
+        expect(gone && back?.done == ticked.done && first?.done == t.done && a.error == nil, "deleting a task: gone with an Undo note, Undo puts it back, and an earlier Undo still works")
         var a4 = t; a4.id = "a4-selftest"; a4.a4 = A4Task(); a.store.todos.append(a4)
         a.deleteTask(a4)
         expect(a.store.todos.contains { $0.id == a4.id } && a.error != nil, "an A4 task is not deleted")
