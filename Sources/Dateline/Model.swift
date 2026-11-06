@@ -72,9 +72,9 @@ final class AppState: ObservableObject {
     // Sidebar groups (accounts, Reminders lists) folded shut with a click on the heading, so Coming up fits (James 2026-11-05); kept across restarts.
     @Published var foldedGroups = Set(UserDefaults.standard.stringArray(forKey: "foldedGroups") ?? []) { didSet { if Look.saves && store.access != .sample { UserDefaults.standard.set(foldedGroups.sorted(), forKey: "foldedGroups") } } }
     @Published var bubble: Date?  // the start of a new event being filled in, in a bubble at its day (James 2026-11-05)
-    // Settings > Week: what a double-click on an empty spot in a day opens. Off: the side panel, as before.
-    // Settings > Week: the view a new window opens on; "" = where you left it (John 2026-11-06).
+    // Settings > Week: the view Dateline starts on; "" = where you left it (John 2026-11-06).
     static var openOn: String { get { UserDefaults.standard.string(forKey: "openOn") ?? "" } set { UserDefaults.standard.set(newValue, forKey: "openOn") } }
+    // Settings > Week: what a double-click on an empty spot in a day opens. Off: the side panel, as before.
     static var dayBubble: Bool { get { UserDefaults.standard.bool(forKey: "dayBubble") } set { UserDefaults.standard.set(newValue, forKey: "dayBubble") } }
     @Published var drive: [String: Int] = [:]  // Phase 5: minutes of driving before each coming event with a place
     let trips = Trips()
