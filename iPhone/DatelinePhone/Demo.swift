@@ -98,6 +98,7 @@ enum SelfTest {
     static func check(_ ok: Bool, _ name: String) { print("\(ok ? "PASS" : "FAIL") \(name)"); if !ok { failures += 1 } }
 
     static func run(_ app: PhoneState) async {
+        setvbuf(stdout, nil, _IOLBF, 0)  // each line out at once, so a crash still shows how far the checks got
         try? await Task.sleep(nanoseconds: 1_500_000_000)  // let the first screen draw
         let store = app.store, today = Demo.today, mon = cal.startOfDay(for: today)
         check(store.access == .sample && store.taskAccess == .sample, "the checks run on the sample calendars and reminders")
