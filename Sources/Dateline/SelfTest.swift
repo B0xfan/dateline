@@ -35,6 +35,11 @@ func selftest() -> Int32 {
     let dc = dayCalendars([ev("w", at(3, 2, 9), at(3, 2, 10)), ev("p", at(3, 2, 22), at(3, 4, 0)), ev("w", at(3, 2, 11), at(3, 2, 12)), ev("f", at(12, 31, 20), at(12, 31, 20))], in: yr)
     expect(dc[at(3, 2, 0)] == ["w", "p"] && dc[at(3, 3, 0)] == ["p"] && dc[at(3, 4, 0)] == nil, "year dots: one per calendar, overnight event spans to its end")
     expect(dc[at(12, 31, 0)] == ["f"], "year dots: a zero-length event still marks its day")
+    func hit(_ id: String, _ d: Date, place: String = "", notes: String = "", cal c: String = "w") -> Item { Item(id: id, calendarID: c, title: id, start: d, end: d.addingTimeInterval(3600), allDay: false, place: place, notes: notes, showAs: .busy) }
+    let sr = searchEvents(" dentist ", in: [hit("Dentist May", at(5, 11, 10)), hit("Dentist Feb", at(2, 5, 15)), hit("Cleaning", at(11, 18, 10), place: "Dentist office"), hit("Later", at(12, 1, 9), notes: "ask the DENTIST"),
+                                         hit("Hidden dentist", at(11, 20, 9), cal: "x"), hit("Lunch", at(11, 19, 12))], hidden: ["x"], now: at(10, 26, 12))
+    expect(sr.coming.map(\.id) == ["Cleaning", "Later"] && sr.past.map(\.id) == ["Dentist May", "Dentist Feb"], "search: title, place, notes in any case; coming soonest first, past newest first; hidden calendars left out")
+    expect(searchEvents("  ", in: [hit("Dentist", at(11, 1, 9))], hidden: [], now: at(10, 26, 12)).coming.isEmpty, "search: blank text finds nothing")
     expect(dayCalendars([ev("x", at(1, 1, 0).addingTimeInterval(-86400 * 900), at(1, 1, 0).addingTimeInterval(86400 * 900))], in: yr).count == 365, "year dots: a years-long event is clipped to the year")
 
     var p = parseSentence("Dinner with Ana Friday 7pm at Casa Luna", now: now)

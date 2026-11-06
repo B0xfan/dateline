@@ -31,6 +31,9 @@ struct AppCommands: Commands {
                 o.urls.forEach(app.emails.importFile); app.openMain?()
             }
         }
+        CommandGroup(after: .textEditing) {
+            Button("Find Event") { app.openMain?(); app.panels.searching = true }.keyboardShortcut("f")
+        }
         CommandGroup(before: .sidebar) {
             ForEach(Array(Mode.allCases.enumerated()), id: \.element) { i, m in
                 toggle(m.rawValue, app.mode == m) { app.openMain?(); app.mode = m }

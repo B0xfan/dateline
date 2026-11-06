@@ -19,9 +19,12 @@ enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Mont
 @MainActor final class Panels: ObservableObject {
     @Published var panelOpen = false { didSet { if panelOpen { openTaskID = nil } } }
     // Phase 4 tasks: the task list (R) and one task's details share the right side with the event details.
-    @Published var tasksOpen = false { didSet { if tasksOpen { openTaskID = nil; panelOpen = false } } }
+    @Published var tasksOpen = false { didSet { if tasksOpen { openTaskID = nil; panelOpen = false; search = "" } } }
     @Published var openTaskID: String? { didSet { if openTaskID != nil { panelOpen = false } } }
     @Published var showShortcuts = false
+    @Published var search = ""  // the toolbar's event search; its results share the right side, below an open event or task
+    @Published var searching = false  // the search field has the cursor (Command F)
+    @Published var searchSubmits = 0  // Return in the search field
     @Published var mapOpen = false  // Phase 5: the map of all places (P)
     @Published var subscribing = false  // Phase 7: the Subscribe window
     @Published var reviewing: String?  // the email open in the review window
@@ -163,7 +166,7 @@ final class AppState: ObservableObject {
     var selected: Item? { selectedID.flatMap { id in store.items.first { $0.id == id } } }
     var openTask: ToDo? { panels.openTaskID.flatMap { id in store.todos.first { $0.id == id } } }
     var sideOpen: Bool { panels.panelOpen || panels.tasksOpen || panels.openTaskID != nil }
-    func closeSide() { panels.panelOpen = false; panels.tasksOpen = false; panels.openTaskID = nil }
+    func closeSide() { panels.panelOpen = false; panels.tasksOpen = false; panels.openTaskID = nil; panels.search = "" }
     // Always has words: a toolbar subtitle that comes and goes changes the bar's height.
     var subtitle: String {
         let shown = store.calendars.allSatisfy { !store.hidden.contains($0.id) } ? "All calendars" : store.activeSet.map { $0.name + " set" } ?? "Some calendars"
@@ -435,12 +438,14 @@ final class AppState: ObservableObject {
             if addBox.focused || !addText.isEmpty { addText = ""; addBox.focused = false; dropAddCursor(); return true }
             if panels.panelOpen { panels.panelOpen = false; NSApp.keyWindow?.makeFirstResponder(nil); return true }
             if panels.openTaskID != nil { panels.openTaskID = nil; NSApp.keyWindow?.makeFirstResponder(nil); return true }
+            if !panels.search.isEmpty && !typing { panels.search = ""; panels.searching = false; return true }  // in the field, Esc clears it there
             if panels.tasksOpen { panels.tasksOpen = false; return true }
             if selectedID != nil { selectedID = nil; return true }
             return false
         }
         if typing || panels.confirmDelete != nil || panels.showShortcuts || panels.mapOpen || error != nil { return false }
         if mods == .command, let n = Int(e.charactersIgnoringModifiers ?? ""), (1...9).contains(n) { pickSet(n); return true }
+        if !panels.search.isEmpty, responder is NSTableView, [125, 126].contains(e.keyCode) { return false }  // arrows move through the search results
         switch (e.keyCode, mods) {
         case (123, []): step(-1); return true
         case (124, []): step(1); return true

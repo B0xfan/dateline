@@ -67,14 +67,18 @@ struct MainView: View {
             .navigationTitle(app.mode == .week && width < 560 ? dateText(app.anchor, "MMM") : width < 700 ? app.shortTitle : app.title)
             .navigationSubtitle(width < 700 && app.mode != .year ? app.weekLabel : app.subtitle)
             .toolbar { toolbar }
+            .searchable(text: $panels.search, isPresented: $panels.searching, placement: .toolbar, prompt: "Events, places, notes")
+            .onSubmit(of: .search) { panels.searchSubmits += 1 }
         }
-        .inspector(isPresented: Binding(get: { app.openTask != nil || (panels.panelOpen && app.selected != nil) || panels.tasksOpen }, set: { if !$0 { app.closeSide() } })) {
+        .inspector(isPresented: Binding(get: { app.openTask != nil || (panels.panelOpen && app.selected != nil) || !panels.search.isEmpty || panels.tasksOpen }, set: { if !$0 { app.closeSide() } })) {
             // The sliver keeps a panel's scroll view off the top edge: touching it, the system draws the panel a toolbar's height below where its clicks land.
             VStack(spacing: 0) { Color.clear.frame(height: 1); Group {
                 if let t = app.openTask {
                     if t.a4 != nil { A4TaskDetail(app: app, store: store, task: t).id(t.id) } else { TaskDetail(app: app, store: store, task: t).id(t.id) }
                 } else if panels.panelOpen, let it = app.selected {
                     DetailPanel(app: app, store: store, item: it).id(it.id)
+                } else if !panels.search.isEmpty {
+                    SearchResults(app: app, store: store, panels: panels)
                 } else if panels.tasksOpen {
                     TaskList(app: app, store: store, panel: app.taskPanel)
                 }
