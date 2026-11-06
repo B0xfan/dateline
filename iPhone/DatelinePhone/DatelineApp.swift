@@ -1,6 +1,7 @@
 // The iPhone app (approved phone mockups, John 2026-11-04). Every non-screen part comes from DatelineCore, shared with the Mac.
 import SwiftUI
 import UIKit
+import UserNotifications
 import DatelineCore
 
 /// The app stays upright, except Week, which turns sideways to show the whole week (John 2026-11-06).
@@ -28,7 +29,42 @@ struct DatelineApp: App {
 
     var body: some Scene {
         WindowGroup { RootView().environmentObject(app).environmentObject(app.store) }
-            .onChange(of: phase) { if phase == .active { app.store.refreshSubs() } }  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
+            .onChange(of: phase) {
+                guard phase == .active else { return }
+                app.store.refreshSubs()  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
+                if !app.sample { Task { await DateBadge.update(ask: true) } }  // the pictures and checks never touch the real icon or ask
+            }
+    }
+}
+
+/// Today's date as the number on the app icon, as Fantastical and BusyCal do (John 2026-11-06). iOS lets no app redraw its own icon,
+/// so a quiet notification at each midnight (a number only: no banner, no sound) moves the number on while Dateline is closed.
+enum DateBadge {
+    static var on: Bool {
+        get { UserDefaults.standard.object(forKey: "dateBadge") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "dateBadge") }
+    }
+    // shortcut: 30 midnights ahead (iOS holds 64 waiting); a phone that doesn't open Dateline for a month keeps the last number.
+    static let ahead = 30
+    /// Sets today's number and the next midnights'. Returns false when iOS has badges off for Dateline.
+    @discardableResult static func update(ask: Bool) async -> Bool {
+        let c = UNUserNotificationCenter.current()
+        c.removePendingNotificationRequests(withIdentifiers: (1...ahead).map { "date-badge-\($0)" })
+        guard on else { try? await c.setBadgeCount(0); return true }
+        let s = await c.notificationSettings()
+        if s.authorizationStatus == .notDetermined {
+            guard ask, (try? await c.requestAuthorization(options: [.badge])) == true else { return false }
+        } else if s.authorizationStatus == .denied || s.badgeSetting != .enabled { return false }
+        let today = cal.startOfDay(for: Date())
+        try? await c.setBadgeCount(cal.component(.day, from: today))
+        for i in 1...ahead {
+            let day = cal.date(byAdding: .day, value: i, to: today)!
+            let n = UNMutableNotificationContent()
+            n.badge = NSNumber(value: cal.component(.day, from: day))
+            let at = UNCalendarNotificationTrigger(dateMatching: cal.dateComponents([.year, .month, .day, .hour, .minute], from: day), repeats: false)
+            try? await c.add(UNNotificationRequest(identifier: "date-badge-\(i)", content: n, trigger: at))
+        }
+        return true
     }
 }
 
