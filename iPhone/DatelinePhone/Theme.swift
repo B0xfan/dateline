@@ -11,7 +11,7 @@ enum T {
     static let bg = c(0xFFFFFF, 0x000000), bg2 = c(0xF2F2F7, 0x1C1C1E)
     static let text = c(0x1C1C1E, 0xF2F2F7), text2 = c(0x636366, 0xA1A1A6), line = c(0xE5E5EA, 0x2C2C2E)
     static let accent = c(0xD93A30, 0xFF5A4F), tint = c(0x0A64D6, 0x4C9BFF), late = c(0xC4321F, 0xFF6B5A)
-    static let top = c(0xFFFFFF, 0x1C1C1E), list = c(0xF2F2F7, 0x000000)  // the list screen: a lighter header layer over the list
+    static let grouped = c(0xF2F2F7, 0x000000), card = c(0xFFFFFF, 0x1C1C1E)  // grouped screens: white cards on grey (2026-11-06 design)
 }
 
 /// "DETAILS" above a group of rows.
@@ -29,7 +29,7 @@ struct Card<Content: View>: View {
     @ViewBuilder let content: Content
     var body: some View {
         VStack(spacing: 0) { content }
-            .background(T.bg2, in: RoundedRectangle(cornerRadius: 12))
+            .background(T.card, in: RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal, 16)
     }
 }
@@ -63,12 +63,7 @@ struct Dot: View {
     var body: some View { Circle().fill(color).frame(width: size, height: size) }
 }
 
-/// "Wednesday, Oct 28 · 8:30 AM to 9:30 AM"
-@MainActor func whenText(_ start: Date, _ end: Date, allDay: Bool) -> String {
-    dateText(start, "EEEE, MMM d") + " · " + (allDay ? "All day" : "\(timeText(start, short: true)) to \(timeText(end, short: true))")
-}
-
 extension View {
-    /// The floating glass look of the tab bar and the add bar.
+    /// The floating glass look of the Undo banner and the places search box.
     func glass() -> some View { background(.ultraThinMaterial, in: Capsule()).shadow(color: .black.opacity(0.14), radius: 8, y: 2) }
 }

@@ -17,7 +17,7 @@ struct DetailsView: View {
         Group {
             if let it = app.item(id) { content(it) } else { Text("This event is gone.").foregroundStyle(T.text2).frame(maxWidth: .infinity, maxHeight: .infinity) }
         }
-        .background(T.bg)
+        .background(T.grouped)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .onAppear { if app.demoEdit { app.demoEdit = false; editing = true } }
@@ -29,13 +29,15 @@ struct DetailsView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 12) {
-                    Bar(color: c, height: 56)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(it.shownTitle).font(.title2.bold())
-                        Text(whenText(it.start, it.end, allDay: it.allDay)).font(.subheadline).foregroundStyle(T.text2)
+                    RoundedRectangle(cornerRadius: 3).fill(c).frame(width: 5).frame(minHeight: 60)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(it.shownTitle).font(.title2.bold()).padding(.bottom, 2)
+                        Text(dateText(it.start, "EEEE, MMMM d")).font(.subheadline).foregroundStyle(T.text2)
+                        Text(it.allDay ? "All day" : "\(timeText(it.start, short: true)) to \(timeText(it.end, short: true))").font(.subheadline).foregroundStyle(T.text2)
                     }
                 }
-                .padding(.horizontal, 16).padding(.top, 8)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 20).padding(.top, 9)
                 if let m = app.drive[it.id] {
                     HStack(spacing: 12) {
                         Image(systemName: "car").font(.title3).foregroundStyle(Palette.tags[3])
@@ -97,18 +99,18 @@ struct DetailsView: View {
                 }
                 HStack(spacing: 10) {
                     if it.geo != nil || !it.place.isEmpty {
-                        Button { directions(it) } label: { Text("Directions").frame(maxWidth: .infinity, minHeight: 50).background(T.bg2, in: RoundedRectangle(cornerRadius: 12)) }
+                        Button { directions(it) } label: { Text("Directions").frame(maxWidth: .infinity, minHeight: 50).background(T.card, in: RoundedRectangle(cornerRadius: 12)) }
                             .foregroundStyle(T.tint)
                     }
                     if store.calendar(it.calendarID)?.writable == true {
-                    Button { askDelete = true } label: { Text("Delete").frame(maxWidth: .infinity, minHeight: 50).background(T.bg2, in: RoundedRectangle(cornerRadius: 12)) }
+                    Button { askDelete = true } label: { Text("Delete").frame(maxWidth: .infinity, minHeight: 50).background(T.card, in: RoundedRectangle(cornerRadius: 12)) }
                         .foregroundStyle(T.late)
                     }
                 }
                 .font(.callout.weight(.semibold)).buttonStyle(.plain)
                 .padding(.horizontal, 16).padding(.top, 20)
             }
-            .padding(.bottom, 120)
+            .padding(.bottom, 20)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true } }

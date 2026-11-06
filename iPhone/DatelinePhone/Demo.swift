@@ -53,6 +53,7 @@ enum Demo {
         case "month": app.mode = .month
         case "year": app.mode = .year
         case "add": app.adding = "Dinner with Ana Friday 7pm at Lola's"
+        case "search": app.searching = true; app.searchStart = "dentist"
         case "details", "details2":
             let title = s == "details" ? "Dentist" : "Marco at the condo"
             if let it = app.store.between(today, addDays(today, 7)).first(where: { $0.title == title }) { app.open(it) }
@@ -125,7 +126,7 @@ enum SelfTest {
         app.goToday()
         check(app.anchor == mon, "Today goes back to today")
         app.mode = .month
-        check(monthGrid(mon).first == addDays(mon, -29) && weekLetters().first == "S", "the month starts on Sunday Sep 27, like the mockup")
+        check(monthGrid(mon).first == addDays(mon, -29) && weekDayNames().first == cal.shortWeekdaySymbols[0].uppercased(), "the month starts on Sunday Sep 27, like the mockup")
         check(!store.shown(on: addDays(mon, 2)).filter(\.allDay).isEmpty, "the school holiday shows on Wednesday")
         app.mode = .week
 

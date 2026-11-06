@@ -15,12 +15,18 @@ struct Understood: View {
                 Bar(color: calendar?.color ?? T.tint)
                 Text((emoji.isEmpty ? "" : emoji + " ") + (p.title.isEmpty ? "New event" : p.title)).fontWeight(.semibold)
             }
-            Row(label: "When") { Text(dateText(p.start, "EEEE, MMM d") + " · " + (p.allDay ? "All day" : "\(timeText(p.start, short: true)) to \(timeText(p.end, short: true))")) }
+            Row(label: "When") {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { Text(dateText(p.start, "EEEE, MMM d")); Text(p.allDay ? "All day" : timeText(p.start, short: true)) }
+                    VStack(alignment: .leading, spacing: 2) { Text(dateText(p.start, "EEEE, MMM d")); Text(p.allDay ? "All day" : timeText(p.start, short: true)) }
+                }
+            }
             if !p.place.isEmpty { Row(label: "Where") { Text(p.place) } }
             Row(label: "Calendar") {
                 Dot(color: calendar?.color ?? T.text2)
                 Text(calendar?.title ?? "No calendar can take new events")
             }
+            if !p.allDay { Row(label: "Ends") { Text(timeText(p.end, short: true)) } }
             if let r = p.repeats { Row(label: "Repeats") { Text(r.text) } }
             Row(label: "Alert", last: true) { Text(!alert.isEmpty ? alert : p.alertMinutes.map(alertText) ?? "None") }
         }
@@ -54,14 +60,15 @@ struct AddSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    TextField("Dinner with Ana Friday 7pm", text: $text)
-                        .font(.title3).focused($focused).submitLabel(.done).onSubmit(add)
-                        .autocorrectionDisabled()
-                        .padding(.horizontal, 14).padding(.vertical, 12)
-                        .background(T.bg2, in: RoundedRectangle(cornerRadius: 12))
-                        .padding(.horizontal, 16).padding(.top, 6)
-                    Text("Type it the way you'd say it. Dateline fills in the rest.")
-                        .font(.footnote).foregroundStyle(T.text2).padding(.horizontal, 20).padding(.top, 6)
+                    VStack(alignment: .leading, spacing: 7) {
+                        TextField("Dinner with Ana Friday 7pm", text: $text)  // one line, so Return adds it
+                            .font(.title3.weight(.medium)).focused($focused).submitLabel(.done).onSubmit(add)
+                            .autocorrectionDisabled()
+                        Text("Type it the way you would say it.").font(.footnote).foregroundStyle(T.text2)
+                    }
+                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(T.card, in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal, 16).padding(.top, 6)
                     Card {
                         Picker("Calendar", selection: $pick) {
                             Text("Automatic").tag(String?.none)
@@ -74,7 +81,7 @@ struct AddSheet: View {
                     }
                 }
             }
-            .background(T.bg)
+            .background(T.grouped)
             .navigationTitle("New event").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -109,7 +116,7 @@ struct EmailSheet: View {
                         .font(.subheadline).foregroundStyle(T.text2).lineSpacing(3)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 14).padding(.vertical, 12)
-                        .background(T.bg2, in: RoundedRectangle(cornerRadius: 12))
+                        .background(T.card, in: RoundedRectangle(cornerRadius: 12))
                         .padding(.horizontal, 16).padding(.top, 8)
                     SectionLabel("Dateline found")
                     Understood(p: find.parsed, calendar: app.calendarFor(find.parsed), emoji: find.emoji, alert: find.alert)
@@ -117,7 +124,7 @@ struct EmailSheet: View {
                         .font(.footnote).foregroundStyle(T.text2).padding(.horizontal, 32).padding(.top, 14)
                 }
             }
-            .background(T.bg)
+            .background(T.grouped)
             .navigationTitle("Event from email").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -132,5 +139,44 @@ struct EmailSheet: View {
         case .success: app.emails.removeAll { $0.id == find.id }; dismiss()
         case .failure(let f): if store.trialOver { app.unlockNext = true; dismiss() } else { problem = f.message }
         }
+    }
+}
+
+/// Search (the magnifying glass on the calendar): events a year either side of today whose name, place or notes have the words.
+struct SearchSheet: View {
+    @EnvironmentObject var app: PhoneState
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var pool: [Item] = []  // read once when the sheet opens, not on every key
+    // shortcut: two years read on the main thread as the sheet opens; move into .task if a big calendar makes it stutter
+
+    var body: some View {
+        let q = text.trimmingCharacters(in: .whitespaces)
+        let found = q.isEmpty ? [] : pool.filter { it in
+            !store.hidden.contains(it.calendarID) && [it.shownTitle, it.place, it.notes].contains { $0.localizedCaseInsensitiveContains(q) }
+        }.sorted { ($0.end < app.today ? 1 : 0, $0.start) < ($1.end < app.today ? 1 : 0, $1.start) }.prefix(50)  // coming events first, then past ones
+        NavigationStack {
+            List {
+                ForEach(Array(found)) { it in
+                    Button { dismiss(); app.tab = .calendar; app.open(it) } label: {
+                        HStack(spacing: 12) {
+                            Bar(color: store.color(it), height: 36)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(it.shownTitle).fontWeight(.semibold).foregroundStyle(T.text)
+                                Text(([dateText(it.start, "EEE, MMM d, yyyy")] + (it.allDay ? [] : [timeText(it.start, short: true)]) + (it.place.isEmpty ? [] : [it.place])).joined(separator: " · "))
+                                    .font(.footnote).foregroundStyle(T.text2)
+                            }
+                        }
+                        .opacity(it.end < app.today ? 0.6 : 1)
+                    }
+                }
+            }
+            .overlay { if !q.isEmpty && found.isEmpty { ContentUnavailableView.search(text: q) } }
+            .searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always), prompt: "Events, places, notes")
+            .navigationTitle("Search").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
+        }
+        .onAppear { pool = store.between(addDays(app.today, -365), addDays(app.today, 366)); text = app.searchStart }
     }
 }

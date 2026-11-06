@@ -29,7 +29,6 @@ final class PhoneState: ObservableObject {
     enum Mode: String, CaseIterable { case list = "List", day = "Day", week = "Week", month = "Month", year = "Year" }
     enum Tab: String, CaseIterable {
         case calendar = "Calendar", tasks = "Tasks", places = "Places", settings = "Settings"
-        var icon: String { ["calendar", "checklist", "mappin.and.ellipse", "gearshape"][Self.allCases.firstIndex(of: self)!] }
     }
 
     let store: Store
@@ -41,6 +40,8 @@ final class PhoneState: ObservableObject {
     @Published var path: [String] = []  // event ids open on the calendar tab
     @Published var adding: String?  // the add sheet's starting text; nil = closed
     @Published var email: EmailFind?
+    @Published var searching = false
+    var searchStart = ""  // pictures only: the search box's starting text
     @Published var showUnlock = false
     @Published var settingsPath: [String] = []  // the settings pages open, e.g. ["accounts", "iCloud"]
     @Published var look = 0  // bumped when a Look choice changes here or arrives from the Mac, so the screens redraw in it

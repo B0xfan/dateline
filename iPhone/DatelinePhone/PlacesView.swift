@@ -55,9 +55,8 @@ struct PlacesView: View {
                         }
                     }
                 }
-                .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 90) }
             }
-            .background(T.bg, in: UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14))
+            .background(T.grouped, in: UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14))
             .shadow(color: .black.opacity(0.08), radius: 6, y: -2)
             .padding(.top, 410)
         }

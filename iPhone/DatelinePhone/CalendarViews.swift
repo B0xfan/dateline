@@ -23,140 +23,120 @@ struct CalendarTab: View {
                 let x = v.translation.width
                 if abs(x) > 80 && abs(x) > abs(v.translation.height) * 2 && Date() > app.dragUntil { app.step(x < 0 ? 1 : -1) }
             })
-            .navigationTitle(dateText(app.anchor, "EEE, MMM d"))  // the details screen's back button
+            .navigationTitle("Calendar")  // the details screen's back button (2026-11-06 design)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: String.self) { DetailsView(id: $0) }
         }
     }
 }
 
+/// The top of the calendar (2026-11-06 design): Today, the title, search and add; the List, Day, Week, Month switch;
+/// on the list, the month and calendar set over the week strip.
 struct CalHeader: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
-    @ObservedObject private var weather = WeatherStore.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                setMenu
-                Spacer()
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {  // side by side, so a long title at large text never runs under the buttons
+                Button("Today") { app.goToday() }
+                    .font(.body.weight(.semibold)).foregroundStyle(T.tint).padding(.horizontal, 8).frame(minHeight: 44)
+                Text(title).font(.headline).foregroundStyle(T.text).lineLimit(1).minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity).layoutPriority(1).accessibilityAddTraits(.isHeader)
                 if !app.emails.isEmpty {
                     Button { app.email = app.emails.first } label: {
-                        Image(systemName: "envelope").font(.title3).frame(width: 44, height: 44)
+                        Image(systemName: "envelope").frame(width: 44, height: 44)
                             .overlay(alignment: .topTrailing) {
                                 Text("\(app.emails.count)").font(.caption2.bold()).foregroundStyle(.white)
                                     .frame(minWidth: 16, minHeight: 16).background(T.tint, in: Capsule()).offset(x: -3, y: 5)
                             }
                     }
-                    .buttonStyle(.plain).foregroundStyle(T.text).accessibilityLabel("From email, \(app.emails.count) new")
+                    .accessibilityLabel("From email, \(app.emails.count) new")
                 }
+                Button { app.searching = true } label: { Image(systemName: "magnifyingglass").frame(width: 44, height: 44) }
+                    .accessibilityLabel("Search")
+                Button { app.adding = "" } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
+                    .accessibilityLabel("Add an event or task")
             }
-            .padding(.horizontal, 16).padding(.top, 8)
-            HStack(alignment: .top, spacing: 12) {
-                title
-                Spacer(minLength: 0)
-                if app.mode == .day, let w = app.wx(app.anchor) {
-                    VStack(alignment: .trailing, spacing: 0) {
-                        Text(degrees(w.hi)).font(.title3)
-                        Text("\(degrees(w.lo)) low").font(.footnote).foregroundStyle(T.text2)
-                    }
+            .font(.title3).foregroundStyle(T.tint).buttonStyle(.plain)
+            .padding(.horizontal, 8).frame(minHeight: 52)
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)  // like Apple's own top bars: they stop growing before the screen runs out
+            // The Year view has no segment of its own (it opens from the month), so none is lit while it shows.
+            Picker("View", selection: $app.mode) {
+                ForEach([PhoneState.Mode.list, .day, .week, .month], id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented).padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 9)
+            if app.mode == .list {
+                HStack(spacing: 8) {
+                    Text(dateText(app.anchor, "MMMM yyyy")).font(.title3.bold()).lineLimit(1).minimumScaleFactor(0.8)
+                    Spacer(minLength: 0)
+                    SetMenu()
                 }
-                Button("Today") { app.goToday() }
-                    .font(.body.weight(.semibold)).foregroundStyle(T.accent).frame(minHeight: 44)
+                .padding(.leading, 20).padding(.trailing, 12)
+                WeekStrip()
             }
-            .padding(.horizontal, 16)
-            if app.mode == .list { WeekStrip() }
         }
-        .background(app.mode == .list ? T.top : T.bg)
+        .background(T.bg)
+        .overlay(alignment: .bottom) { Rectangle().fill(T.line).frame(height: 0.5) }
     }
 
-    private var setMenu: some View {
-        let s = store.activeSet
-        let colors = (s?.calendars ?? store.calendars.map(\.id)).compactMap { store.calendar($0)?.color }
-        return Menu {
-            Button("All calendars") { store.use(nil) }
-            ForEach(store.sets) { set in Button(set.name) { store.use(set) } }
-        } label: {
-            HStack(spacing: 6) {
-                HStack(spacing: 2) {
-                    ForEach(Array(colors.prefix(3).enumerated()), id: \.offset) { _, c in RoundedRectangle(cornerRadius: 2).fill(c).frame(width: 3, height: 14) }
-                }
-                Text(s?.name ?? "All calendars")
-                Image(systemName: "chevron.down").font(.caption2.weight(.bold))
-            }
-            .font(.subheadline.weight(.semibold)).foregroundStyle(T.text)
-            .padding(.horizontal, 12).frame(height: 44).background(T.bg2, in: Capsule())
-        }
-        .accessibilityLabel("Calendar set: \(s?.name ?? "All calendars")")
-    }
-
-    /// The big title is also the menu that switches List, Day, Week, Month and Year (it replaced the segmented switch).
-    private var title: some View {
-        let a = app.anchor
-        let sub: String? = switch app.mode {
-        case .week: "Week \(weekNumber(a))"
-        case .day: (["Week \(weekNumber(a))"] + (app.sun(a).map { ["sunrise \(dateText($0.rise, "h:mm"))", "sunset \(dateText($0.set, "h:mm"))"] } ?? [])).joined(separator: " · ")
-        default: nil
-        }
-        return VStack(alignment: .leading, spacing: 0) {
-            Menu {
-                Picker("View", selection: $app.mode) {
-                    ForEach(PhoneState.Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-            } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    heading(a).lineLimit(1).minimumScaleFactor(0.7)
-                    Image(systemName: "chevron.down").font(.footnote.weight(.bold)).foregroundStyle(T.text2)
-                }
-                .foregroundStyle(T.text)
-            }
-            .accessibilityValue("\(app.mode.rawValue) view")  // the label stays the date the title reads
-            .accessibilityHint("Changes the view")
-            if let sub { Text(sub).font(.footnote).foregroundStyle(T.text2) }
-        }
-    }
-
-    private func heading(_ a: Date) -> Text {
+    private var title: String {
+        let a = app.anchor, last = app.days.last!
         switch app.mode {
-        case .list, .month: Text(dateText(a, "MMMM") + " ") + Text(dateText(a, "yyyy")).foregroundColor(T.accent)  // the year in the accent colour
-        case .week: Text(dateText(a, "MMM d") + " to " + dateText(app.days.last!, cal.isDate(a, equalTo: app.days.last!, toGranularity: .month) ? "d" : "MMM d"))
-        case .day: Text(dateText(a, "EEEE, MMM d"))
-        case .year: Text(dateText(a, "yyyy"))
+        case .list: return "Schedule"
+        case .day: return dateText(a, "EEEE, MMM d")
+        case .week: return dateText(a, "MMM d") + " to " + dateText(last, cal.isDate(a, equalTo: last, toGranularity: .month) ? "d" : "MMM d")
+        case .month: return dateText(a, "MMMM yyyy")
+        case .year: return dateText(a, "yyyy")
         }
     }
 }
 
-/// The list screen's week: day letters, the date, and a coloured dot per calendar with events. Tap a day to start the list there.
+/// "All calendars ⌄": switches the calendar set.
+struct SetMenu: View {
+    @EnvironmentObject var store: Store
+    var body: some View {
+        let s = store.activeSet
+        Menu {
+            Button("All calendars") { store.use(nil) }
+            ForEach(store.sets) { set in Button(set.name) { store.use(set) } }
+        } label: {
+            HStack(spacing: 5) {
+                Text(s?.name ?? "All calendars").lineLimit(1)
+                Image(systemName: "chevron.down").font(.caption2.weight(.bold))
+            }
+            .font(.subheadline.weight(.medium)).foregroundStyle(T.tint)
+            .padding(.horizontal, 8).frame(minHeight: 44).contentShape(Rectangle())
+        }
+        .accessibilityLabel("Calendar set: \(s?.name ?? "All calendars")")
+    }
+}
+
+/// The list screen's week: day names, the date, and a coloured dot per calendar with events. Tap a day to start the list there.
 struct WeekStrip: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     var body: some View {
         let first = startOfWeek(app.anchor)
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                ForEach((0..<7).map { addDays(first, $0) }, id: \.self) { d in
-                    let today = cal.isDate(d, inSameDayAs: app.today), picked = cal.isDate(d, inSameDayAs: app.anchor)
-                    Button { app.anchor = d } label: {
-                        VStack(spacing: 4) {
-                            Text(dateText(d, "EEE").uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(today ? T.accent : T.text2)
-                            Text(dateText(d, "d")).font(.body.weight(today ? .bold : .medium)).frame(width: 32, height: 32)
-                                .foregroundStyle(today ? .white : T.text)
-                                .background(today ? T.accent : picked ? T.text.opacity(0.1) : .clear, in: Circle())
-                            HStack(spacing: 3) { ForEach(Array(dots(d).enumerated()), id: \.offset) { Dot(color: $0.element, size: 5) } }.frame(height: 5)
-                        }
-                        .frame(maxWidth: .infinity).padding(.vertical, 4).contentShape(Rectangle())
+        HStack(spacing: 0) {
+            ForEach((0..<7).map { addDays(first, $0) }, id: \.self) { d in
+                let today = cal.isDate(d, inSameDayAs: app.today), picked = cal.isDate(d, inSameDayAs: app.anchor)
+                Button { app.anchor = d } label: {
+                    VStack(spacing: 4) {
+                        Text(dateText(d, "EEE").uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(T.text2)
+                        Text(dateText(d, "d")).font(.title3.weight(today ? .semibold : .regular)).frame(width: 34, height: 34)
+                            .foregroundStyle(today ? .white : picked ? T.tint : T.text)
+                            .background(today ? T.accent : picked ? T.tint.opacity(0.14) : .clear, in: Circle())
+                        HStack(spacing: 3) { ForEach(Array(dots(d).enumerated()), id: \.offset) { Dot(color: $0.element, size: 5) } }.frame(height: 5)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(dateText(d, "EEEE, MMMM d") + (today ? ", today" : "") + (dots(d).isEmpty ? "" : ", has events"))
-                    .accessibilityAddTraits(picked ? .isSelected : [])
+                    .frame(maxWidth: .infinity).padding(.vertical, 3).contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(dateText(d, "EEEE, MMMM d") + (today ? ", today" : "") + (dots(d).isEmpty ? "" : ", has events"))
+                .accessibilityAddTraits(picked ? .isSelected : [])
             }
-            .padding(.horizontal, 10).padding(.top, 6)
-            Button { app.mode = .month } label: {  // the grabber opens the month
-                Capsule().fill(T.text2.opacity(0.4)).frame(width: 36, height: 5).frame(maxWidth: .infinity, minHeight: 22)
-            }
-            .buttonStyle(.plain).accessibilityLabel("Show the month")
         }
+        .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 10)
     }
 
     /// Up to three colours of the day's events, in order, each once.
@@ -197,61 +177,78 @@ struct AgendaView: View {
         }.enumerated().filter { $0.offset < 2 || !$0.element.rows.isEmpty || !$0.element.allDay.isEmpty }.map(\.element)
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(days.enumerated()), id: \.element.day) { i, d in AgendaDay(day: d.day, rows: d.rows, allDay: d.allDay, first: i == 0) }
+                ForEach(days, id: \.day) { d in AgendaDay(day: d.day, rows: d.rows, allDay: d.allDay) }
             }
-            .padding(.horizontal, 16).padding(.bottom, 110)  // room under the tabs
+            .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 20)
         }
-        .background(T.list)
+        .background(T.grouped)
     }
 }
 
+/// "Today  Tuesday, November 3" over the day's card; the two parts stack when large text leaves no room.
 struct AgendaDay: View {
     @EnvironmentObject var app: PhoneState
-    @EnvironmentObject var store: Store
     let day: Date
     let rows: [AgendaRow]
     let allDay: [Item]
-    let first: Bool
+    var body: some View {
+        let n = cal.dateComponents([.day], from: cal.startOfDay(for: app.today), to: day).day ?? 99
+        let name = Text(n == 0 ? "Today" : n == 1 ? "Tomorrow" : dateText(day, "EEEE")).font(.headline).foregroundColor(n == 0 ? T.accent : T.text)
+        let sub = Text(dateText(day, n == 0 || n == 1 ? "EEEE, MMMM d" : "MMMM d")).font(.subheadline).foregroundColor(T.text2)
+        VStack(alignment: .leading, spacing: 7) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 7) { name; sub }
+                VStack(alignment: .leading, spacing: 2) { name; sub }
+            }
+            .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+            DayCard(day: day, rows: rows, allDay: allDay)
+        }
+        .padding(.top, 12)
+    }
+}
+
+/// A day's events and tasks as rows in one rounded card: the time beside each, then its colour, name and place.
+struct DayCard: View {
+    @EnvironmentObject var app: PhoneState
+    let day: Date
+    let rows: [AgendaRow]
+    let allDay: [Item]
+    @ScaledMetric(relativeTo: .caption) private var timeRaw: CGFloat = 56
+    private var timeW: CGFloat { min(timeRaw, 100) }
+
     var body: some View {
         let n = cal.dateComponents([.day], from: cal.startOfDay(for: app.today), to: day).day ?? 99
         let next: String? = n == 0 ? rows.lazy.compactMap { if case .event(let it) = $0, it.start > app.today { it.id } else { nil } }.first : nil  // rows run in time order
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                (Text(n == 0 ? "TODAY" : n == 1 ? "TOMORROW" : dateText(day, "EEEE").uppercased()).foregroundColor(n == 0 ? T.accent : T.text)
-                 + Text(" " + dateText(day, "EEE M/d")).fontWeight(.medium).foregroundColor(T.text2))
-                    .font(.footnote.weight(.bold))
-                Spacer()
-                if let w = app.wx(day) {
-                    Text("\(degrees(w.hi)) / \(degrees(w.lo))").font(.footnote.weight(.semibold))
-                    Image(systemName: wxLook(w.code).symbol).symbolRenderingMode(.multicolor).font(.body)
-                        .accessibilityLabel(wxLook(w.code).words)
-                }
+        VStack(spacing: 0) {
+            if rows.isEmpty && allDay.isEmpty {
+                Text("Nothing planned").font(.subheadline).foregroundStyle(T.text2)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).frame(minHeight: 48)
             }
-            .padding(.top, 16).padding(.bottom, 8)
-            .overlay(alignment: .top) { if !first { Rectangle().fill(T.line).frame(height: 1) } }
-            if !allDay.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(allDay) { it in
-                            Button { app.open(it) } label: {
-                                Text(it.shownTitle).font(.subheadline.weight(.medium)).foregroundStyle(T.text).lineLimit(1)
-                                    .padding(.horizontal, 9).padding(.vertical, 3)
-                                    .background(store.color(it).opacity(0.22), in: RoundedRectangle(cornerRadius: 6))
-                            }
-                            .buttonStyle(.plain)
-                        }
+            ForEach(Array((allDay.map(AgendaRow.event) + rows).enumerated()), id: \.element.id) { i, r in
+                Group {
+                    switch r {
+                    case .event(let it): AgendaEvent(it: it, day: day, next: it.id == next, timeW: timeW)
+                    case .task(let t): AgendaTask(t: t, timeW: timeW)
                     }
                 }
-                .padding(.bottom, 6)
-            }
-            if rows.isEmpty && allDay.isEmpty { Text("Nothing planned").font(.subheadline).foregroundStyle(T.text2).padding(.vertical, 8) }
-            ForEach(rows) { r in
-                switch r {
-                case .event(let it): AgendaEvent(it: it, day: day, next: it.id == next)
-                case .task(let t): AgendaTask(t: t)
-                }
+                .overlay(alignment: .top) { if i > 0 { Rectangle().fill(T.line).frame(height: 0.5).padding(.leading, 14 + timeW + 12) } }
             }
         }
+        .background(T.card, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// The time beside a list row: start over end, or one line.
+struct TimeColumn: View {
+    let lines: [String]
+    let width: CGFloat
+    var color = T.text2
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ForEach(lines.indices, id: \.self) { Text(lines[$0]).lineLimit(1).minimumScaleFactor(0.75) }  // two lines can match
+        }
+        .font(.caption.weight(.medium)).foregroundStyle(color)
+        .frame(width: width, alignment: .leading).padding(.top, 2)
     }
 }
 
@@ -261,27 +258,32 @@ struct AgendaEvent: View {
     let it: Item
     let day: Date
     let next: Bool
+    let timeW: CGFloat
     var body: some View {
         let past = it.end <= app.today
         let leave = app.drive[it.id].map { it.start.addingTimeInterval(-Double($0) * 60) }.flatMap { $0 > app.today ? $0 : nil }
+        let time: [String] = it.allDay ? ["all-day"]
+            : it.start >= day ? [timeText(it.start, short: true), timeText(it.end, short: true)]
+            : cal.isDate(it.end, inSameDayAs: day) ? ["until", timeText(it.end, short: true)] : ["all-day"]  // a timed event running across several days
         Button { app.open(it) } label: {
             HStack(alignment: .top, spacing: 12) {
-                Dot(color: store.color(it), size: 11).padding(.top, 4).frame(width: 14)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(it.start >= day ? "\(timeText(it.start, short: true)) to \(timeText(it.end, short: true))"
-                         : cal.isDate(it.end, inSameDayAs: day) ? "Until \(timeText(it.end, short: true))" : "All day")  // a timed event running across several days
-                        .font(.footnote.weight(.medium)).foregroundStyle(T.text2)
-                    Text(it.shownTitle).font(.body.weight(.semibold)).foregroundStyle(T.text).lineLimit(1)
-                    if !it.place.isEmpty { Text(it.place).font(.footnote).foregroundStyle(T.text2).lineLimit(1) }
+                TimeColumn(lines: time, width: timeW)
+                RoundedRectangle(cornerRadius: 2).fill(store.color(it)).frame(width: 4).frame(maxHeight: .infinity)
+                    .frame(width: 12, alignment: .leading)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(it.shownTitle).font(.body.weight(.semibold)).foregroundStyle(T.text).lineLimit(3)
+                    if !it.place.isEmpty { Text(it.place).font(.footnote).foregroundStyle(T.text2).lineLimit(2) }
                 }
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if let leave {
                     RowTag(text: "Leave \(dateText(leave, "h:mm"))", color: .orange)
                 } else if next {
                     RowTag(text: "in " + span(it.start.timeIntervalSince(app.today)), color: T.tint)
                 }
             }
-            .padding(.vertical, 8).opacity(past ? 0.45 : 1).contentShape(Rectangle())
+            .fixedSize(horizontal: false, vertical: true)  // the colour bar runs the row's height
+            .padding(.horizontal, 14).padding(.vertical, 11).frame(minHeight: 56)
+            .opacity(past ? 0.45 : 1).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -292,9 +294,8 @@ struct RowTag: View {
     let text: String
     let color: Color
     var body: some View {
-        Text(text).font(.footnote.weight(.semibold)).foregroundStyle(color).lineLimit(1)
-            .padding(.horizontal, 11).padding(.vertical, 5).background(color.opacity(0.14), in: Capsule())
-            .frame(maxHeight: .infinity)
+        Text(text).font(.footnote.weight(.semibold)).foregroundStyle(color).lineLimit(1).fixedSize()
+            .padding(.horizontal, 10).padding(.vertical, 4).background(color.opacity(0.14), in: Capsule())
     }
 }
 
@@ -302,19 +303,20 @@ struct AgendaTask: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     let t: ToDo
+    let timeW: CGFloat
     var body: some View {
         let late = isOverdue(t, now: app.today), c = late ? T.late : store.taskList(t.listID)?.color ?? T.tint
         Button { app.toggle(t) } label: {
             HStack(alignment: .top, spacing: 12) {
-                Circle().strokeBorder(c, lineWidth: 1.8).background(Circle().fill(t.done ? c : .clear)).frame(width: 12, height: 12).padding(.top, 4).frame(width: 14)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(late ? "Overdue, from \(t.due.map { shortDay($0, now: app.today) } ?? "")" : t.timed ? timeText(t.due!, short: true) : "Anytime")
-                        .font(.footnote.weight(.medium)).foregroundStyle(late ? T.late : T.text2)
-                    Text(t.title).font(.body.weight(.medium)).strikethrough(t.done).foregroundStyle(t.done ? T.text2 : T.text).lineLimit(1)
+                TimeColumn(lines: late ? ["overdue"] : t.timed ? [timeText(t.due!, short: true)] : ["anytime"], width: timeW, color: late ? T.late : T.text2)
+                Circle().strokeBorder(c, lineWidth: 1.8).background(Circle().fill(t.done ? c : .clear)).frame(width: 12, height: 12).padding(.top, 4)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(t.title).font(.body.weight(.medium)).strikethrough(t.done).foregroundStyle(t.done ? T.text2 : T.text).lineLimit(3)
+                    if late, let d = t.due { Text("From \(shortDay(d, now: app.today))").font(.footnote).foregroundStyle(T.late) }
                 }
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.vertical, 8).contentShape(Rectangle())
+            .padding(.horizontal, 14).padding(.vertical, 11).frame(minHeight: 56).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(t.done ? "\(t.title), done" : "Finish \(t.title)")
@@ -361,7 +363,6 @@ struct AllDayChip: View {
 struct WeekView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
-    @ObservedObject private var weather = WeatherStore.shared
     @ScaledMetric(relativeTo: .caption2) private var gutterRaw: CGFloat = 44
     private var gutter: CGFloat { min(gutterRaw, 80) }  // grows with the phone's text size, capped so three days still fit
 
@@ -376,7 +377,6 @@ struct WeekView: View {
                         Text(dateText(d, "EEE")).font(.caption).foregroundStyle(T.text2)
                         Text(dateText(d, "d")).font(.headline).frame(width: 30, height: 30)
                             .foregroundStyle(today ? .white : T.text).background(today ? T.accent : .clear, in: Circle())
-                        Text(wxLine(d)).font(.caption2).foregroundStyle(T.text2)
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -401,10 +401,6 @@ struct WeekView: View {
             HourGrid(days: days, wide: false)
         }
     }
-
-    private func wxLine(_ d: Date) -> String {
-        [app.wx(d).map { degrees($0.hi) }, app.sun(d).map { dateText($0.rise, "h:mm") }].compactMap { $0 }.joined(separator: " · ")
-    }
 }
 
 /// The tasks shown on a day's tasks row: due that day without a time, and anything overdue on today.
@@ -413,34 +409,45 @@ struct WeekView: View {
         .sorted { ($0.done ? 1 : 0, $0.title) < ($1.done ? 1 : 0, $1.title) }
 }
 
+/// The day (2026-11-06 design): the date with how many events and the weather, the all-day row, then the hours.
 struct DayView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
+    @ObservedObject private var weather = WeatherStore.shared
+    @ScaledMetric(relativeTo: .caption2) private var gutterRaw: CGFloat = 44
+    private var gutter: CGFloat { min(gutterRaw, 80) }  // lines up with the hour labels
 
     var body: some View {
-        let d = app.anchor
+        let d = app.anchor, items = store.shown(on: d), tasks = dayTasks(store, d, now: app.today), allDay = items.filter(\.allDay)
         VStack(alignment: .leading, spacing: 0) {
-            if cal.isDate(d, inSameDayAs: app.today), let s = comingUp(store.soon.filter { !store.hidden.contains($0.calendarID) }, now: app.today).first(where: { !$0.dim }) {
-                HStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("COMING UP").font(.caption.weight(.semibold)).foregroundStyle(T.text2)
-                        Text(s.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(dateText(d, "EEEE, MMMM d")).font(.title2.bold()).lineLimit(2).accessibilityAddTraits(.isHeader)
+                Text(summary(d, count: items.count)).font(.footnote).foregroundStyle(T.text2)
+            }
+            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 8)
+            if !tasks.isEmpty || !allDay.isEmpty {
+                HStack(alignment: .top, spacing: 0) {
+                    Text("all-day").font(.caption2).foregroundStyle(T.text2).lineLimit(1).minimumScaleFactor(0.6)
+                        .frame(width: gutter).padding(.top, 8)
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(tasks) { TaskChip(t: $0, size: 14).font(.subheadline) }
+                        ForEach(allDay) { AllDayChip(it: $0) }
                     }
-                    Spacer()
-                    Text((s.lead.hasPrefix("starts") ? "in " : s.lead) + s.big).font(.subheadline.weight(.semibold)).foregroundStyle(T.tint)
-                        .lineLimit(1).minimumScaleFactor(0.8).layoutPriority(1)  // the title's size, on one line (John 2026-11-05: too large at big text)
+                    .padding(.vertical, 6).padding(.trailing, 8)
                 }
-                .padding(.horizontal, 12).padding(.vertical, 10).background(T.bg2, in: RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal, 16).padding(.top, 12)
+                .frame(minHeight: 39, alignment: .top)
+                .overlay(alignment: .top) { Rectangle().fill(T.line).frame(height: 0.5) }
             }
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(dayTasks(store, d, now: app.today)) { TaskChip(t: $0, size: 14).font(.subheadline) }
-                ForEach(store.shown(on: d).filter(\.allDay)) { AllDayChip(it: $0) }
-            }
-            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 10)
-            Rectangle().fill(T.line).frame(height: 1)
+            Rectangle().fill(T.line).frame(height: 0.5)
             HourGrid(days: [d], wide: true)
         }
+    }
+
+    /// "3 events · 68° and sunny · sunset 5:31"
+    private func summary(_ d: Date, count: Int) -> String {
+        [count == 0 ? "No events" : count == 1 ? "1 event" : "\(count) events",
+         app.wx(d).map { "\(degrees($0.hi)) and \(wxLook($0.code).words.lowercased())" },
+         app.sun(d).map { "sunset \(dateText($0.set, "h:mm"))" }].compactMap { $0 }.joined(separator: " · ")
     }
 }
 
@@ -456,7 +463,6 @@ struct HourGrid: View {
     private let hourH: CGFloat = 56
     @ScaledMetric(relativeTo: .caption2) private var gutterRaw: CGFloat = 44
     private var gutter: CGFloat { min(gutterRaw, 80) }  // same as the week's day headers
-    @ScaledMetric private var barRoom: CGFloat = 110  // the tabs grow with the text size too
 
     var body: some View {
         ScrollViewReader { sv in
@@ -478,7 +484,7 @@ struct HourGrid: View {
                     }
                     .padding(.leading, wide ? gutter + 8 : gutter).padding(.top, 8)
                 }
-                .padding(.bottom, min(barRoom, 200))  // room under the tabs
+                .padding(.bottom, 8)
             }
             .scrollDisabled(held != nil)
             .onChange(of: held?.id) {

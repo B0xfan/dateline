@@ -2,12 +2,14 @@
 import SwiftUI
 import DatelineCore
 
-/// "S M T W T F S", starting on the week's first day (Settings, Week).
-func weekLetters() -> [String] {
-    let l = ["S", "M", "T", "W", "T", "F", "S"], f = WorkWeek.firstWeekday - 1
+/// "SUN MON TUE ...", starting on the week's first day (Settings, Week).
+func weekDayNames() -> [String] {
+    let l = cal.shortWeekdaySymbols.map { $0.uppercased() }, f = WorkWeek.firstWeekday - 1
     return Array(l[f...] + l[..<f])
 }
 
+/// The month (2026-11-06 design): the calendar set, the year and the arrows; the grid with coloured markers;
+/// the tapped day's schedule under it.
 struct MonthView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
@@ -16,47 +18,48 @@ struct MonthView: View {
     var body: some View {
         let grid = monthGrid(app.anchor), month = cal.component(.month, from: app.anchor)
         let sel = picked ?? (cal.isDate(app.today, equalTo: app.anchor, toGranularity: .month) ? cal.startOfDay(for: app.today) : cal.startOfDay(for: app.anchor))
+        let list = store.shown(on: sel)
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 0) {
-                    Color.clear.frame(width: 22, height: 1)
-                    ForEach(Array(weekLetters().enumerated()), id: \.offset) { _, l in Text(l).frame(maxWidth: .infinity) }
+                    SetMenu()
+                    Spacer(minLength: 0)
+                    Button(dateText(app.anchor, "yyyy")) { app.mode = .year }
+                        .font(.subheadline.weight(.medium)).padding(.horizontal, 8).frame(minHeight: 44)
+                        .accessibilityLabel("Show the year \(dateText(app.anchor, "yyyy"))")
+                    Button { app.step(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }
+                        .accessibilityLabel("Last month")
+                    Button { app.step(1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }
+                        .accessibilityLabel("Next month")
                 }
-                .font(.caption2.weight(.semibold)).foregroundStyle(T.text2)
-                .padding(.top, 12).padding(.bottom, 4)
+                .foregroundStyle(T.tint).buttonStyle(.plain).padding(.horizontal, 6).padding(.top, 4)
+                HStack(spacing: 0) {
+                    ForEach(Array(weekDayNames().enumerated()), id: \.offset) { _, l in Text(l).frame(maxWidth: .infinity) }
+                }
+                .font(.caption2.weight(.semibold)).foregroundStyle(T.text2).lineLimit(1).minimumScaleFactor(0.7)
+                .padding(.horizontal, 10).padding(.top, 2).padding(.bottom, 5)
+                .overlay(alignment: .bottom) { Rectangle().fill(T.line).frame(height: 0.5) }
                 ForEach(0..<grid.count / 7, id: \.self) { w in
                     HStack(alignment: .top, spacing: 0) {
-                        Text("\(weekNumber(grid[w * 7]))").font(.caption2).foregroundStyle(T.text2).frame(width: 22).padding(.top, 10)
-                        ForEach(0..<7, id: \.self) { i in cell(grid[w * 7 + i], inMonth: cal.component(.month, from: grid[w * 7 + i]) == month, picked: sel) }
-                    }
-                    .overlay(alignment: .top) { Rectangle().fill(T.line).frame(height: 1) }
-                }
-                .padding(.bottom, 2)
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(dateText(sel, "EEEE, MMM d").uppercased()).font(.footnote.weight(.semibold)).foregroundStyle(T.text2)
-                    let list = store.shown(on: sel)
-                    if list.isEmpty { Text("Nothing on this day.").font(.subheadline).foregroundStyle(T.text2) }
-                    ForEach(list) { it in
-                        Button { app.open(it) } label: {
-                            HStack(spacing: 10) {
-                                Bar(color: store.color(it), height: 32)
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Text(it.shownTitle).font(.subheadline.weight(.semibold))
-                                    Text(([it.allDay ? "All day" : "\(timeText(it.start, short: true)) to \(timeText(it.end, short: true))"] + (it.place.isEmpty ? [] : [it.place])).joined(separator: " · "))
-                                        .font(.footnote).foregroundStyle(T.text2)
-                                }
-                                Spacer()
-                            }
-                            .contentShape(Rectangle())
+                        ForEach(0..<7, id: \.self) { i in
+                            cell(grid[w * 7 + i], inMonth: cal.component(.month, from: grid[w * 7 + i]) == month, picked: sel)
+                                .overlay(alignment: .leading) { if i > 0 { Rectangle().fill(T.line).frame(width: 0.5) } }
                         }
-                        .buttonStyle(.plain)
                     }
+                    .padding(.horizontal, 10)
+                    .overlay(alignment: .bottom) { Rectangle().fill(T.line).frame(height: 0.5) }
                 }
-                .padding(.top, 10).padding(.horizontal, 8)
-                .overlay(alignment: .top) { Rectangle().fill(T.line).frame(height: 1) }
+                (Text(dateText(sel, "EEEE, MMMM d")).foregroundColor(T.text).fontWeight(.semibold)
+                 + Text("  " + (list.isEmpty ? "No events" : list.count == 1 ? "1 event" : "\(list.count) events")))
+                    .font(.footnote).foregroundStyle(T.text2)
+                    .padding(.horizontal, 18).padding(.top, 13).padding(.bottom, 7)
+                    .accessibilityAddTraits(.isHeader)
+                DayCard(day: sel, rows: agendaRows(store, sel, now: app.today).filter { if case .event(let it) = $0 { !it.allDay } else { true } },
+                        allDay: list.filter(\.allDay))
+                    .padding(.horizontal, 16).padding(.bottom, 20)
             }
-            .padding(.horizontal, 8).padding(.bottom, 120)
         }
+        .background(T.grouped)
         .onChange(of: app.anchor) { picked = nil }
     }
 
@@ -65,17 +68,19 @@ struct MonthView: View {
         var seen = Set<String>()
         let dots = store.shown(on: d).filter { it in seen.insert(it.color.map { n in "c\(n)" } ?? it.calendarID).inserted }.prefix(3).map { store.color($0) }
         return Button { picked = d } label: {
-            VStack(spacing: 3) {
+            VStack(spacing: 4) {
                 Text(dateText(d, "d")).font(.subheadline.weight(today ? .semibold : .regular))
-                    .foregroundStyle(today ? .white : inMonth ? T.text : T.text2)
-                    .frame(width: 26, height: 26)
-                    .background(today ? T.accent : on ? T.bg2 : .clear, in: Circle())
-                HStack(spacing: 2) { ForEach(Array(dots.enumerated()), id: \.offset) { _, c in Dot(color: c, size: 5) } }
+                    .foregroundStyle(today ? .white : on ? T.tint : inMonth ? T.text : T.text2.opacity(0.6))
+                    .frame(width: 28, height: 28)
+                    .background(today ? T.accent : on ? T.tint.opacity(0.14) : .clear, in: Circle())
+                HStack(spacing: 3) { ForEach(Array(dots.enumerated()), id: \.offset) { _, c in Dot(color: c, size: 5) } }.frame(height: 5)
             }
             .frame(maxWidth: .infinity, minHeight: 52, alignment: .top).padding(.top, 4).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(dateText(d, "EEEE, MMMM d") + (dots.isEmpty ? "" : ", has events"))
+        .background(T.bg)
+        .accessibilityLabel(dateText(d, "EEEE, MMMM d") + (today ? ", today" : "") + (dots.isEmpty ? "" : ", has events"))
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
@@ -96,7 +101,7 @@ struct YearView: View {
                 Text("Days with events. Tap a month to open it.")
             }
             .font(.caption).foregroundStyle(T.text2).frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 120)
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 20)
         }
     }
 
