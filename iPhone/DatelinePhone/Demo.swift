@@ -49,6 +49,7 @@ enum Demo {
     static func open(_ s: String, _ app: PhoneState) {
         switch s {
         case "list": app.mode = .list
+        case "list-scrolled": app.mode = .list; app.demoScroll = true
         case "day": app.mode = .day
         case "week-sideways":  // the simulator can't be turned from the script: the app turns itself once its window is up
             app.mode = .week

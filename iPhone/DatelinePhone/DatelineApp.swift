@@ -46,7 +46,8 @@ final class PhoneState: ObservableObject {
     let sample: Bool  // sample calendars: tests and pictures
     @Published var today: Date
     @Published var mode: Mode = .list { didSet { reload(); turnRule() } }  // the list is the main screen (approved mockup, John 2026-11-05)
-    @Published var anchor: Date { didSet { reload() } }
+    @Published var anchor: Date { didSet { listDay = nil; reload() } }
+    @Published var listDay: Date?  // the day at the top of the list as it scrolls; the month title and week strip follow it (John 2026-11-06)
     @Published var tab: Tab = .calendar { didSet { turnRule() } }
     @Published var sideways = false { didSet { if sideways != oldValue { reload() } } }  // the phone is turned (only Week allows it)
     @Published var path: [String] = []  // event ids open on the calendar tab
@@ -66,6 +67,7 @@ final class PhoneState: ObservableObject {
     var emailNext = false  // "From an email file" on the add sheet: the picker opens once the sheet has closed
     var opened: [String: Item] = [:]  // events opened from outside the days in view (the map)
     var demoWidgets = false
+    var demoScroll = false  // pictures only: the list scrolls halfway down, as a finger would
     var demoEdit = false  // pictures only: open the event's edit sheet
     var demoDrag: DragLive?  // pictures only: an event held mid-drag
     var demoHold = false  // pictures only: the Undo banner stays up

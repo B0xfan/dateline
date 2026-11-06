@@ -75,7 +75,7 @@ struct CalHeader: View {
             .pickerStyle(.segmented).padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 9)
             if app.mode == .list {
                 HStack(spacing: 8) {
-                    Text(dateText(app.anchor, "MMMM yyyy")).font(.title3.bold()).lineLimit(1).minimumScaleFactor(0.8)
+                    Text(dateText(app.listDay ?? app.anchor, "MMMM yyyy")).font(.title3.bold()).lineLimit(1).minimumScaleFactor(0.8)
                     Spacer(minLength: 0)
                     SetMenu()
                 }
@@ -139,16 +139,18 @@ struct WeekStrip: View {
         .scrollTargetBehavior(.paging).scrollIndicators(.hidden)
         .fixedSize(horizontal: false, vertical: true)  // only as tall as one week's row
         .scrollPosition(id: $week)
-        .onAppear { week = index(app.anchor, base) }
-        .onChange(of: base) { week = index(app.anchor, base) }
-        .onChange(of: app.anchor) { let w = index(app.anchor, base); if week != w { withAnimation(.smooth) { week = w } } }  // Today or a tap elsewhere glides there too
+        .onAppear { week = index(shown, base) }
+        .onChange(of: base) { week = index(shown, base) }
+        .onChange(of: shown) { let w = index(shown, base); if week != w { withAnimation(.smooth) { week = w } } }  // Today, a tap elsewhere or the list scrolling glides there too
         .onChange(of: week) {  // settled on another week: the list starts on the same weekday there
-            guard let w = week, w != index(app.anchor, base) else { return }
+            guard let w = week, w != index(shown, base) else { return }
             let weekday = cal.dateComponents([.day], from: startOfWeek(app.anchor), to: app.anchor).day ?? 0
             app.anchor = addDays(base, 7 * w + weekday)
         }
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)  // seven days across: like Apple's own week strip, it stops growing before the numbers clip
     }
+
+    private var shown: Date { app.listDay ?? app.anchor }  // the day the list is on
 
     private func index(_ d: Date, _ base: Date) -> Int {
         min(Self.reach, max(-Self.reach, Int(((cal.dateComponents([.day], from: base, to: startOfWeek(d)).day ?? 0)) / 7)))
@@ -157,7 +159,7 @@ struct WeekStrip: View {
     private func row(_ first: Date) -> some View {
         HStack(spacing: 0) {
             ForEach((0..<7).map { addDays(first, $0) }, id: \.self) { d in
-                let today = cal.isDate(d, inSameDayAs: app.today), picked = cal.isDate(d, inSameDayAs: app.anchor)
+                let today = cal.isDate(d, inSameDayAs: app.today), picked = cal.isDate(d, inSameDayAs: shown)
                 Button { app.anchor = d } label: {
                     VStack(spacing: 4) {
                         Text(dateText(d, "EEE").uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(T.text2).lineLimit(1).minimumScaleFactor(0.7)
@@ -207,6 +209,7 @@ struct AgendaView: View {
     static let span = 14  // days the list runs; past the first two, days with nothing on them are left out
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
+    @State private var top: Date?  // the day scrolled to the top
     var body: some View {
         let days = (0..<Self.span).map { i -> (day: Date, rows: [AgendaRow], allDay: [Item]) in
             let d = addDays(app.anchor, i)
@@ -216,8 +219,13 @@ struct AgendaView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(days, id: \.day) { d in AgendaDay(day: d.day, rows: d.rows, allDay: d.allDay) }
             }
+            .scrollTargetLayout()
             .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 20)
         }
+        .scrollPosition(id: $top)
+        .onChange(of: top) { if let top, !cal.isDate(top, inSameDayAs: app.listDay ?? app.anchor) { app.listDay = top } }
+        .onChange(of: app.anchor) { top = app.anchor }  // a new start day: back to the top of the list
+        .onAppear { if app.demoScroll { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { top = days[days.count / 2].day } } }
         .background(T.grouped)
     }
 }
