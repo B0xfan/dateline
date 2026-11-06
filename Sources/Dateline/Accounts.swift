@@ -18,6 +18,7 @@ struct AttachmentsBox: View {
     @State private var adding: [String] = []
     @State private var over = false
     @AppStorage("attachHintOff") private var hintOff = false
+    @State private var signIn = ""  // Google sign-in progress or failure, shown under the hint
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -137,9 +138,14 @@ struct AttachmentsBox: View {
                 .font(.ui(12)).foregroundStyle(Palette.text).fixedSize(horizontal: false, vertical: true).padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading).background(Palette.tags[1].opacity(0.13), in: RoundedRectangle(cornerRadius: 8))
             HStack(spacing: 8) {
-                Button("Sign in to \(kind)…") { UserDefaults.standard.set("accounts", forKey: "settingsTab"); openSettings() }.buttonStyle(.borderedProminent)
+                // Google signs in straight away: its Accounts choice now leads to the Mac's settings, which this calendar already uses.
+                Button("Sign in to \(kind)…") {
+                    if kind == "Google" { signIn = "Finish signing in to Google in your browser."; Task { signIn = await store.addGoogle()?.message ?? "" } }
+                    else { UserDefaults.standard.set("accounts", forKey: "settingsTab"); openSettings() }
+                }.buttonStyle(.borderedProminent)
                 Button("Not now") { hintOff = true }
             }.controlSize(.small)
+            if !signIn.isEmpty { Text(signIn).font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true) }
         }
     }
 }
@@ -267,12 +273,12 @@ struct AccountSettings: View {
             HStack {
                 Button("Open Internet Accounts") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Internet-Accounts-Settings.extension")!) }
                     .keyboardShortcut(.defaultAction)
-                Button("Cancel") { adding = nil; note = "" }
+                Button("Cancel") { adding = nil }
             }
             Divider()
             HStack(spacing: 4) {
                 Text("Want to attach files to Google events?").foregroundStyle(Palette.text3)
-                Button("Sign in to Google in Dateline") { google() }.buttonStyle(.link).disabled(busy)
+                Button("Sign in to Google in Dateline") { google() }.buttonStyle(.link)
             }.font(.system(size: 12))
             Text("Google may show a warning on that page for now.").font(.system(size: 11)).foregroundStyle(Palette.text3)
         }
