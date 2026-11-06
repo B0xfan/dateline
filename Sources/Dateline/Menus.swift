@@ -57,6 +57,7 @@ struct AppCommands: Commands {
         CommandMenu("Event") {
             Button("Open Details") { app.openMain?(); app.panels.panelOpen = true }.disabled(app.selected == nil)
             Button("Delete Event…") { app.openMain?(); app.panels.confirmDelete = app.selected }.disabled(app.selected == nil)
+            Button("Delete Task") { app.openMain?(); if let t = app.openTask { app.deleteTask(t) } }.disabled(app.openTask == nil || app.openTask?.a4 != nil)
             Divider()
             Button("Previous Event") { app.openMain?(); app.selectNext(-1) }
             Button("Next Event") { app.openMain?(); app.selectNext(1) }

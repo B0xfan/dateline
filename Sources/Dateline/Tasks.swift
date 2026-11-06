@@ -43,7 +43,21 @@ struct TaskChip: View {
         .background(Watching(object: app.panels) { p in RoundedRectangle(cornerRadius: 4).fill(p.openTaskID == task.id ? Palette.accentSoft : .clear) })
         .contentShape(Rectangle())
         .onTapGesture { app.panels.openTaskID = task.id }
+        .contextMenu { TaskMenu(app: app, task: task) }
         .draggable("task:" + task.id)
+    }
+}
+
+// Right-click on a task, anywhere it shows.
+struct TaskMenu: View {
+    let app: AppState, task: ToDo
+    var body: some View {
+        Button(task.done ? "Mark as not done" : "Mark as done") { app.toggle(task) }
+        Button("Open details") { app.panels.openTaskID = task.id }
+        if task.a4 == nil {
+            Divider()
+            Button("Delete task") { app.deleteTask(task) }
+        }
     }
 }
 
@@ -79,6 +93,7 @@ struct TaskBlock: View {
         .overlay(Watching(object: app.panels) { p in RoundedRectangle(cornerRadius: 8).strokeBorder(c, style: StrokeStyle(lineWidth: p.openTaskID == task.id ? 2 : 1.2, dash: [4, 3])) })
         .contentShape(Rectangle())
         .onTapGesture { app.panels.openTaskID = task.id }
+        .contextMenu { TaskMenu(app: app, task: task) }
         .draggable("task:" + task.id)
     }
 }
@@ -202,6 +217,7 @@ struct TaskList: View {
         .padding(.horizontal, -8)
         .contentShape(Rectangle())
         .onTapGesture { app.panels.openTaskID = t.id }
+        .contextMenu { TaskMenu(app: app, task: t) }
         .draggable("task:" + t.id)
     }
 }
@@ -298,6 +314,7 @@ struct TaskDetail: View {
                     .help("Drag to resize the notes")
                 Text("Saved in Apple Reminders, so your iPhone sees it too. A place reminder goes off on your iPhone when you get there, even with the Mac closed.")
                     .font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true).padding(.top, 4)
+                Button("Delete task", role: .destructive) { app.deleteTask(task) }.buttonStyle(.plain).foregroundStyle(Palette.now).padding(.top, 16)
             }
             .padding(16)
         }

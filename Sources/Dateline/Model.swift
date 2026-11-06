@@ -313,6 +313,23 @@ final class AppState: ObservableObject {
 
     // MARK: tasks
 
+    // Deletes a Reminders task, with the same Undo note as an event (approved before/after 7N9DV48Nb2imamZS91VDxA, John 2026-11-06).
+    // An A4 task lives in the vault and keeps its own Done tick.
+    func deleteTask(_ t: ToDo) {
+        guard t.a4 == nil else { error = "A4 tasks are ticked done, not deleted, in Dateline."; return }
+        if let f = store.deleteTask(t) { error = f.message; return }
+        if panels.openTaskID == t.id { panels.openTaskID = nil }
+        undoStack.append { [weak self] in
+            guard let self else { return nil }
+            if case .failure(let f) = self.store.addTask(t, listID: t.listID) { return f }
+            return nil
+        }
+        panels.toast = Toast(text: t.title, calendar: store.taskList(t.listID)?.title ?? "Reminders")
+        let n = panels.toast
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in if self?.panels.toast == n { self?.panels.toast = nil } }
+    }
+
+
     func saveTask(_ new: ToDo) {
         guard let old = store.todos.first(where: { $0.id == new.id }), old != new else { return }
         if new.a4?.repeating == true, new.done != old.done {
@@ -430,7 +447,10 @@ final class AppState: ObservableObject {
         case (126, .option): nudge(-15); return true
         case (125, .option): nudge(15); return true
         case (36, []), (76, []): if selectedID != nil { panels.panelOpen = true; return true }; return false
-        case (51, []), (117, []): if let s = selected { panels.confirmDelete = s; return true }; return false
+        case (51, []), (117, []):
+            if let s = selected { panels.confirmDelete = s; return true }
+            if let t = openTask, t.a4 == nil { deleteTask(t); return true }
+            return false
         default: break
         }
         guard mods.subtracting(.shift).isEmpty else { return false }
