@@ -149,7 +149,7 @@ struct AttachmentsBox: View {
 struct AccountSettings: View {
     @ObservedObject var store: Store
     @State var picked: String? = nil
-    @State var adding: String? = nil  // "icloud" while the iCloud form shows
+    @State var adding: String? = nil  // "icloud" or "google" while that form shows
     @State private var email = ""
     @State private var password = ""
     @State private var busy = false
@@ -180,6 +180,7 @@ struct AccountSettings: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 if adding == "icloud" { icloudForm }
+                else if adding == "google" { googleSteps }
                 else if let p = picked, let a = store.accounts.first(where: { $0.id == p }) { detail(a) }
                 else if picked == "mac" {
                     Text("Calendars set up in the Mac's own settings keep working as before. If an account is also signed in here, Dateline shows its calendars once, from here.")
@@ -216,7 +217,7 @@ struct AccountSettings: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("ADD AN ACCOUNT").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.text3)
             choice("icloud", "iCloud", "Email and an app-specific password from your Apple Account") { adding = "icloud"; note = "" }
-            choice("google", "Google", "Signs in through Google in your browser") { google() }
+            choice("google", "Google", "Add it in the Mac's Internet Accounts") { adding = "google"; note = "" }
         }
     }
 
@@ -249,6 +250,31 @@ struct AccountSettings: View {
                     }
                 }.keyboardShortcut(.defaultAction).disabled(busy || email.isEmpty || password.isEmpty)
             }
+        }
+    }
+
+    // Until Google verifies Dateline, its own sign-in shows Google's "not verified" page; the Mac's Internet Accounts route never does.
+    var googleSteps: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Add your Google calendars").font(.system(size: 13, weight: .semibold))
+            VStack(alignment: .leading, spacing: 6) {
+                Text("1. Open Internet Accounts in your Mac's System Settings.")
+                Text("2. Click Add Account, then Google, and sign in.")
+                Text("3. Make sure Calendars is turned on.")
+            }.font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+            Text("Your Google calendars then appear in Dateline under On this Mac, usually within a minute.")
+                .font(.system(size: 12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Open Internet Accounts") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Internet-Accounts-Settings.extension")!) }
+                    .keyboardShortcut(.defaultAction)
+                Button("Cancel") { adding = nil; note = "" }
+            }
+            Divider()
+            HStack(spacing: 4) {
+                Text("Want to attach files to Google events?").foregroundStyle(Palette.text3)
+                Button("Sign in to Google in Dateline") { google() }.buttonStyle(.link).disabled(busy)
+            }.font(.system(size: 12))
+            Text("Google may show a warning on that page for now.").font(.system(size: 11)).foregroundStyle(Palette.text3)
         }
     }
 

@@ -167,6 +167,7 @@ private final class ShotWindow: NSWindow {
             ok = save(AccountSettings(store: a.store, picked: a.store.accounts[0].id).background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-icloud-\(tag).png") && ok
             ok = save(AccountSettings(store: a.store, picked: "mac").background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-mac-\(tag).png") && ok
             ok = save(AccountSettings(store: a.store, adding: "icloud").background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-add-\(tag).png") && ok
+            ok = save(AccountSettings(store: a.store, adding: "google").background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-google-\(tag).png") && ok
             // Phase 8 attachments (approved mockup section 2): files on an iCloud event, and the hint on a calendar from the Mac's settings.
             let macCals = a.store.calendars
             a.store.calendars = a.store.accInfos + macCals
