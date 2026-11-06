@@ -123,8 +123,8 @@ struct WeekStrip: View {
                 let today = cal.isDate(d, inSameDayAs: app.today), picked = cal.isDate(d, inSameDayAs: app.anchor)
                 Button { app.anchor = d } label: {
                     VStack(spacing: 4) {
-                        Text(dateText(d, "EEE").uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(T.text2)
-                        Text(dateText(d, "d")).font(.title3.weight(today ? .semibold : .regular)).frame(width: 34, height: 34)
+                        Text(dateText(d, "EEE").uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(T.text2).lineLimit(1).minimumScaleFactor(0.7)
+                        Text(dateText(d, "d")).font(.title3.weight(today ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.6).frame(width: 34, height: 34)
                             .foregroundStyle(today ? .white : picked ? T.tint : T.text)
                             .background(today ? T.accent : picked ? T.tint.opacity(0.14) : .clear, in: Circle())
                         HStack(spacing: 3) { ForEach(Array(dots(d).enumerated()), id: \.offset) { Dot(color: $0.element, size: 5) } }.frame(height: 5)
@@ -137,6 +137,7 @@ struct WeekStrip: View {
             }
         }
         .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 10)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)  // seven days across: like Apple's own week strip, it stops growing before the numbers clip
     }
 
     /// Up to three colours of the day's events, in order, each once.

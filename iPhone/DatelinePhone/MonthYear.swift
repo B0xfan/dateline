@@ -21,6 +21,7 @@ struct MonthView: View {
         let list = store.shown(on: sel)
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+              VStack(alignment: .leading, spacing: 0) {  // the calendar on white; the day's card below on grey
                 HStack(spacing: 0) {
                     SetMenu()
                     Spacer(minLength: 0)
@@ -49,6 +50,8 @@ struct MonthView: View {
                     .padding(.horizontal, 10)
                     .overlay(alignment: .bottom) { Rectangle().fill(T.line).frame(height: 0.5) }
                 }
+              }
+              .background(T.bg)
                 (Text(dateText(sel, "EEEE, MMMM d")).foregroundColor(T.text).fontWeight(.semibold)
                  + Text("  " + (list.isEmpty ? "No events" : list.count == 1 ? "1 event" : "\(list.count) events")))
                     .font(.footnote).foregroundStyle(T.text2)
