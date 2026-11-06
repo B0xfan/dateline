@@ -128,7 +128,7 @@ enum SelfTest {
         app.step(1)
         check(app.anchor == addDays(mon, 3), "a swipe moves the week by three days")
         app.sideways = true
-        check(app.days.count == 7 && app.days[0] == startOfWeek(app.anchor), "turned sideways the week shows all seven days")
+        check(app.days == (0..<7).map { addDays(mon, $0 - 1) }, "turned sideways the week shows all seven days, Sunday to Saturday")
         let at = app.anchor; app.step(1)
         check(app.anchor == addDays(at, 7), "turned sideways a swipe moves a whole week")
         app.sideways = false; app.anchor = at  // back where the next checks expect it

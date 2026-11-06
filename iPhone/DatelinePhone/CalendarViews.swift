@@ -10,21 +10,24 @@ struct CalendarTab: View {
         NavigationStack(path: $app.path) {
             VStack(spacing: 0) {
                 CalHeader()
-                switch app.mode {
-                case .list: AgendaView()
-                case .day: DayView()
-                case .week: WeekView()
-                case .month: MonthView()
-                case .year: YearView()
+                Group {
+                    switch app.mode {
+                    case .list: AgendaView()
+                    case .day: DayView()
+                    case .week: WeekView()
+                    case .month: MonthView()
+                    case .year: YearView()
+                    }
                 }
+                // Swipe left or right for the next or last days; under the header only, so the list's week strip pages on its own.
+                .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in
+                    let x = v.translation.width
+                    if abs(x) > 80 && abs(x) > abs(v.translation.height) * 2 && Date() > app.dragUntil { app.step(x < 0 ? 1 : -1) }
+                })
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(T.bg)
-            .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in  // swipe left or right for the next or last days
-                let x = v.translation.width
-                if app.mode != .list && abs(x) > 80 && abs(x) > abs(v.translation.height) * 2 && Date() > app.dragUntil { app.step(x < 0 ? 1 : -1) }  // the list's week strip glides on its own
-            })
-            .onChange(of: vsc, initial: true) { app.sideways = vsc == .compact }
+            .onChange(of: vsc, initial: true) { app.sideways = vsc == .compact && PhoneDelegate.turns }
             .toolbar(app.sideways ? .hidden : .visible, for: .tabBar)  // turned sideways the hours need the height
             .navigationTitle("Calendar")  // the details screen's back button (2026-11-06 design)
             .toolbar(.hidden, for: .navigationBar)
@@ -121,7 +124,7 @@ struct WeekStrip: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     @State private var week: Int?  // the week showing, counted from this week
-    private static let reach = 104  // two years each way
+    private static let reach = 520  // ten years each way; the row is lazy, so far weeks cost nothing
 
     var body: some View {
         let base = startOfWeek(app.today)
@@ -720,13 +723,15 @@ struct TimedTask: View {
 /// Like the Mac: days off in light grey, and (when on in Settings) light stripes over the hours outside work. Behind a full 24-hour column.
 struct OffHours: View {
     let day: Date
+    // The settings are copied in, so a change in Settings redraws this.
+    private let off: Bool, stripe = WorkWeek.stripe, from = WorkWeek.from, to = WorkWeek.to
+    init(day: Date) { self.day = day; off = !WorkWeek.isWorkDay(day) }
     var body: some View {
-        let off = !WorkWeek.isWorkDay(day)
         Canvas { c, size in
             let perMin = size.height / 1440
             if off { c.fill(Path(CGRect(origin: .zero, size: size)), with: .color(T.bg2.opacity(0.6))); return }
-            guard WorkWeek.stripe else { return }
-            for (a, b) in [(0, WorkWeek.from), (WorkWeek.to, 1440)] where b > a {
+            guard stripe else { return }
+            for (a, b) in [(0, from), (to, 1440)] where b > a {
                 let r = CGRect(x: 0, y: CGFloat(a) * perMin, width: size.width, height: CGFloat(b - a) * perMin)
                 c.drawLayer { l in
                     l.clip(to: Path(r))
