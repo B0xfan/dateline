@@ -461,7 +461,7 @@ struct HourGrid: View {
     @GestureState private var held: DragLive? = nil  // the event held in a finger now; it clears itself when the finger lifts or the touch is cancelled
     let days: [Date]
     let wide: Bool
-    private let hourH: CGFloat = 56
+    private var hourH: CGFloat { Look.hourHeight }  // Hour height and How packed, as on the Mac (redraws on app.look)
     @ScaledMetric(relativeTo: .caption2) private var gutterRaw: CGFloat = 44
     private var gutter: CGFloat { min(gutterRaw, 80) }  // same as the week's day headers
 
@@ -533,6 +533,7 @@ struct HourGrid: View {
         let ln = lanes(list)
         let timed = store.todos.filter { $0.timed && !$0.done && !store.hiddenLists.contains($0.listID) && $0.due.map { cal.isDate($0, inSameDayAs: day) } == true }
         return GeometryReader { g in ZStack(alignment: .topLeading) {
+            OffHours(day: day)
             // A tap on an empty time starts a new event there (events and tasks sit above and take their own taps).
             Color.clear.contentShape(Rectangle())
                 .gesture(SpatialTapGesture().onEnded { v in app.addStart = DragMath.slot(on: day, y: v.location.y, hourH: hourH); app.adding = "" })
@@ -682,5 +683,30 @@ struct TimedTask: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Finish \(t.title), \(timeText(t.due!, short: true))")
+    }
+}
+
+/// Like the Mac: days off in light grey, and (when on in Settings) light stripes over the hours outside work. Behind a full 24-hour column.
+struct OffHours: View {
+    let day: Date
+    var body: some View {
+        let off = !WorkWeek.isWorkDay(day)
+        Canvas { c, size in
+            let perMin = size.height / 1440
+            if off { c.fill(Path(CGRect(origin: .zero, size: size)), with: .color(T.bg2.opacity(0.6))); return }
+            guard WorkWeek.stripe else { return }
+            for (a, b) in [(0, WorkWeek.from), (WorkWeek.to, 1440)] where b > a {
+                let r = CGRect(x: 0, y: CGFloat(a) * perMin, width: size.width, height: CGFloat(b - a) * perMin)
+                c.drawLayer { l in
+                    l.clip(to: Path(r))
+                    var p = Path()
+                    for x in stride(from: -r.height, to: r.width, by: 9) {
+                        p.move(to: CGPoint(x: x, y: r.maxY)); p.addLine(to: CGPoint(x: x + r.height, y: r.minY))
+                    }
+                    l.stroke(p, with: .color(T.bg2), lineWidth: 3)
+                }
+            }
+        }
+        .allowsHitTesting(false).accessibilityHidden(true)
     }
 }
