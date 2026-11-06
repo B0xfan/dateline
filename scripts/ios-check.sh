@@ -31,7 +31,7 @@ done
 grep -q "^DONE failures=0" "$OUT/selftest.txt" || rc=1
 for mode in light dark; do
   xcrun simctl ui "$UDID" appearance $mode
-  for s in list week week-sideways day month year add search details details2 edit edit-invite drag resize undo-toast tap-new tasks task-edit task-edit-place task-new task-lists places email settings settings-accounts settings-accounts+icloud settings-sets settings-look settings-week settings-alerts settings-weather unlock widgets; do
+  for s in list week week-sideways day month quarter year add search details details2 edit edit-invite drag resize undo-toast tap-new tasks task-edit task-edit-place task-new task-lists places email settings settings-accounts settings-accounts+icloud settings-sets settings-look settings-week settings-alerts settings-weather settings-subscribe settings-accounts+Subscribed+sub-sample unlock widgets; do
     xcrun simctl terminate "$UDID" $BID >/dev/null 2>&1 || true
     xcrun simctl launch "$UDID" $BID --sample -demo $s >/dev/null || rc=1
     case $s in places) sleep 12;; *) sleep 6;; esac   # the map needs its tiles
@@ -42,7 +42,7 @@ done
 xcrun simctl ui "$UDID" appearance light
 for size in extra-extra-large accessibility-large; do
   xcrun simctl ui "$UDID" content_size $size
-  for s in list week day month add details edit drag resize undo-toast tap-new task-edit task-new task-lists; do
+  for s in list week day month quarter add details edit drag resize undo-toast tap-new task-edit task-new task-lists; do
     xcrun simctl terminate "$UDID" $BID >/dev/null 2>&1 || true
     xcrun simctl launch "$UDID" $BID --sample -demo $s >/dev/null || rc=1
     sleep 6

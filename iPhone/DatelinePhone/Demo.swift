@@ -56,6 +56,7 @@ enum Demo {
                 for case let w as UIWindowScene in UIApplication.shared.connectedScenes { w.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) }
             }
         case "month": app.mode = .month
+        case "quarter": app.mode = .quarter
         case "year": app.mode = .year
         case "add": app.adding = "Dinner with Ana Friday 7pm at Lola's"
         case "search": app.searching = true; app.searchStart = "dentist"
@@ -213,6 +214,13 @@ enum SelfTest {
         app.addTask("Buy limes", listID: "r-groc")
         check(store.todos.last.map { $0.title == "Buy limes" && $0.listID == "r-groc" } == true, "a new task goes to the list picked")
         check(dayTasks(store, mon, now: today).contains { $0.title == "Pay condo fee" }, "an overdue task shows on today's tasks row")
+        if let t = store.todos.first(where: { $0.title == "Buy limes" }) {
+            let at = cal.date(byAdding: .minute, value: 14 * 60 + 15, to: addDays(mon, 1))!
+            app.drop(taskID: t.id, at: at)
+            check(store.todos.first { $0.id == t.id }.map { $0.timed && $0.due == at } == true && app.toast?.text.hasPrefix("Moved") == true, "a task dropped on an hour gets that day and time")
+            app.undoLast()
+            check(store.todos.first { $0.id == t.id } == t, "Undo takes the dropped task back")
+        } else { check(false, "the new task is there to drop") }
 
         check(!License.shared.enter("DLK-K000001.not-a-real-key") && License.shared.status == .bought(serial: 0), "a wrong key is refused and changes nothing")
         check(!store.trialOver, "the sample calendars never lock, whatever the trial")

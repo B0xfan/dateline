@@ -43,6 +43,8 @@ struct SettingsView: View {
                     case "week": WeekPage()
                     case "alerts": AlertsPage()
                     case "weather": WeatherPage()
+                    case "subscribe": SubscribePage()
+                    case let id where isSub(id): SubDetail(id: id)
                     default: AccountCalendars(account: page)
                     }
                 }
@@ -106,6 +108,9 @@ struct AccountsPage: View {
                 }
             } footer: { Text("Tap an account to show or hide each of its calendars.") }
             Section {
+                NavigationLink(value: "subscribe") { Text("Subscribe to a calendar…").foregroundStyle(T.tint) }
+            } footer: { Text("A calendar from a web address (a school, a team, holidays), kept on this iPhone. You can't change its events.") }
+            Section {
                 Button("Add an account in iPhone Settings…") { openURL(UIApplication.openSettingsURLString) }
             } footer: { Text("On the iPhone, accounts live in Settings › Apps › Calendar › Calendar Accounts. Dateline shows every calendar added there.") }
         }
@@ -119,9 +124,17 @@ struct AccountCalendars: View {
     var body: some View {
         List {
             ForEach(store.calendars.filter { $0.account == account }) { c in
-                Toggle(isOn: Binding(get: { !store.hidden.contains(c.id) }, set: { if $0 { store.hidden.remove(c.id) } else { store.hidden.insert(c.id) } })) {
+                if isSub(c.id) {  // a subscribed calendar opens its own page: show, rename, color, update, remove
+                    NavigationLink(value: c.id) {
+                        HStack(spacing: 10) {
+                            Circle().fill(c.color).frame(width: 12, height: 12); Text(c.title)
+                            Spacer()
+                            Text(store.hidden.contains(c.id) ? "Hidden" : store.sub(c.id)?.problem != nil ? "Not updating" : "").foregroundStyle(T.text2)
+                        }
+                    }
+                } else { Toggle(isOn: Binding(get: { !store.hidden.contains(c.id) }, set: { if $0 { store.hidden.remove(c.id) } else { store.hidden.insert(c.id) } })) {
                     HStack(spacing: 10) { Circle().fill(c.color).frame(width: 12, height: 12); Text(c.title) }
-                }
+                } }
             }
         }
         .navigationTitle(account)
@@ -309,6 +322,9 @@ struct WeatherPage: View {
     @State private var city = ""
     @State private var finding = false
     @State private var note: String?
+    @State private var town = WeatherPrefs.town
+    @State private var found: [Town] = []
+    @State private var townNote: String?
     var body: some View {
         let _ = tick
         List {
@@ -317,33 +333,60 @@ struct WeatherPage: View {
                 Picker("Temperature", selection: Binding(get: { WeatherPrefs.fahrenheit }, set: { WeatherPrefs.fahrenheit = $0; changed(); store.syncNow() })) {
                     Text("°F").tag(true); Text("°C").tag(false)
                 }.pickerStyle(.segmented)
-                if !WeatherPrefs.town.isEmpty {
-                    Picker("Town for the days", selection: Binding(get: { WeatherPrefs.townGeo != nil }, set: { on in
-                        if !on { WeatherPrefs.town = ""; WeatherPrefs.townGeo = nil }; changed()
-                    })) {
-                        Text("Where I am").tag(false); Text(WeatherPrefs.town.components(separatedBy: ",").first ?? WeatherPrefs.town).tag(true)
-                    }
-                } else { line(nil, .clear, "Town for the days", "Where I am", opens: false) }
-            } header: { Text("Weather") } footer: { Text("Weather data by Open-Meteo.com") }
+                LabeledContent("Town for the days") {
+                    TextField("Where I am", text: $town).multilineTextAlignment(.trailing).submitLabel(.done)
+                        .onSubmit { if town.trimmingCharacters(in: .whitespaces).isEmpty { pick(nil) } else if let t = found.first { pick(t) } }
+                }
+                // Matches as you type, from Open-Meteo's free town search (as on the Mac).
+                ForEach(found) { t in Button(t.label) { pick(t) } }
+            } header: { Text("Weather") } footer: { Text((townNote.map { $0 + "\n\n" } ?? "") + "Leave the town empty to use where the phone is. Events with a place show the weather at that place. Weather data by Open-Meteo.com") }
+            .task(id: town) {
+                guard !WeatherStore.sample else { return }  // the pictures never reach the network
+                let t = town.trimmingCharacters(in: .whitespaces)
+                if t.isEmpty || t == WeatherPrefs.town { found = []; townNote = nil; if t.isEmpty, !WeatherPrefs.town.isEmpty { pick(nil) }; return }
+                try? await Task.sleep(for: .milliseconds(300))  // wait for a pause in the typing
+                guard !Task.isCancelled else { return }
+                let list = await searchTowns(t)
+                guard !Task.isCancelled else { return }  // the text changed while this search ran
+                found = list
+                townNote = list.isEmpty ? "No town called \u{201C}\(t)\u{201D} found. Try another spelling." : nil
+            }
             Section {
                 ForEach(Zones.list) { z in
                     HStack {
-                        Text(z.nick.isEmpty ? z.city : z.nick)
+                        VStack(alignment: .leading, spacing: 2) {
+                            // The nickname shows in place of the city; empty shows the city (as on the Mac).
+                            TextField(z.city, text: Binding(get: { z.nick }, set: { v in
+                                if let i = Zones.list.firstIndex(where: { $0.id == z.id }) { Zones.list[i].nick = v; changed() }
+                            })).submitLabel(.done).accessibilityLabel("Nickname for \(z.city)")
+                            Text(z.place).font(.footnote).foregroundStyle(T.text2).lineLimit(1)
+                        }
                         Spacer()
                         Text(zoneTime(app.today, z.tz)).foregroundStyle(T.text2)
                     }
                 }
                 .onDelete { Zones.list.remove(atOffsets: $0); changed() }
-                HStack {
-                    TextField("Add a city", text: $city).submitLabel(.done).onSubmit(add)
-                    if finding { ProgressView() } else if !city.isEmpty { Button("Add", action: add) }
+                .onMove { Zones.list.move(fromOffsets: $0, toOffset: $1); changed() }
+                if Zones.list.count < Zones.most {
+                    HStack {
+                        TextField("Add a city", text: $city).submitLabel(.done).onSubmit(add)
+                        if finding { ProgressView() } else if !city.isEmpty { Button("Add", action: add) }
+                    }
                 }
-            } header: { Text("Time zones") } footer: { Text(note ?? "Swipe a city left to remove it. The Mac's sidebar card choice stays on the Mac.") }
+            } header: { Text("Time zones") } footer: { Text(note ?? "Tap a city's name to give it a nickname. Swipe left to remove, or tap Edit to reorder. Up to \(Zones.most) places. The Mac's sidebar card choice stays on the Mac.") }
         }
         .navigationTitle("Time & weather")
+        .toolbar { if Zones.list.count > 1 { EditButton() } }
     }
 
     private func changed() { tick += 1; app.reload() }
+
+    /// nil = back to where the phone is.
+    private func pick(_ t: Town?) {
+        WeatherPrefs.town = t?.label ?? ""; WeatherPrefs.townGeo = t?.geo
+        town = WeatherPrefs.town; found = []; townNote = nil
+        changed()
+    }
 
     private func add() {
         let q = city.trimmingCharacters(in: .whitespaces)
@@ -444,6 +487,173 @@ struct UnlockView: View {
         case .trial: return "Everything works during the \(License.trialDays) free days. After that, unlock Dateline to keep adding and changing events."
         case .ended: return "Your calendar is still here to look at. Unlock Dateline to add and change events again."
         case .bought: return "Thank you for buying Dateline."
+        }
+    }
+}
+
+// Subscribe by web address or from the ready-made list, as in the Mac's Subscribe window (phase 7). Kept on this iPhone, read only.
+// The Mac's "Alert me for these events" is left out: the phone sends no alerts of its own yet.
+struct SubscribePage: View {
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+    @State private var tab = 0
+    @State private var address = ""
+    @State private var name = ""
+    @State private var color = 3
+    @State private var hours = 24
+    @State private var checking = false
+    @State private var found: (String, [ICalEvent])?
+    @State private var checked = ""  // the address `found` belongs to
+    @State private var problem: String?
+
+    var body: some View {
+        List {
+            Section { Picker("", selection: $tab) { Text("Web address").tag(0); Text("Ready-made").tag(1) }.pickerStyle(.segmented).listRowBackground(Color.clear).listRowInsets(EdgeInsets()) }
+            if tab == 0 { web } else { ready }
+        }
+        .navigationTitle("Subscribe")
+        .toolbar { if tab == 0 { Button("Subscribe", action: add).fontWeight(.semibold).disabled(found == nil || checking) } }
+        .task(id: address) {
+            guard address != checked || found == nil else { return }
+            found = nil; problem = nil
+            guard !address.trimmingCharacters(in: .whitespaces).isEmpty else { checking = false; return }
+            guard let u = subAddress(address) else { checking = false; problem = "That isn't a web address. It should start with webcal:// or https://."; return }
+            checking = true
+            try? await Task.sleep(nanoseconds: 600_000_000)  // wait for typing to stop
+            guard !Task.isCancelled else { return }
+            if store.subs.contains(where: { subAddress($0.url) == u }) { checking = false; problem = "You're already subscribed to this calendar."; return }
+            let r = await downloadCalendar(u)
+            guard !Task.isCancelled else { return }
+            checking = false
+            switch r {
+            case .success(let v):
+                found = v; checked = address
+                if name.isEmpty { name = calendarName(v.0) ?? u.host ?? "Subscribed" }
+            case .failure(let f): problem = f.message
+            }
+        }
+    }
+
+    @ViewBuilder private var web: some View {
+        Section {
+            TextField("webcal:// or https:// address", text: $address).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+            PasteButton(payloadType: String.self) { if let s = $0.first { address = s } }.labelStyle(.titleAndIcon)
+        } header: { Text("Web address") } footer: {
+            if checking { Text("Checking the address…") }
+            else if let problem { Text(problem).foregroundStyle(T.late) }
+            else if let events = found?.1 {
+                let next = upcoming(events)
+                Text("Found it: \(events.count) event\(events.count == 1 ? "" : "s")" + (next.first.map { ", the next one " + when($0.start) } ?? ", none coming up") + ".")
+            }
+        }
+        if let events = found?.1, case let next = upcoming(events), !next.isEmpty {
+            Section("Coming up in this calendar") {
+                ForEach(next) { it in
+                    HStack(spacing: 10) {
+                        Circle().fill(Palette.tags[color]).frame(width: 8, height: 8)
+                        Text(dateText(it.start, "EEE MMM d")).foregroundStyle(T.text2).monospacedDigit()
+                        Text(it.title + (it.allDay ? "" : ", " + timeText(it.start))).lineLimit(1)
+                    }.font(.subheadline)
+                }
+            }
+        }
+        Section {
+            TextField("Name", text: $name)
+            SubColors(pick: $color)
+            Picker("Update", selection: $hours) { Text("Every hour").tag(1); Text("Every day").tag(24); Text("Every week").tag(168) }
+        } footer: { Text("You can't change these events; they come from the address. The last copy stays if the address stops working.") }
+    }
+
+    @ViewBuilder private var ready: some View {
+        ForEach(["Holidays", "Sky", "Sports"], id: \.self) { g in
+            Section(g) {
+                ForEach(readyMade.filter { $0.group == g }) { r in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) { Text(r.name); Text(r.about).font(.footnote).foregroundStyle(T.text2) }
+                        Spacer()
+                        if added(r) { Label("Added", systemImage: "checkmark").labelStyle(.iconOnly).foregroundStyle(Palette.tags[2]).accessibilityLabel("Added") }
+                        else { Button("Add") { store.subscribe(Sub(url: r.url, kind: r.kind, name: r.name, color: r.color, hours: 168)) }.buttonStyle(.bordered) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func added(_ r: ReadyMade) -> Bool { store.subs.contains { r.kind != nil ? $0.kind == r.kind : $0.url == r.url } }
+
+    private func upcoming(_ events: [ICalEvent]) -> [Item] {
+        let now = sampleToday ?? Date()
+        return Array(subItems(Sub(url: "", name: "", color: color), events, from: now, to: now.addingTimeInterval(400 * 86400)).sorted { $0.start < $1.start }.prefix(3))
+    }
+
+    private func when(_ d: Date) -> String {
+        let n = cal.dateComponents([.day], from: cal.startOfDay(for: sampleToday ?? Date()), to: cal.startOfDay(for: d)).day ?? 99
+        return n == 0 ? "today" : n == 1 ? "tomorrow" : n < 7 ? "on " + dateText(d, "EEEE") : "on " + dateText(d, "MMMM d")
+    }
+
+    private func add() {
+        guard let (text, events) = found else { return }
+        let n = name.trimmingCharacters(in: .whitespaces)
+        store.subscribe(Sub(url: address.trimmingCharacters(in: .whitespacesAndNewlines), name: n.isEmpty ? "Subscribed" : n, color: color, hours: hours), text: text, events: events)
+        dismiss()
+    }
+}
+
+// One subscribed calendar: show or hide, name, color, how often it updates, update now, remove (the Mac's right-click menu).
+struct SubDetail: View {
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+    let id: String
+    @State private var name = ""
+    @State private var removing = false
+
+    var body: some View {
+        if let s = store.sub(id) {
+            List {
+                Section {
+                    Toggle("Show in the calendar", isOn: Binding(get: { !store.hidden.contains(id) }, set: { if $0 { store.hidden.remove(id) } else { store.hidden.insert(id) } }))
+                    TextField("Name", text: $name).onSubmit(rename).submitLabel(.done)
+                    SubColors(pick: Binding(get: { s.color }, set: { c in store.editSub(id) { $0.color = c } }))
+                }
+                if s.kind == nil {
+                    Section {
+                        Picker("Update", selection: Binding(get: { s.hours }, set: { h in store.editSub(id) { $0.hours = h } })) {
+                            Text("Every hour").tag(1); Text("Every day").tag(24); Text("Every week").tag(168)
+                        }
+                        Button("Update now") { store.refreshSub(id) }
+                    } footer: {
+                        Text(s.problem.map { $0 + " The last events stay until it works again." } ?? s.updated.map { "Updated " + (cal.isDateInToday($0) ? timeText($0) : dateText($0, "MMM d")) + "." } ?? "")
+                    }
+                    Section { Text(s.url).font(.footnote).foregroundStyle(T.text2).textSelection(.enabled) } header: { Text("Web address") }
+                }
+                Section { Button("Remove calendar", role: .destructive) { removing = true } }
+            }
+            .navigationTitle(s.name)
+            .onAppear { name = s.name }
+            .onDisappear(perform: rename)
+            .confirmationDialog("Remove \(s.name)?", isPresented: $removing, titleVisibility: .visible) {
+                Button("Remove", role: .destructive) { store.unsubscribe(id); dismiss() }
+            } message: { Text("Its events leave Dateline on this iPhone. You can subscribe again later.") }
+        }
+    }
+
+    private func rename() {
+        let n = name.trimmingCharacters(in: .whitespaces)
+        if !n.isEmpty, store.sub(id)?.name != n { store.editSub(id) { $0.name = n } }
+    }
+}
+
+struct SubColors: View {
+    @Binding var pick: Int
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Palette.tags.indices, id: \.self) { i in
+                Button { pick = i } label: {
+                    Circle().fill(Palette.tags[i]).frame(width: 24, height: 24)
+                        .overlay(Circle().strokeBorder(Palette.tags[i], lineWidth: 2).padding(-4).opacity(pick == i ? 1 : 0))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }.buttonStyle(.plain).accessibilityLabel(["Red", "Orange", "Green", "Teal", "Blue", "Purple", "Pink", "Gray"][i])  // the 8 Palette.tags, in order.accessibilityAddTraits(pick == i ? .isSelected : [])
+            }
         }
     }
 }

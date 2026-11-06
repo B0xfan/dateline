@@ -16,6 +16,7 @@ struct CalendarTab: View {
                     case .day: DayView()
                     case .week: WeekView()
                     case .month: MonthView()
+                    case .quarter: QuarterView()
                     case .year: YearView()
                     }
                 }
@@ -67,7 +68,7 @@ struct CalHeader: View {
             .font(.title3).foregroundStyle(T.tint).buttonStyle(.plain)
             .padding(.horizontal, 8).frame(minHeight: 52)
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)  // like Apple's own top bars: they stop growing before the screen runs out
-            // The Year view has no segment of its own (it opens from the month), so none is lit while it shows.
+            // The quarter and year views have no segment of their own (they open from the month), so none is lit while they show.
             Picker("View", selection: $app.mode) {
                 ForEach([PhoneState.Mode.list, .day, .week, .month], id: \.self) { Text($0.rawValue).tag($0) }
             }
@@ -93,6 +94,7 @@ struct CalHeader: View {
         case .day: return dateText(a, "EEEE, MMM d")
         case .week: let f = app.days[0]; return dateText(f, "MMM d") + " to " + dateText(last, cal.isDate(f, equalTo: last, toGranularity: .month) ? "d" : "MMM d")
         case .month: return dateText(a, "MMMM yyyy")
+        case .quarter: let q = quarterStart(a); return dateText(q, "MMM") + " to " + dateText(cal.date(byAdding: .month, value: 2, to: q)!, "MMM yyyy")
         case .year: return dateText(a, "yyyy")
         }
     }
@@ -355,6 +357,15 @@ struct AgendaTask: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(t.done ? "\(t.title), done" : "Finish \(t.title)")
+        .modifier(TaskDrag(t: t))
+    }
+}
+
+/// Hold an open task and drag it onto an hour to give it that day and time (as on the Mac).
+struct TaskDrag: ViewModifier {
+    let t: ToDo
+    func body(content: Content) -> some View {
+        if t.done { content } else { content.draggable("task:" + t.id) { Text(t.title).font(.callout.weight(.semibold)).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8)) } }
     }
 }
 
@@ -377,6 +388,7 @@ struct TaskChip: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(t.done ? "\(t.title), done" : "Finish \(t.title)")
+        .modifier(TaskDrag(t: t))
     }
 }
 
@@ -616,6 +628,12 @@ struct HourGrid: View {
         } }
         .frame(height: 24 * hourH)
         .overlay(alignment: .leading) { Rectangle().fill(T.line).frame(width: 1) }
+        // A task dragged here from the tasks row (or a timed task moved) gets this day and time, in 15 minute steps as on the Mac.
+        .dropDestination(for: String.self) { ids, loc in
+            guard let id = ids.first, id.hasPrefix("task:") else { return false }
+            app.drop(taskID: String(id.dropFirst(5)), at: cal.date(byAdding: .minute, value: min(95, max(0, Int(loc.y / hourH * 4))) * 15, to: day)!)
+            return true
+        }
     }
 
     /// Press and hold, then drag: moves the event (anywhere on it) or changes its length (its bottom edge). 15 minute steps.
@@ -717,6 +735,7 @@ struct TimedTask: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Finish \(t.title), \(timeText(t.due!, short: true))")
+        .modifier(TaskDrag(t: t))
     }
 }
 

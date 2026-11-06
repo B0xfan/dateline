@@ -87,7 +87,7 @@ struct DetailsView: View {
                             Marker(it.place, coordinate: g.coord).tint(c)
                         }
                         .frame(height: 150).clipShape(RoundedRectangle(cornerRadius: 12)).accessibilityLabel("Map of \(it.place)")
-                        if let w = weatherLine(it, g) { Text(w).font(.footnote).foregroundStyle(T.text2).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 10) }
+                        WxAtPlace(geo: g, start: it.start, end: it.end, allDay: it.allDay)
                     }
                 }
                 if !it.notes.isEmpty {
@@ -131,12 +131,6 @@ struct DetailsView: View {
         if let f = app.delete(it, series: series) { if store.trialOver { app.showUnlock = true } else { problem = f.message } } else { app.path.removeAll { $0 == it.id } }
     }
 
-    private func weatherLine(_ it: Item, _ g: Geo) -> String? {
-        guard WeatherPrefs.on, let f = WeatherStore.shared.forecast(g) else { return nil }
-        if !it.allDay, let h = f.hours[wxHourKey(it.start)] { return "\(degrees(h.temp)) and \(wxLook(h.code).words.lowercased()) at \(timeText(it.start)) · \(h.rain)% chance of rain" }
-        return f.days[wxDayKey(it.start)].map { "\(wxLook($0.code).words), high \(degrees($0.hi)), low \(degrees($0.lo))" }
-    }
-
     private func driveLine(_ it: Item, _ m: Int) -> String {
         var s = "\(m) min drive"
         if let g = it.geo, let h = WeatherStore.shared.forecast(g)?.hours[wxHourKey(it.start)] { s += " · \(degrees(h.temp)) and \(wxLook(h.code).words.lowercased())" }
@@ -161,5 +155,64 @@ struct DetailsView: View {
         var u = URLComponents(string: "https://maps.apple.com/")!
         u.queryItems = [.init(name: "daddr", value: it.place)]
         if let url = u.url { UIApplication.shared.open(url) }
+    }
+}
+
+/// The weather icon, colored as on the Mac: grey cloud, yellow sun, blue rain.
+struct WxIcon: View {
+    let code: Int
+    var body: some View {
+        let sym = wxLook(code).symbol
+        let tint: Color = sym.contains("rain") || sym.contains("drizzle") || sym.contains("snow") ? .blue : sym.contains("fog") ? T.text2 : .yellow
+        if sym.hasPrefix("cloud") { Image(systemName: sym).symbolRenderingMode(.palette).foregroundStyle(T.text2, tint) }
+        else { Image(systemName: sym).foregroundStyle(tint) }
+    }
+}
+
+/// Under the event's map: the forecast at the place when it starts (as on the Mac), then hour by hour from an hour before to an hour after.
+struct WxAtPlace: View {
+    let geo: Geo, start: Date, end: Date, allDay: Bool
+    @ObservedObject private var wx = WeatherStore.shared
+    var body: some View {
+        if WeatherPrefs.on, let f = wx.forecast(geo), let d = f.days[wxDayKey(start)] {
+            let h = allDay ? nil : f.hours[wxHourKey(start)], code = h?.code ?? d.code
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    WxIcon(code: code).font(.title2).frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(h.map { "\(degrees($0.temp)), \(wxLook(code).words.lowercased()) at \(timeText(start))" } ?? "\(wxLook(code).words), high \(degrees(d.hi)), low \(degrees(d.lo))")
+                            .font(.subheadline)
+                        Text("\(h?.rain ?? d.rain)% chance of rain" + (h.map { " · wind \(Int($0.wind.rounded())) km/h" } ?? "")).font(.footnote).foregroundStyle(T.text2)
+                    }
+                }
+                let hours = allDay ? [] : around(f)
+                if hours.count > 1 {
+                    HStack(spacing: 0) {
+                        ForEach(hours, id: \.0) { t, w in
+                            VStack(spacing: 4) {
+                                Text(timeText(t, short: true)).font(.caption2).foregroundStyle(T.text2)
+                                WxIcon(code: w.code).font(.callout).frame(height: 22)
+                                Text(degrees(w.temp)).font(.footnote.weight(.medium))
+                                Text("\(w.rain)%").font(.caption2).foregroundStyle(w.rain >= 30 ? Color.blue : T.text2)
+                            }
+                            .frame(maxWidth: .infinity).monospacedDigit()
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("\(timeText(t)): \(degrees(w.temp)), \(wxLook(w.code).words.lowercased()), \(w.rain)% chance of rain")
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// The forecast hours from an hour before the start to an hour after the end, at most six.
+    private func around(_ f: Forecast) -> [(Date, WxHour)] {
+        let first = cal.date(byAdding: .hour, value: -1, to: cal.dateInterval(of: .hour, for: start)?.start ?? start)!
+        return (0..<6).compactMap { i -> (Date, WxHour)? in
+            let t = cal.date(byAdding: .hour, value: i, to: first)!
+            guard t <= end.addingTimeInterval(3600) else { return nil }
+            return f.hours[wxHourKey(t)].map { (t, $0) }
+        }
     }
 }

@@ -24,8 +24,11 @@ struct DatelineApp: App {
         _app = StateObject(wrappedValue: made)
     }
 
+    @Environment(\.scenePhase) private var phase
+
     var body: some Scene {
         WindowGroup { RootView().environmentObject(app).environmentObject(app.store) }
+            .onChange(of: phase) { if phase == .active { app.store.refreshSubs() } }  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
     }
 }
 
@@ -34,7 +37,7 @@ struct Toast: Identifiable { let id = UUID(); var text: String }
 /// What the screens share: which tab and view are showing, the day in view, and the open sheets.
 @MainActor
 final class PhoneState: ObservableObject {
-    enum Mode: String, CaseIterable { case list = "List", day = "Day", week = "Week", month = "Month", year = "Year" }
+    enum Mode: String, CaseIterable { case list = "List", day = "Day", week = "Week", month = "Month", quarter = "Quarter", year = "Year" }
     enum Tab: String, CaseIterable {
         case calendar = "Calendar", tasks = "Tasks", places = "Places", settings = "Settings"
     }
@@ -98,6 +101,7 @@ final class PhoneState: ObservableObject {
         case .list: return (startOfWeek(anchor), addDays(anchor, AgendaView.span))  // the week strip and the list's days
         case .day, .week: return (days[0], addDays(days[days.count - 1], 1))
         case .month: let g = monthGrid(anchor); return (g.first!, addDays(g.last!, 1))
+        case .quarter: let q = quarterStart(anchor); return (monthGrid(q).first!, addDays(monthGrid(cal.date(byAdding: .month, value: 2, to: q)!).last!, 1))
         case .year: let y = cal.dateInterval(of: .year, for: anchor)!; return (y.start, y.end)
         }
     }
@@ -112,6 +116,7 @@ final class PhoneState: ObservableObject {
         case .day: anchor = addDays(anchor, n)
         case .week: anchor = addDays(anchor, (sideways ? 7 : 3) * n)
         case .month: anchor = cal.date(byAdding: .month, value: n, to: anchor)!
+        case .quarter: anchor = cal.date(byAdding: .month, value: 3 * n, to: quarterStart(anchor))!
         case .year: anchor = cal.date(byAdding: .year, value: n, to: anchor)!
         }
     }
@@ -188,6 +193,17 @@ final class PhoneState: ObservableObject {
         let day = addDays(cal.startOfDay(for: today), days)
         n.due = t.due.map { t.timed ? sameClock($0, on: day) : day } ?? day
         save(n)
+    }
+
+    /// A task dropped on an hour (as on the Mac): it gets that day and time. A repeating A4 task's time belongs to its rule, so it takes only the day.
+    func drop(taskID: String, at time: Date) {
+        guard let t = store.todos.first(where: { $0.id == taskID }) else { return }
+        var n = t
+        if t.a4?.repeating == true { n.due = t.timed ? sameClock(t.due!, on: time) : cal.startOfDay(for: time) } else { if !t.timed { n.a4?.ring = true }; n.due = time; n.timed = true }
+        guard n != t else { return }
+        if let f = store.updateTask(n) { if store.trialOver { showUnlock = true } else { problem = f.message }; return }
+        undo.push { [weak self] in self?.store.updateTask(t) }
+        say("Moved \(t.title) to \(timeText(n.due!))")
     }
 
     private func save(_ t: ToDo) { if let f = store.updateTask(t) { problem = f.message } }
