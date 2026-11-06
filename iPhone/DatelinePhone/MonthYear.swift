@@ -81,6 +81,7 @@ struct MonthView: View {
             .frame(maxWidth: .infinity, minHeight: 52, alignment: .top).padding(.top, 4).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)  // seven days across: like the week strip, it stops growing before the numbers clip
         .background(T.bg)
         .accessibilityLabel(dateText(d, "EEEE, MMMM d") + (today ? ", today" : "") + (dots.isEmpty ? "" : ", has events"))
         .accessibilityAddTraits(on ? .isSelected : [])
