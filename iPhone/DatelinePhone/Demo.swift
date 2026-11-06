@@ -131,7 +131,7 @@ enum SelfTest {
         check(app.days.count == 7 && app.days[0] == startOfWeek(app.anchor), "turned sideways the week shows all seven days")
         let at = app.anchor; app.step(1)
         check(app.anchor == addDays(at, 7), "turned sideways a swipe moves a whole week")
-        app.sideways = false
+        app.sideways = false; app.anchor = at  // back where the next checks expect it
         app.mode = .day; app.step(-1)
         check(app.anchor == addDays(mon, 2), "a swipe moves the day view by one day")
         app.goToday()
