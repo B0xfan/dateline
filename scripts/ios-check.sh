@@ -25,7 +25,8 @@ for try in 1 2; do
   cat "$OUT/selftest.txt"
   grep -q "^DONE" "$OUT/selftest.txt" && break
   echo "-- the checks did not finish (try $try); crash reports:"
-  for f in $(ls -t ~/Library/Logs/DiagnosticReports/DatelinePhone* 2>/dev/null | head -1); do head -c 3000 "$f"; done
+  ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head -5
+  for f in $(ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i datelin | head -1); do cp ~/Library/Logs/DiagnosticReports/"$f" "$OUT/"; head -c 6000 ~/Library/Logs/DiagnosticReports/"$f"; done
 done
 grep -q "^DONE failures=0" "$OUT/selftest.txt" || rc=1
 for mode in light dark; do

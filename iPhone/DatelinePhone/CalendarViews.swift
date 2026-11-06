@@ -40,7 +40,7 @@ struct CalHeader: View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {  // side by side, so a long title at large text never runs under the buttons
                 Button("Today") { app.goToday() }
-                    .font(.body.weight(.semibold)).foregroundStyle(T.tint).padding(.horizontal, 8).frame(minHeight: 44)
+                    .font(.body.weight(.semibold)).foregroundStyle(T.tint).padding(.horizontal, 8).frame(minHeight: 44).fixedSize()
                 Text(title).font(.headline).foregroundStyle(T.text).lineLimit(1).minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity).layoutPriority(1).accessibilityAddTraits(.isHeader)
                 if !app.emails.isEmpty {
