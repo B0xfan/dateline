@@ -198,17 +198,13 @@ struct Sidebar: View {
         }
     }
 
-    // Each account and the Reminders lists fold shut with a click on the heading, so Coming up fits (James 2026-11-05). Kept on this Mac.
-    @AppStorage("foldedGroups") private var foldedRaw = ""
     static let listsGroup = "Reminders lists"
-    var folded: Set<String> { Set(foldedRaw.split(separator: "\n").map(String.init)) }
+    var folded: Set<String> { app.foldedGroups }
 
     func heading(_ name: String, count: Int, font: Font, upper: Bool = false) -> some View {
         let open = !folded.contains(name)
         return Button {
-            var f = folded
-            if open { f.insert(name) } else { f.remove(name) }
-            foldedRaw = f.sorted().joined(separator: "\n")
+            if open { app.foldedGroups.insert(name) } else { app.foldedGroups.remove(name) }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).rotationEffect(.degrees(open ? 90 : 0)).frame(width: 10)

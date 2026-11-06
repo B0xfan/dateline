@@ -291,6 +291,9 @@ func selftest() -> Int32 {
     let timed = NewEventBubble.draft(title: "Dinner", start: at(11, 13, 19), end: at(11, 13, 20), allDay: false, place: "", alert: nil)
     expect(whole.title == "New event" && whole.allDay && whole.start == at(11, 13, 0) && whole.end == at(11, 14, 0) && whole.place == "Cafe" && whole.alertMinutes == 15
            && timed.title == "Dinner" && timed.start == at(11, 13, 19) && timed.end == at(11, 13, 20) && timed.alertMinutes == nil, "the double-click bubble: an all-day draft fills the day, an empty title is New event")
+    // Nov 1 2026 is a clock-change day in the US; a 9:00 moved there stays 9:00.
+    expect(NewEventBubble.moved(at(10, 28, 9, 30), to: at(11, 1, 0)) == at(11, 1, 9, 30) && NewEventBubble.ended(at(11, 13, 1), after: at(11, 13, 23)) == at(11, 14, 1)
+           && NewEventBubble.ended(at(11, 13, 19, 1), after: at(11, 13, 19)) == at(11, 13, 19, 5), "the bubble: a new date keeps the clock time, an end before the start is the next day")
     let checked = at(10, 30, 9)
     expect(updateStatus(version: "0.8", last: nil, newer: nil, now: checked) == "Dateline 0.8 · not checked yet"
            && updateStatus(version: "0.8", last: checked, newer: false, now: checked.addingTimeInterval(60)).hasSuffix("you're up to date")

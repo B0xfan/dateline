@@ -65,7 +65,7 @@ private final class ShotWindow: NSWindow {
             if !only.isEmpty && !only.contains(name) { return }
             License.shared.test = nil  // the bought look unless the picture is about the trial
             let app = AppState(store: a4 ? .sampleWithA4() : Store(sample: true), today: today)
-            app.taskPanel.openLists = []; app.sidebarOpen = true  // never the folds or sidebar saved on this Mac
+            app.taskPanel.openLists = []; app.sidebarOpen = true; app.foldedGroups = []  // never the folds or sidebar saved on this Mac
             // shortcut: --late can't check the map and email pictures, sheets don't draw off-screen; they come out as the plain calendar.
             let late = CommandLine.arguments.contains("--late")
             if !late { setup(app) }
@@ -93,6 +93,14 @@ private final class ShotWindow: NSWindow {
             let st = Store(sample: true), app = AppState(store: st, today: today)
             let d = (0..<35).map { cal.date(byAdding: .day, value: $0 - 14, to: cal.startOfDay(for: today))! }.max { st.shown(on: $0).count < st.shown(on: $1).count }!
             ok = save(MoreList(app: app, store: st, day: d, list: st.shown(on: d)) {}.background(Palette.pop).frame(width: 300, height: 420).background(Palette.side), dark: dark, to: "\(dir)/more-\(tag).png") && ok
+        }
+        // Sidebar groups folded (James 2026-11-05): every account but iCloud and the Reminders lists shut, so Coming up shows.
+        shot("sidebar-folded") { a in a.mode = .month; a.foldedGroups = Set(a.store.calendars.map(\.account)).subtracting(["iCloud"]).union([Sidebar.listsGroup]) }
+        // shortcut: a pop-up does not draw off-screen, so the double-click bubble is drawn on its own, as the "N more" list is.
+        if only.isEmpty || only.contains("bubble") {
+            let app = AppState(store: Store(sample: true), today: today)
+            ok = save(NewEventBubble(app: app, store: app.store, start: cal.date(byAdding: .hour, value: 19, to: addDays(cal.startOfDay(for: today), 4))!)
+                .background(Palette.pop).frame(width: 380, height: 420).background(Palette.side), dark: dark, to: "\(dir)/bubble-\(tag).png") && ok
         }
         shot("week") { $0.mode = .week; $0.days = 7 }
         shot("week5") { $0.mode = .week; $0.days = 5 }

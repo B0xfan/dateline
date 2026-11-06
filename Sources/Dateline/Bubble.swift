@@ -5,9 +5,9 @@ import DatelineCore
 extension View {
     // The bubble for a new event on `day`, pointing at `spot` (the whole view when nil).
     func newEventBubble(app: AppState, store: Store, day: Date, spot: CGRect? = nil) -> some View {
-        popover(isPresented: Binding(get: { app.bubble.map { cal.isDate($0, inSameDayAs: day) } ?? false }, set: { if !$0 { app.bubble = nil } }),
+        popover(isPresented: Binding(get: { app.bubble.map { cal.isDate($0, inSameDayAs: day) } ?? false }, set: { if !$0, let b = app.bubble, cal.isDate(b, inSameDayAs: day) { app.bubble = nil } }),  // an old bubble closing never shuts the new one
                 attachmentAnchor: spot.map { .rect(.rect($0)) } ?? .rect(.bounds), arrowEdge: .trailing) {
-            if let start = app.bubble { NewEventBubble(app: app, store: store, start: start) }
+            if let start = app.bubble { NewEventBubble(app: app, store: store, start: start).id(start) }
         }
     }
 }
@@ -36,7 +36,7 @@ struct NewEventBubble: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Title").font(.ui(11)).foregroundStyle(Palette.text3)
                 TextField("New event", text: $title).textFieldStyle(.roundedBorder).font(.ui(15, weight: .semibold))
-                    .focused($titleFocused).onSubmit { add(details: false) }
+                    .focused($titleFocused)  // Return is the Add button's; an onSubmit too would add twice
             }
             row("Calendar") {
                 Menu {
@@ -47,8 +47,7 @@ struct NewEventBubble: View {
             }
             row("Date") {
                 DatePicker("", selection: Binding(get: { start }, set: { v in
-                    let len = end.timeIntervalSince(start), t = cal.dateComponents([.hour, .minute], from: start)
-                    start = cal.date(byAdding: t, to: cal.startOfDay(for: v))!; end = start.addingTimeInterval(len)
+                    let len = end.timeIntervalSince(start); start = Self.moved(start, to: v); end = start.addingTimeInterval(len)
                 }), displayedComponents: .date).labelsHidden().datePickerStyle(.field)
                 Spacer(minLength: 8)
                 Toggle("All day", isOn: $allDay).toggleStyle(.switch).controlSize(.small)
@@ -58,7 +57,7 @@ struct NewEventBubble: View {
                     DatePicker("", selection: Binding(get: { start }, set: { v in let len = end.timeIntervalSince(start); start = v; end = v.addingTimeInterval(len) }),
                                displayedComponents: .hourAndMinute).labelsHidden()
                     Text("to").foregroundStyle(Palette.text3)
-                    DatePicker("", selection: Binding(get: { end }, set: { end = max($0, start.addingTimeInterval(5 * 60)) }), displayedComponents: .hourAndMinute).labelsHidden()
+                    DatePicker("", selection: Binding(get: { end }, set: { end = Self.ended($0, after: start) }), displayedComponents: .hourAndMinute).labelsHidden()
                 }
             }
             row("Place") { TextField("Add a place", text: $place).textFieldStyle(.roundedBorder) }
@@ -83,7 +82,13 @@ struct NewEventBubble: View {
         HStack(spacing: 8) { Text(k).foregroundStyle(Palette.text3).frame(width: 64, alignment: .leading); v() }
     }
 
-    var parsed: Parsed { Self.draft(title: title, start: start, end: end, allDay: allDay, place: place, alert: alert) }
+    // A new date keeps the clock time, also on a daylight-saving day.
+    static func moved(_ start: Date, to day: Date) -> Date {
+        let t = cal.dateComponents([.hour, .minute], from: start)
+        return cal.date(bySettingHour: t.hour!, minute: t.minute!, second: 0, of: day)!
+    }
+    // An end picked before the start is the next day (23:00 to 01:00); never under 5 minutes.
+    static func ended(_ picked: Date, after start: Date) -> Date { max(picked <= start ? addDays(picked, 1) : picked, start.addingTimeInterval(5 * 60)) }
 
     static func draft(title: String, start: Date, end: Date, allDay: Bool, place: String, alert: Int?) -> Parsed {
         let t = title.trimmingCharacters(in: .whitespaces), s = allDay ? cal.startOfDay(for: start) : start
@@ -92,7 +97,7 @@ struct NewEventBubble: View {
     }
 
     func add(details: Bool) {
-        guard app.add(parsed, calendar: calendarID.flatMap { store.calendar($0) }) != nil else { return }  // the error shows; the bubble stays so nothing typed is lost
+        guard app.add(Self.draft(title: title, start: start, end: end, allDay: allDay, place: place, alert: alert), calendar: calendarID.flatMap { store.calendar($0) }) != nil else { return }  // the error shows; the bubble stays so nothing typed is lost
         app.bubble = nil
         app.panels.panelOpen = details
     }

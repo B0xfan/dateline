@@ -65,6 +65,8 @@ final class AppState: ObservableObject {
     // The calendars sidebar on the left, hidden with the toolbar's first button or S (John 2026-10-28); kept across restarts.
     @Published var sidebarOpen = UserDefaults.standard.object(forKey: "sidebarOpen") as? Bool ?? true { didSet { if Look.saves { UserDefaults.standard.set(sidebarOpen, forKey: "sidebarOpen") } } }
     var addText: String { get { addBox.text } set { addBox.text = newValue } }
+    // Sidebar groups (accounts, Reminders lists) folded shut with a click on the heading, so Coming up fits (James 2026-11-05); kept across restarts.
+    @Published var foldedGroups = Set(UserDefaults.standard.stringArray(forKey: "foldedGroups") ?? []) { didSet { if Look.saves && store.access != .sample { UserDefaults.standard.set(foldedGroups.sorted(), forKey: "foldedGroups") } } }
     @Published var bubble: Date?  // the start of a new event being filled in, in a bubble at its day (James 2026-11-05)
     // Settings > Week: what a double-click on an empty spot in a day opens. Off: the side panel, as before.
     static var dayBubble: Bool { get { UserDefaults.standard.bool(forKey: "dayBubble") } set { UserDefaults.standard.set(newValue, forKey: "dayBubble") } }
