@@ -5,24 +5,30 @@ import DatelineCore
 
 struct CalendarTab: View {
     @EnvironmentObject var app: PhoneState
+    @Environment(\.verticalSizeClass) private var vsc
     var body: some View {
         NavigationStack(path: $app.path) {
             VStack(spacing: 0) {
                 CalHeader()
-                switch app.mode {
-                case .list: AgendaView()
-                case .day: DayView()
-                case .week: WeekView()
-                case .month: MonthView()
-                case .year: YearView()
+                Group {
+                    switch app.mode {
+                    case .list: AgendaView()
+                    case .day: DayView()
+                    case .week: WeekView()
+                    case .month: MonthView()
+                    case .year: YearView()
+                    }
                 }
+                // Swipe left or right for the next or last days; under the header only, so the list's week strip pages on its own.
+                .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in
+                    let x = v.translation.width
+                    if abs(x) > 80 && abs(x) > abs(v.translation.height) * 2 && Date() > app.dragUntil { app.step(x < 0 ? 1 : -1) }
+                })
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(T.bg)
-            .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in  // swipe left or right for the next or last days
-                let x = v.translation.width
-                if abs(x) > 80 && abs(x) > abs(v.translation.height) * 2 && Date() > app.dragUntil { app.step(x < 0 ? 1 : -1) }
-            })
+            .onChange(of: vsc, initial: true) { app.sideways = vsc == .compact && PhoneDelegate.turns }
+            .toolbar(app.sideways ? .hidden : .visible, for: .tabBar)  // turned sideways the hours need the height
             .navigationTitle("Calendar")  // the details screen's back button (2026-11-06 design)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: String.self) { DetailsView(id: $0) }
@@ -85,7 +91,7 @@ struct CalHeader: View {
         switch app.mode {
         case .list: return "Schedule"
         case .day: return dateText(a, "EEEE, MMM d")
-        case .week: return dateText(a, "MMM d") + " to " + dateText(last, cal.isDate(a, equalTo: last, toGranularity: .month) ? "d" : "MMM d")
+        case .week: let f = app.days[0]; return dateText(f, "MMM d") + " to " + dateText(last, cal.isDate(f, equalTo: last, toGranularity: .month) ? "d" : "MMM d")
         case .month: return dateText(a, "MMMM yyyy")
         case .year: return dateText(a, "yyyy")
         }
@@ -113,11 +119,40 @@ struct SetMenu: View {
 }
 
 /// The list screen's week: day names, the date, and a coloured dot per calendar with events. Tap a day to start the list there.
+/// The weeks sit side by side and follow the finger, settling one week at a time (John 2026-11-06: a steady flow, not jumps).
 struct WeekStrip: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
+    @State private var week: Int?  // the week showing, counted from this week
+    private static let reach = 520  // ten years each way; the row is lazy, so far weeks cost nothing
+
     var body: some View {
-        let first = startOfWeek(app.anchor)
+        let base = startOfWeek(app.today)
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                ForEach(-Self.reach...Self.reach, id: \.self) { w in row(addDays(base, 7 * w)).containerRelativeFrame(.horizontal) }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging).scrollIndicators(.hidden)
+        .fixedSize(horizontal: false, vertical: true)  // only as tall as one week's row
+        .scrollPosition(id: $week)
+        .onAppear { week = index(app.anchor, base) }
+        .onChange(of: base) { week = index(app.anchor, base) }
+        .onChange(of: app.anchor) { let w = index(app.anchor, base); if week != w { withAnimation(.smooth) { week = w } } }  // Today or a tap elsewhere glides there too
+        .onChange(of: week) {  // settled on another week: the list starts on the same weekday there
+            guard let w = week, w != index(app.anchor, base) else { return }
+            let weekday = cal.dateComponents([.day], from: startOfWeek(app.anchor), to: app.anchor).day ?? 0
+            app.anchor = addDays(base, 7 * w + weekday)
+        }
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)  // seven days across: like Apple's own week strip, it stops growing before the numbers clip
+    }
+
+    private func index(_ d: Date, _ base: Date) -> Int {
+        min(Self.reach, max(-Self.reach, Int(((cal.dateComponents([.day], from: base, to: startOfWeek(d)).day ?? 0)) / 7)))
+    }
+
+    private func row(_ first: Date) -> some View {
         HStack(spacing: 0) {
             ForEach((0..<7).map { addDays(first, $0) }, id: \.self) { d in
                 let today = cal.isDate(d, inSameDayAs: app.today), picked = cal.isDate(d, inSameDayAs: app.anchor)
@@ -137,7 +172,6 @@ struct WeekStrip: View {
             }
         }
         .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 10)
-        .dynamicTypeSize(...DynamicTypeSize.xxLarge)  // seven days across: like Apple's own week strip, it stops growing before the numbers clip
     }
 
     /// Up to three colours of the day's events, in order, each once.
@@ -461,7 +495,7 @@ struct HourGrid: View {
     @GestureState private var held: DragLive? = nil  // the event held in a finger now; it clears itself when the finger lifts or the touch is cancelled
     let days: [Date]
     let wide: Bool
-    private let hourH: CGFloat = 56
+    private var hourH: CGFloat { Look.hourHeight }  // Hour height and How packed, as on the Mac (redraws on app.look)
     @ScaledMetric(relativeTo: .caption2) private var gutterRaw: CGFloat = 44
     private var gutter: CGFloat { min(gutterRaw, 80) }  // same as the week's day headers
 
@@ -533,6 +567,7 @@ struct HourGrid: View {
         let ln = lanes(list)
         let timed = store.todos.filter { $0.timed && !$0.done && !store.hiddenLists.contains($0.listID) && $0.due.map { cal.isDate($0, inSameDayAs: day) } == true }
         return GeometryReader { g in ZStack(alignment: .topLeading) {
+            OffHours(day: day)
             // A tap on an empty time starts a new event there (events and tasks sit above and take their own taps).
             Color.clear.contentShape(Rectangle())
                 .gesture(SpatialTapGesture().onEnded { v in app.addStart = DragMath.slot(on: day, y: v.location.y, hourH: hourH); app.adding = "" })
@@ -682,5 +717,32 @@ struct TimedTask: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Finish \(t.title), \(timeText(t.due!, short: true))")
+    }
+}
+
+/// Like the Mac: days off in light grey, and (when on in Settings) light stripes over the hours outside work. Behind a full 24-hour column.
+struct OffHours: View {
+    let day: Date
+    // The settings are copied in, so a change in Settings redraws this.
+    private let off: Bool, stripe = WorkWeek.stripe, from = WorkWeek.from, to = WorkWeek.to
+    init(day: Date) { self.day = day; off = !WorkWeek.isWorkDay(day) }
+    var body: some View {
+        Canvas { c, size in
+            let perMin = size.height / 1440
+            if off { c.fill(Path(CGRect(origin: .zero, size: size)), with: .color(T.bg2.opacity(0.6))); return }
+            guard stripe else { return }
+            for (a, b) in [(0, from), (to, 1440)] where b > a {
+                let r = CGRect(x: 0, y: CGFloat(a) * perMin, width: size.width, height: CGFloat(b - a) * perMin)
+                c.drawLayer { l in
+                    l.clip(to: Path(r))
+                    var p = Path()
+                    for x in stride(from: -r.height, to: r.width, by: 9) {
+                        p.move(to: CGPoint(x: x, y: r.maxY)); p.addLine(to: CGPoint(x: x + r.height, y: r.minY))
+                    }
+                    l.stroke(p, with: .color(T.bg2), lineWidth: 3)
+                }
+            }
+        }
+        .allowsHitTesting(false).accessibilityHidden(true)
     }
 }
