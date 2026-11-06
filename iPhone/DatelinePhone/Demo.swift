@@ -50,6 +50,11 @@ enum Demo {
         switch s {
         case "list": app.mode = .list
         case "day": app.mode = .day
+        case "week-sideways":  // the simulator can't be turned from the script: the app turns itself once its window is up
+            app.mode = .week
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                for case let w as UIWindowScene in UIApplication.shared.connectedScenes { w.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) }
+            }
         case "month": app.mode = .month
         case "year": app.mode = .year
         case "add": app.adding = "Dinner with Ana Friday 7pm at Lola's"
@@ -122,6 +127,11 @@ enum SelfTest {
         check(app.days == [mon, addDays(mon, 1), addDays(mon, 2)], "the week shows three days from today")
         app.step(1)
         check(app.anchor == addDays(mon, 3), "a swipe moves the week by three days")
+        app.sideways = true
+        check(app.days.count == 7 && app.days[0] == startOfWeek(app.anchor), "turned sideways the week shows all seven days")
+        let at = app.anchor; app.step(1)
+        check(app.anchor == addDays(at, 7), "turned sideways a swipe moves a whole week")
+        app.sideways = false
         app.mode = .day; app.step(-1)
         check(app.anchor == addDays(mon, 2), "a swipe moves the day view by one day")
         app.goToday()

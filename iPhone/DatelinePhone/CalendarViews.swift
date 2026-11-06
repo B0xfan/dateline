@@ -5,6 +5,7 @@ import DatelineCore
 
 struct CalendarTab: View {
     @EnvironmentObject var app: PhoneState
+    @Environment(\.verticalSizeClass) private var vsc
     var body: some View {
         NavigationStack(path: $app.path) {
             VStack(spacing: 0) {
@@ -23,6 +24,8 @@ struct CalendarTab: View {
                 let x = v.translation.width
                 if abs(x) > 80 && abs(x) > abs(v.translation.height) * 2 && Date() > app.dragUntil { app.step(x < 0 ? 1 : -1) }
             })
+            .onChange(of: vsc, initial: true) { app.sideways = vsc == .compact }
+            .toolbar(app.sideways ? .hidden : .visible, for: .tabBar)  // turned sideways the hours need the height
             .navigationTitle("Calendar")  // the details screen's back button (2026-11-06 design)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: String.self) { DetailsView(id: $0) }

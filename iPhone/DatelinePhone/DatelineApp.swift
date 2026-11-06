@@ -1,9 +1,17 @@
 // The iPhone app (approved phone mockups, John 2026-11-04). Every non-screen part comes from DatelineCore, shared with the Mac.
 import SwiftUI
+import UIKit
 import DatelineCore
+
+/// The app stays upright, except Week, which turns sideways to show the whole week (John 2026-11-06).
+final class PhoneDelegate: NSObject, UIApplicationDelegate {
+    static var turns = false
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask { Self.turns ? .allButUpsideDown : .portrait }
+}
 
 @main
 struct DatelineApp: App {
+    @UIApplicationDelegateAdaptor(PhoneDelegate.self) private var delegate
     @StateObject private var app: PhoneState
 
     init() {
@@ -34,9 +42,10 @@ final class PhoneState: ObservableObject {
     let store: Store
     let sample: Bool  // sample calendars: tests and pictures
     @Published var today: Date
-    @Published var mode: Mode = .list { didSet { reload() } }  // the list is the main screen (approved mockup, John 2026-11-05)
+    @Published var mode: Mode = .list { didSet { reload(); turnRule() } }  // the list is the main screen (approved mockup, John 2026-11-05)
     @Published var anchor: Date { didSet { reload() } }
-    @Published var tab: Tab = .calendar
+    @Published var tab: Tab = .calendar { didSet { turnRule() } }
+    @Published var sideways = false { didSet { if sideways != oldValue { reload() } } }  // the phone is turned (only Week allows it)
     @Published var path: [String] = []  // event ids open on the calendar tab
     @Published var adding: String?  // the add sheet's starting text; nil = closed
     @Published var email: EmailFind?
@@ -67,13 +76,27 @@ final class PhoneState: ObservableObject {
         reload()
     }
 
-    /// The days the day and week views show: one, or three from the anchor (the phone's week).
-    var days: [Date] { (0..<(mode == .day ? 1 : 3)).map { addDays(anchor, $0) } }
+    /// The days the day and week views show: one, three from the anchor (the phone's week), or the whole week when turned sideways.
+    var days: [Date] {
+        if mode == .week && sideways { let s = startOfWeek(anchor); return (0..<7).map { addDays(s, $0) } }
+        return (0..<(mode == .day ? 1 : 3)).map { addDays(anchor, $0) }
+    }
+
+    /// Lets the phone turn only while Week shows; leaving Week turns it back upright.
+    private func turnRule() {
+        let turns = tab == .calendar && mode == .week
+        guard turns != PhoneDelegate.turns else { return }
+        PhoneDelegate.turns = turns
+        for case let s as UIWindowScene in UIApplication.shared.connectedScenes {
+            s.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            if !turns { s.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) }
+        }
+    }
 
     private var range: (Date, Date) {
         switch mode {
         case .list: return (startOfWeek(anchor), addDays(anchor, AgendaView.span))  // the week strip and the list's days
-        case .day, .week: return (anchor, addDays(anchor, days.count))
+        case .day, .week: return (days[0], addDays(days[days.count - 1], 1))
         case .month: let g = monthGrid(anchor); return (g.first!, addDays(g.last!, 1))
         case .year: let y = cal.dateInterval(of: .year, for: anchor)!; return (y.start, y.end)
         }
@@ -87,7 +110,7 @@ final class PhoneState: ObservableObject {
         switch mode {
         case .list: anchor = addDays(anchor, 7 * n)
         case .day: anchor = addDays(anchor, n)
-        case .week: anchor = addDays(anchor, 3 * n)
+        case .week: anchor = addDays(anchor, (sideways ? 7 : 3) * n)
         case .month: anchor = cal.date(byAdding: .month, value: n, to: anchor)!
         case .year: anchor = cal.date(byAdding: .year, value: n, to: anchor)!
         }
