@@ -158,13 +158,14 @@ struct Sidebar: View {
                     Text("Calendars on this Mac").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.top, 12).padding(.bottom, 4)
                     let groups = Dictionary(grouping: store.calendars.filter { !isSub($0.id) }, by: \.account)
                     ForEach(groups.keys.sorted(), id: \.self) { acct in
-                        Text(acct).font(.ui(11)).foregroundStyle(Palette.text3).padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 2)
-                        ForEach(groups[acct]!) { c in row(c) }
+                        heading(acct, count: groups[acct]!.count, font: .ui(11)).padding(.top, 8).padding(.bottom, 2)
+                        if !folded.contains(acct) { ForEach(groups[acct]!) { c in row(c) } }
                     }
                     SubscribedList(app: app, store: store) { AnyView(row($0, trailing: $1)) }
-                    if store.lists.contains(where: { $0.account != a4Account }) {
-                        Text("Reminders lists").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3).textCase(.uppercase).padding(.horizontal, 8).padding(.top, 12).padding(.bottom, 4)
-                        ForEach(store.lists.filter { $0.account != a4Account }) { l in listRow(l) }  // A4 has one list per project; its switch is in Settings
+                    let lists = store.lists.filter { $0.account != a4Account }  // A4 has one list per project; its switch is in Settings
+                    if !lists.isEmpty {
+                        heading(Self.listsGroup, count: lists.count, font: .ui(11, weight: .semibold), upper: true).padding(.top, 12).padding(.bottom, 4)
+                        if !folded.contains(Self.listsGroup) { ForEach(lists) { l in listRow(l) } }
                     }
                     OnClock(clock: app.clock) { now in
                         let soon = comingUp(store.soon.filter { !store.hidden.contains($0.calendarID) }, now: now)
@@ -195,6 +196,29 @@ struct Sidebar: View {
             Divider().overlay(Palette.line)
             Text("Your data stays on this Mac").font(.ui(12)).foregroundStyle(Palette.text3).padding(.horizontal, 16).padding(.vertical, 8)
         }
+    }
+
+    // Each account and the Reminders lists fold shut with a click on the heading, so Coming up fits (James 2026-11-05). Kept on this Mac.
+    @AppStorage("foldedGroups") private var foldedRaw = ""
+    static let listsGroup = "Reminders lists"
+    var folded: Set<String> { Set(foldedRaw.split(separator: "\n").map(String.init)) }
+
+    func heading(_ name: String, count: Int, font: Font, upper: Bool = false) -> some View {
+        let open = !folded.contains(name)
+        return Button {
+            var f = folded
+            if open { f.insert(name) } else { f.remove(name) }
+            foldedRaw = f.sorted().joined(separator: "\n")
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).rotationEffect(.degrees(open ? 90 : 0)).frame(width: 10)
+                Text(name).textCase(upper ? .uppercase : nil).lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(count)").monospacedDigit()
+            }.font(font).foregroundStyle(Palette.text3).padding(.horizontal, 8).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+        .help(open ? "Fold \(name) shut" : "Show \(name)")
+        .accessibilityLabel(name).accessibilityValue(open ? "open" : "folded")
     }
 
     func listRow(_ l: CalInfo) -> some View {

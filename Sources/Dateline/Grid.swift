@@ -118,7 +118,7 @@ struct DayColumn: View {
                 Color.clear.contentShape(Rectangle())
                     .gesture(SpatialTapGesture(count: 2).onEnded { v in
                         let mins = Int(v.location.y / hourH * 60) / 30 * 30
-                        app.newEvent(at: cal.date(byAdding: .minute, value: mins, to: day)!)
+                        app.dayDoubleClick(at: cal.date(byAdding: .minute, value: mins, to: day)!)
                     }.exclusively(before: TapGesture().onEnded { app.selectedID = nil; app.panels.panelOpen = false }))
                 // Phase 5: the drive there, as a striped block just before the event.
                 ForEach(items.filter { app.drive[$0.id] != nil && !$0.noTravel && $0.start >= day }) { it in
@@ -163,6 +163,7 @@ struct DayColumn: View {
                         .zIndex(2)
                 }
             }
+            .newEventBubble(app: app, store: store, day: day, spot: CGRect(x: 0, y: CGFloat((app.bubble ?? day).timeIntervalSince(day) / 3600) * hourH, width: w, height: hourH / 2))
         }
         .frame(height: hourH * 24)
         .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
@@ -330,7 +331,8 @@ struct MonthView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { app.newEvent(at: cal.date(byAdding: .hour, value: 9, to: d)!) }
+        .onTapGesture(count: 2) { app.dayDoubleClick(at: cal.date(byAdding: .hour, value: 9, to: d)!) }
+        .newEventBubble(app: app, store: store, day: d)
     }
 }
 
@@ -640,7 +642,8 @@ struct QuarterView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { app.newEvent(at: cal.date(byAdding: .hour, value: 9, to: d)!) }
+        .onTapGesture(count: 2) { app.dayDoubleClick(at: cal.date(byAdding: .hour, value: 9, to: d)!) }
+        .newEventBubble(app: app, store: store, day: d)
     }
 }
 

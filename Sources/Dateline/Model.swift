@@ -65,6 +65,9 @@ final class AppState: ObservableObject {
     // The calendars sidebar on the left, hidden with the toolbar's first button or S (John 2026-10-28); kept across restarts.
     @Published var sidebarOpen = UserDefaults.standard.object(forKey: "sidebarOpen") as? Bool ?? true { didSet { if Look.saves { UserDefaults.standard.set(sidebarOpen, forKey: "sidebarOpen") } } }
     var addText: String { get { addBox.text } set { addBox.text = newValue } }
+    @Published var bubble: Date?  // the start of a new event being filled in, in a bubble at its day (James 2026-11-05)
+    // Settings > Week: what a double-click on an empty spot in a day opens. Off: the side panel, as before.
+    static var dayBubble: Bool { get { UserDefaults.standard.bool(forKey: "dayBubble") } set { UserDefaults.standard.set(newValue, forKey: "dayBubble") } }
     @Published var drive: [String: Int] = [:]  // Phase 5: minutes of driving before each coming event with a place
     let trips = Trips()
     private var travelTimer: Timer?
@@ -270,6 +273,11 @@ final class AppState: ObservableObject {
         guard let c = store.duplicate(it) else { error = store.trialOver ? License.endedMessage : "Couldn't copy the event."; return }
         undoStack.append { [weak self] in self?.store.delete(c) }
         selectedID = store.items.first { $0.title == c.title && $0.start == c.start }?.id ?? c.id
+    }
+
+    // A double-click on an empty spot in a day.
+    func dayDoubleClick(at start: Date) {
+        if AppState.dayBubble { selectedID = nil; panels.panelOpen = false; bubble = start } else { newEvent(at: start) }
     }
 
     func newEvent(at start: Date) {

@@ -37,6 +37,9 @@ struct WeekSettings: View {
                 row("Week starts on", "Changes the month, quarter and year grids and the map's week. Week numbers follow it too.") {
                     Seg(options: WorkWeek.starts, selected: WorkWeek.start, small: true) { WorkWeek.start = $0; changed() }
                 }
+                row("Double-click a day opens", "The bubble has boxes for the title, calendar, date, time, place and alert. More details… opens the full side panel.") {
+                    Seg(options: ["A bubble on the day", "The side panel"], selected: AppState.dayBubble ? "A bubble on the day" : "The side panel", small: true) { AppState.dayBubble = $0 == "A bubble on the day"; changed() }
+                }
                 row("Working days", "The 5-day view shows today, then these days. Days off get a light grey background in the week view.") {
                     HStack(spacing: 4) {
                         ForEach(order, id: \.self) { wd in

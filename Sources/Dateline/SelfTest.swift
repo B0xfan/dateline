@@ -287,6 +287,10 @@ func selftest() -> Int32 {
         a.store.hidden = ["selftest"]; a.mode = a.mode == .month ? .day : .month
         expect(d.object(forKey: "hiddenCalendars") as? [String] == before.0 && d.string(forKey: "mode") == before.1, "tests never change the saved calendar choice or view")
     }
+    let whole = NewEventBubble.draft(title: "  ", start: at(11, 13, 9), end: at(11, 13, 10), allDay: true, place: " Cafe ", alert: 15)
+    let timed = NewEventBubble.draft(title: "Dinner", start: at(11, 13, 19), end: at(11, 13, 20), allDay: false, place: "", alert: nil)
+    expect(whole.title == "New event" && whole.allDay && whole.start == at(11, 13, 0) && whole.end == at(11, 14, 0) && whole.place == "Cafe" && whole.alertMinutes == 15
+           && timed.title == "Dinner" && timed.start == at(11, 13, 19) && timed.end == at(11, 13, 20) && timed.alertMinutes == nil, "the double-click bubble: an all-day draft fills the day, an empty title is New event")
     let checked = at(10, 30, 9)
     expect(updateStatus(version: "0.8", last: nil, newer: nil, now: checked) == "Dateline 0.8 · not checked yet"
            && updateStatus(version: "0.8", last: checked, newer: false, now: checked.addingTimeInterval(60)).hasSuffix("you're up to date")
