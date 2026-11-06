@@ -253,6 +253,10 @@ struct WeekPage: View {
         let order = (0..<7).map { (WorkWeek.firstWeekday - 1 + $0) % 7 + 1 }
         List {
             Section {
+                Picker("Opens on", selection: Binding(get: { PhoneState.openOn }, set: { PhoneState.openOn = $0; changed() })) {
+                    Text("Where I left it").tag("")
+                    ForEach(PhoneState.Mode.allCases, id: \.self) { Text($0.rawValue).tag($0.rawValue) }
+                }
                 Picker("Week starts on", selection: Binding(get: { WorkWeek.start }, set: { WorkWeek.start = $0; changed() })) {
                     ForEach(WorkWeek.starts, id: \.self) { Text($0 == "Match Mac" ? "Match iPhone" : $0) }
                 }

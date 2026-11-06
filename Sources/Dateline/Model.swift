@@ -62,7 +62,7 @@ struct OnClock<V: View>: View {
 final class AppState: ObservableObject {
     let store: Store
     let addBox = AddText(), clock = Clock(), panels = Panels(), taskPanel = TaskPanel(), quick = QuickBox()
-    @Published var mode: Mode = Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .day { didSet { if store.access != .sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") }; reload() } }
+    @Published var mode: Mode = Mode(rawValue: AppState.openOn) ?? Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .day { didSet { if store.access != .sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") }; reload() } }
     @Published var days: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() { didSet { if Look.saves { UserDefaults.standard.set(days, forKey: "weekDays") }; reload() } }
     @Published var anchor: Date { didSet { reload(); if Look.saves && store.access != .sample { UserDefaults.standard.set(anchor, forKey: "anchor"); UserDefaults.standard.set(Date(), forKey: "anchorSaved") } } }
     @Published var selectedID: String? { didSet { if selectedID != nil { addBox.focused = false; dropAddCursor() } } }  // a click on an event leaves the add box, so Delete reaches the event
@@ -73,6 +73,8 @@ final class AppState: ObservableObject {
     @Published var foldedGroups = Set(UserDefaults.standard.stringArray(forKey: "foldedGroups") ?? []) { didSet { if Look.saves && store.access != .sample { UserDefaults.standard.set(foldedGroups.sorted(), forKey: "foldedGroups") } } }
     @Published var bubble: Date?  // the start of a new event being filled in, in a bubble at its day (James 2026-11-05)
     // Settings > Week: what a double-click on an empty spot in a day opens. Off: the side panel, as before.
+    // Settings > Week: the view a new window opens on; "" = where you left it (John 2026-11-06).
+    static var openOn: String { get { UserDefaults.standard.string(forKey: "openOn") ?? "" } set { UserDefaults.standard.set(newValue, forKey: "openOn") } }
     static var dayBubble: Bool { get { UserDefaults.standard.bool(forKey: "dayBubble") } set { UserDefaults.standard.set(newValue, forKey: "dayBubble") } }
     @Published var drive: [String: Int] = [:]  // Phase 5: minutes of driving before each coming event with a place
     let trips = Trips()

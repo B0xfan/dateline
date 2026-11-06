@@ -37,6 +37,12 @@ struct WeekSettings: View {
                 row("Week starts on", "Changes the month, quarter and year grids and the map's week. Week numbers follow it too.") {
                     Seg(options: WorkWeek.starts, selected: WorkWeek.start, small: true) { WorkWeek.start = $0; changed() }
                 }
+                row("Opens on", "The view Dateline shows when it starts.") {
+                    Picker("", selection: Binding(get: { AppState.openOn }, set: { AppState.openOn = $0; changed() })) {
+                        Text("Where I left it").tag("")
+                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0.rawValue) }
+                    }.pickerStyle(.menu).labelsHidden().fixedSize()
+                }
                 row("Double-click a day opens", "The bubble has boxes for the title, calendar, date, time, place and alert. More details… opens the full side panel.") {
                     let opts = ["A bubble on the day", "The side panel"]
                     Seg(options: opts, selected: opts[AppState.dayBubble ? 0 : 1], small: true) { AppState.dayBubble = $0 == opts[0]; changed() }

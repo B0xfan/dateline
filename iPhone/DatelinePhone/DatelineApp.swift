@@ -97,7 +97,9 @@ final class PhoneState: ObservableObject {
     let store: Store
     let sample: Bool  // sample calendars: tests and pictures
     @Published var today: Date
-    @Published var mode: Mode = .list { didSet { listDay = nil; reload(); turnRule() } }  // the list is the main screen (approved mockup, John 2026-11-05)
+    @Published var mode: Mode = .list { didSet { listDay = nil; reload(); turnRule(); if !sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") } } }  // the list is the main screen (approved mockup, John 2026-11-05)
+    // Settings > Week: the view Dateline opens on; "" = where you left it (John 2026-11-06).
+    static var openOn: String { get { UserDefaults.standard.string(forKey: "openOn") ?? "" } set { UserDefaults.standard.set(newValue, forKey: "openOn") } }
     @Published var anchor: Date { didSet { listDay = nil; reload() } }
     @Published var listDay: Date?  // the day at the top of the list as it scrolls; the month title and week strip follow it (John 2026-11-06)
     @Published var tab: Tab = .calendar { didSet { turnRule() } }
@@ -133,6 +135,10 @@ final class PhoneState: ObservableObject {
     init(store: Store, today: Date, sample: Bool) {
         self.store = store; self.today = today; self.sample = sample
         anchor = cal.startOfDay(for: today)
+        if !sample {  // the pictures always start on the list
+            mode = Mode(rawValue: Self.openOn) ?? Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .list
+            turnRule()
+        }
         reload()
     }
 
