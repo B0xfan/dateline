@@ -313,7 +313,7 @@ struct AlertsPage: View {
             } footer: {
                 Text(blocked && badge ? "Badges are off for Dateline. Turn on Badges in notification settings to see the date." : "The number on Dateline's icon is today's date, as in the iPhone's own Calendar. It changes at midnight.")
             }
-            .task(id: phase) { if badge, !app.sample, phase == .active { blocked = !(await DateBadge.update(ask: false)) } }  // again on coming back from iOS Settings
+            .task(id: phase) { if badge, !app.sample, phase == .active { blocked = await DateBadge.isBlocked() } }  // again on coming back from iOS Settings; the app itself re-plans
             Section {
                 line(nil, .clear, "Event alerts", "iPhone Calendar", opens: false)
                 line(nil, .clear, "Mac sounds", Alerts.kinds.prefix(2).map { Alerts.soundName($0.0) }.joined(separator: ", "), opens: false)

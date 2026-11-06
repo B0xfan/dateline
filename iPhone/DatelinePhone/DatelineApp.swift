@@ -31,7 +31,8 @@ struct DatelineApp: App {
         WindowGroup { RootView().environmentObject(app).environmentObject(app.store) }
             .onChange(of: phase) {
                 // the pictures and checks never touch the real icon or ask; on leaving too, in case midnight passed with Dateline open
-                if !app.sample, phase != .inactive { Task { await DateBadge.update(ask: phase == .active) } }
+                if !app.sample, phase == .active { Task { await DateBadge.update(ask: true) } }
+                if !app.sample, phase == .background { Task { await DateBadge.setToday() } }  // only the number: no re-plan while iOS may suspend us mid-way
                 if phase == .active { app.store.refreshSubs() }  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
             }
     }
@@ -47,6 +48,16 @@ struct DatelineApp: App {
     // shortcut: 30 midnights ahead (iOS holds 64 waiting); a phone that doesn't open Dateline for a month keeps the last number.
     static let ahead = 30
     private static var turn = 0  // the newest update wins: an older one still running stops at its next step
+    /// iOS has badges off for Dateline (false while it hasn't asked yet).
+    static func isBlocked() async -> Bool {
+        let s = await UNUserNotificationCenter.current().notificationSettings()
+        return s.authorizationStatus != .notDetermined && (s.authorizationStatus == .denied || s.badgeSetting != .enabled)
+    }
+    /// Today's number only, for leaving the app: the waiting midnights stay as they are.
+    static func setToday() async {
+        guard on, !(await isBlocked()) else { return }
+        try? await UNUserNotificationCenter.current().setBadgeCount(Calendar.autoupdatingCurrent.component(.day, from: Date()))
+    }
     /// Sets today's number and the next midnights'. Returns false only when iOS has badges off for Dateline (not while it hasn't asked yet).
     @discardableResult static func update(ask: Bool) async -> Bool {
         turn += 1; let me = turn
