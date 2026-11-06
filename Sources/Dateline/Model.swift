@@ -22,7 +22,8 @@ enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Mont
     @Published var tasksOpen = false { didSet { if tasksOpen { openTaskID = nil; panelOpen = false; search = "" } } }
     @Published var openTaskID: String? { didSet { if openTaskID != nil { panelOpen = false } } }
     @Published var showShortcuts = false
-    @Published var search = ""  // the toolbar's event search; its results share the right side, below an open event or task
+    @Published var search = "" { didSet { if !search.isEmpty && tasksOpen { tasksOpen = false } } }  // the toolbar's event search; its results take the right side from the task list, below an open event or task
+    @Published var searchPick: String?  // the result shown in the calendar
     @Published var searching = false  // the search field has the cursor (Command F)
     @Published var searchSubmits = 0  // Return in the search field
     @Published var mapOpen = false  // Phase 5: the map of all places (P)
@@ -438,11 +439,12 @@ final class AppState: ObservableObject {
             if addBox.focused || !addText.isEmpty { addText = ""; addBox.focused = false; dropAddCursor(); return true }
             if panels.panelOpen { panels.panelOpen = false; NSApp.keyWindow?.makeFirstResponder(nil); return true }
             if panels.openTaskID != nil { panels.openTaskID = nil; NSApp.keyWindow?.makeFirstResponder(nil); return true }
-            if !panels.search.isEmpty && !typing { panels.search = ""; panels.searching = false; return true }  // in the field, Esc clears it there
+            if !panels.search.isEmpty && (!typing || panels.searching) { panels.search = ""; panels.searching = false; return true }  // not while typing in another field
             if panels.tasksOpen { panels.tasksOpen = false; return true }
             if selectedID != nil { selectedID = nil; return true }
             return false
         }
+        if mods == .command && e.charactersIgnoringModifiers == "f" && !typing { panels.searching = true; return true }  // here, not as a menu key: in a text field Command F stays the Mac's own Find
         if typing || panels.confirmDelete != nil || panels.showShortcuts || panels.mapOpen || error != nil { return false }
         if mods == .command, let n = Int(e.charactersIgnoringModifiers ?? ""), (1...9).contains(n) { pickSet(n); return true }
         if !panels.search.isEmpty, responder is NSTableView, [125, 126].contains(e.keyCode) { return false }  // arrows move through the search results

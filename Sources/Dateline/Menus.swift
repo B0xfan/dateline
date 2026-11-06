@@ -32,7 +32,7 @@ struct AppCommands: Commands {
             }
         }
         CommandGroup(after: .textEditing) {
-            Button("Find Event") { app.openMain?(); app.panels.searching = true }.keyboardShortcut("f")
+            Button("Find Event") { app.openMain?(); app.panels.searching = true }  // Command F is in the key handler (Model)
         }
         CommandGroup(before: .sidebar) {
             ForEach(Array(Mode.allCases.enumerated()), id: \.element) { i, m in

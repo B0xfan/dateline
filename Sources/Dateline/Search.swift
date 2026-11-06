@@ -2,13 +2,12 @@
 import SwiftUI
 import DatelineCore
 
-// Titles, places and notes in shown calendars, as the iPhone's search does. 50 of each at most.
+// Titles, places and notes in shown calendars, as the iPhone's search does.
 func searchEvents(_ text: String, in pool: [Item], hidden: Set<String>, now: Date) -> (coming: [Item], past: [Item]) {
     let q = text.trimmingCharacters(in: .whitespaces)
     guard !q.isEmpty else { return ([], []) }
     let hits = pool.filter { it in !hidden.contains(it.calendarID) && [it.shownTitle, it.place, it.notes].contains { $0.localizedCaseInsensitiveContains(q) } }
-    let past = hits.filter { $0.end < now }.sorted { $0.start > $1.start }
-    return (Array(hits.filter { $0.end >= now }.sorted { $0.start < $1.start }.prefix(50)), Array(past.prefix(50)))
+    return (hits.filter { $0.end >= now }.sorted { $0.start < $1.start }, hits.filter { $0.end < now }.sorted { $0.start > $1.start })
 }
 
 struct SearchResults: View {
@@ -16,10 +15,11 @@ struct SearchResults: View {
     @ObservedObject var store: Store
     @ObservedObject var panels: Panels
     @State private var pool: [Item] = []
-    @State private var picked: String?
+    @State private var reads = 0  // bumped when the calendar changes, so a deleted or moved event leaves the list
+    @State private var found: (coming: [Item], past: [Item]) = ([], [])
+    let cap = 50  // each part shows this many
 
     var body: some View {
-        let found = searchEvents(panels.search, in: pool, hidden: store.hidden, now: app.now)
         let count = found.coming.count + found.past.count
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -28,23 +28,30 @@ struct SearchResults: View {
                 Button { panels.search = ""; panels.searching = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }
                     .accessibilityLabel("Close search").buttonStyle(.plain).foregroundStyle(Palette.text3)
             }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
-            List(selection: $picked) {
-                if !found.coming.isEmpty { Section("Coming up") { ForEach(found.coming) { row($0, past: false) } } }
-                if !found.past.isEmpty { Section("Past") { ForEach(found.past) { row($0, past: true) } } }
+            List(selection: Binding(get: { panels.searchPick }, set: { id in panels.searchPick = id; if let it = id.flatMap(find) { show(it) } })) {
+                if !found.coming.isEmpty { Section("Coming up") { ForEach(found.coming.prefix(cap)) { row($0, past: false) } } }
+                if !found.past.isEmpty { Section("Past") { ForEach(found.past.prefix(cap)) { row($0, past: true) } } }
             }
             .scrollContentBackground(.hidden)
             // Double-click or Return opens the details; one click only shows the day.
             .contextMenu(forSelectionType: String.self, menu: { _ in }) { ids in if let it = ids.first.flatMap(find) { app.openEvent(it) } }
             .overlay { if count == 0 { ContentUnavailableView.search(text: panels.search) } }
-            Text("Titles, places and notes, a year back and a year ahead.").font(.ui(11)).foregroundStyle(Palette.text2)
-                .fixedSize(horizontal: false, vertical: true).padding(16)
+            Text(count > found.coming.prefix(cap).count + found.past.prefix(cap).count ? "Showing the first \(cap) coming and \(cap) past. Type more to narrow it." : "Titles, places and notes, a year back and a year ahead.")
+                .font(.ui(11)).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true).padding(16)
         }
-        .onChange(of: picked) { _, id in if let it = id.flatMap(find) { show(it) } }
-        .onChange(of: panels.searchSubmits) { _, _ in picked = (found.coming + found.past).first?.id }  // Return in the field picks the first match
-        // shortcut: two years read on the main thread when the results open (and again when you come back from an event's details); move off the main thread if a big calendar makes it stutter
-        .onAppear { pool = store.between(addDays(app.now, -365), addDays(app.now, 366)) }
+        .onChange(of: panels.searchSubmits) { _, _ in  // Return in the field shows the first match, again each time
+            if let it = (found.coming + found.past).first { panels.searchPick = it.id; show(it) }
+        }
+        .onReceive(store.$items.dropFirst()) { _ in reads += 1 }
+        .task(id: reads) {
+            let read = await store.betweenInBackground(addDays(app.now, -365), addDays(app.now, 366))
+            if !Task.isCancelled { pool = read; refresh() }
+        }
+        .onChange(of: panels.search) { _, _ in refresh() }
+        .onChange(of: store.hidden) { _, _ in refresh() }
     }
 
+    func refresh() { found = searchEvents(panels.search, in: pool, hidden: store.hidden, now: app.now) }
     func find(_ id: String) -> Item? { pool.first { $0.id == id } }
 
     // Shows the event's day with it picked, the results staying put.

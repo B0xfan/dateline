@@ -268,6 +268,8 @@ func selftest() -> Int32 {
         expect(a.panels.panelOpen && redraws == 0, "quick add, the task list, the add box and panels don't touch the screens watching AppState")
         a.panels.tasksOpen = true
         expect(a.panels.tasksOpen && !a.panels.panelOpen, "the task list and event details share one side")
+        a.panels.search = "dinner"; expect(!a.panels.tasksOpen, "search results take the side from the task list")
+        a.panels.tasksOpen = true; expect(a.panels.search.isEmpty, "the task list button brings tasks back over a search")
         a.panels.openTaskID = "t1"; a.panels.panelOpen = true
         expect(a.panels.openTaskID == nil, "event details close a task's details")
         a.now = addDays(now, 1)

@@ -327,6 +327,13 @@ public final class Store: ObservableObject {
         return ((own.map(decorated) + subEvents(from: a, to: b) + accEvents(from: a, to: b))).sorted { $0.start < $1.start }
     }
 
+    // The same, read off the main thread (the Mac's event search reads two years).
+    public func betweenInBackground(_ a: Date, _ b: Date) async -> [Item] {
+        let own = canRead ? await source.eventsInBackground(from: a, to: b) : []
+        followIDs(own)
+        return ((own.map(decorated) + subEvents(from: a, to: b) + accEvents(from: a, to: b))).sorted { $0.start < $1.start }
+    }
+
     // The last year's events, one per title, newest first (quick add's "From your past events").
     private var pastCache: [Item]?
     private var pastStale = false  // the calendars changed since it was read
