@@ -5,17 +5,6 @@ import SwiftUI
 import CoreLocation
 import DatelineCore
 
-/// The weather icon: grey cloud (multicolor's white cloud vanishes on the light look), yellow sun, blue rain.
-struct WxIcon: View {
-    let code: Int
-    var body: some View {
-        let sym = wxLook(code).symbol
-        let tint: Color = sym.contains("rain") || sym.contains("drizzle") || sym.contains("snow") ? .blue : sym.contains("fog") ? Palette.text3 : .yellow
-        if sym.hasPrefix("cloud") { Image(systemName: sym).symbolRenderingMode(.palette).foregroundStyle(Palette.text3, tint) }
-        else { Image(systemName: sym).foregroundStyle(tint) }
-    }
-}
-
 /// The icon with the high and low under a day's name. Hover for the day hour by hour.
 struct WxChip: View {
     let day: Date, at: Geo
@@ -65,15 +54,12 @@ struct WxAtPlace: View {
     @ObservedObject private var wx = WeatherStore.shared
     var body: some View {
         if WeatherPrefs.on, let f = wx.forecast(geo) {
-            let h = allDay ? nil : f.hours[wxHourKey(start)]
-            if let d = f.days[wxDayKey(start)] {
-                let code = h?.code ?? d.code
+            if let w = wxAtStart(f, start, allDay: allDay) {
                 HStack(spacing: 12) {
-                    WxIcon(code: code).font(.system(size: 24)).frame(width: 32)
+                    WxIcon(code: w.code).font(.system(size: 24)).frame(width: 32)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(h.map { "\(degrees($0.temp)), \(wxLook(code).words.lowercased()) at \(timeText(start))" } ?? "\(wxLook(code).words), high \(degrees(d.hi)), low \(degrees(d.lo))")
-                        Text("\(h?.rain ?? d.rain)% chance of rain" + (h.map { " · wind \(Int($0.wind.rounded())) km/h" } ?? ""))
-                            .font(.ui(11)).foregroundStyle(Palette.text3)
+                        Text(w.line)
+                        Text(w.sub).font(.ui(11)).foregroundStyle(Palette.text3)
                     }
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)

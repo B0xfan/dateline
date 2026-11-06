@@ -41,7 +41,7 @@ enum Demo {
         dentist.calendarCode = "family"
         return [
             EmailFind(from: "Clínica Dental Playa", quote: "Your appointment is confirmed for Wednesday, October 28 at 8:30 a.m. Please arrive 10 minutes early.", parsed: dentist, emoji: "🦷", alert: "Arrive 10 min early"),
-            EmailFind(from: "Escuela Tamarindo", quote: "The school play is on Thursday at 5 p.m. in the main hall.", parsed: Parsed(title: "School play", start: at(3, 17), end: at(3, 18), place: "Main hall", dateGiven: true)),
+            EmailFind(from: "Escuela Tamarindo", quote: "The school play is on Thursday at 5 p.m. in the main hall.", parsed: Parsed(title: "School play", start: at(3, 17), end: at(3, 18), place: "Main hall", dateGiven: true), unsure: ["when"], whenNote: "No end time in the email; 1 hour guessed."),
             EmailFind(from: "SANSA Airlines", quote: "Your flight to San José leaves Saturday at 7:15 a.m.", parsed: Parsed(title: "Flight to San José", start: at(5, 7, 15), end: at(5, 8, 15), dateGiven: true)),
         ]
     }

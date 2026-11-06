@@ -136,7 +136,6 @@ final class PhoneState: ObservableObject {
 
     /// An email file opened in Dateline (from Files, "Open in", or the add sheet): read on the phone with Apple Intelligence,
     /// as on the Mac, then shown in the email sheet to check before adding. Nothing leaves the phone.
-    // shortcut: the Mac's orange "guessed" outlines and its time note aren't shown in the phone sheet; add them if a guessed time slips through.
     func readEmail(_ url: URL) async {
         guard !readingEmail else { problem = "Dateline is still reading the last email. Try again in a moment."; return }  // one at a time, as on the Mac
         readingEmail = true; defer { readingEmail = false }
@@ -155,7 +154,7 @@ final class PhoneState: ObservableObject {
         let d = await readEvent(m, now: today)
         guard d.problem.isEmpty, let s = d.start else { problem = d.problem.isEmpty ? "Dateline couldn't find a date in that email." : d.problem; return }
         let f = EmailFind(from: m.fromName.isEmpty ? m.subject : m.fromName, quote: d.quotes.first ?? m.subject,
-                          parsed: Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes))
+                          parsed: Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes), unsure: d.unsure, whenNote: d.whenNote)
         emails.insert(f, at: 0)
         // Opens over the calendar; an add or search sheet closes first. If another sheet is up, the envelope at the top keeps it.
         adding = nil; searching = false
@@ -231,8 +230,7 @@ final class PhoneState: ObservableObject {
     /// A task dropped on an hour (as on the Mac): it gets that day and time. A repeating A4 task's time belongs to its rule, so it takes only the day.
     @discardableResult func drop(taskID: String, at time: Date) -> Bool {
         guard let t = store.todos.first(where: { $0.id == taskID }) else { return false }
-        var n = t
-        if t.a4?.repeating == true { n.due = t.timed ? sameClock(t.due!, on: time) : cal.startOfDay(for: time) } else { if !t.timed { n.a4?.ring = true }; n.due = time; n.timed = true }
+        let n = dropped(t, at: time)
         guard n != t else { return false }
         if let f = store.updateTask(n) { if store.trialOver { showUnlock = true } else { problem = f.message }; return false }
         undo.push { [weak self] in self?.store.updateTask(t) }
@@ -263,4 +261,5 @@ struct EmailFind: Identifiable {
     let id = UUID()
     var from: String, quote: String
     var parsed: Parsed, emoji = "", alert = ""
+    var unsure: [String] = [], whenNote = ""  // what the email reader guessed, shown in orange
 }

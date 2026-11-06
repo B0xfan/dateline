@@ -63,6 +63,27 @@ public func wxLook(_ code: Int) -> (symbol: String, words: String) {
 /// A temperature in the chosen unit, rounded: "29°".
 public func degrees(_ c: Double, fahrenheit: Bool = WeatherPrefs.fahrenheit) -> String { "\(Int((fahrenheit ? c * 9 / 5 + 32 : c).rounded()))°" }
 
+/// The weather icon on both apps: grey cloud (multicolor's white cloud vanishes on the light look), yellow sun, blue rain.
+public struct WxIcon: View {
+    let code: Int, grey: Color
+    public init(code: Int, grey: Color = Palette.text3) { self.code = code; self.grey = grey }
+    public var body: some View {
+        let sym = wxLook(code).symbol
+        let tint: Color = sym.contains("rain") || sym.contains("drizzle") || sym.contains("snow") ? .blue : sym.contains("fog") ? grey : .yellow
+        if sym.hasPrefix("cloud") { Image(systemName: sym).symbolRenderingMode(.palette).foregroundStyle(grey, tint) }
+        else { Image(systemName: sym).foregroundStyle(tint) }
+    }
+}
+
+/// The forecast at an event's place when it starts, in words (both apps): the hour's when there is one, else the day's.
+public func wxAtStart(_ f: Forecast, _ start: Date, allDay: Bool) -> (code: Int, line: String, sub: String)? {
+    guard let d = f.days[wxDayKey(start)] else { return nil }
+    let h = allDay ? nil : f.hours[wxHourKey(start)], code = h?.code ?? d.code
+    return (code,
+            h.map { "\(degrees($0.temp)), \(wxLook(code).words.lowercased()) at \(timeText(start))" } ?? "\(wxLook(code).words), high \(degrees(d.hi)), low \(degrees(d.lo))",
+            "\(h?.rain ?? d.rain)% chance of rain" + (h.map { " · wind \(Int($0.wind.rounded())) km/h" } ?? ""))
+}
+
 public func wxDayKey(_ d: Date) -> String { dateText(d, "yyyy-MM-dd") }
 public func wxHourKey(_ d: Date) -> String { dateText(d, "yyyy-MM-dd'T'HH:00") }
 

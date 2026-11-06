@@ -368,10 +368,8 @@ final class AppState: ObservableObject {
 
     // A task dropped on the day grid takes that day and time.
     func drop(taskID: String, at time: Date) {
-        guard var t = store.todos.first(where: { $0.id == taskID }) else { return }
-        // A repeating A4 task's time belongs to its rule in A4, so here it takes only the day.
-        if t.a4?.repeating == true { t.due = t.timed ? sameClock(t.due!, on: time) : cal.startOfDay(for: time) } else { if !t.timed { t.a4?.ring = true }; t.due = time; t.timed = true }
-        saveTask(t)
+        guard let t = store.todos.first(where: { $0.id == taskID }) else { return }
+        saveTask(dropped(t, at: time))
     }
 
     func undo() {

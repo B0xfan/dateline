@@ -10,19 +10,21 @@ struct Understood: View {
     let calendar: CalInfo?
     var emoji = ""
     var alert = ""
+    var unsure: [String] = []  // from an email: what the reader had to guess (title, when, place), outlined in orange as on the Mac
+    var whenNote = ""
     var body: some View {
         Card {
             Row {
                 Bar(color: calendar?.color ?? T.tint)
                 Text((emoji.isEmpty ? "" : emoji + " ") + (p.title.isEmpty ? "New event" : p.title)).fontWeight(.semibold)
-            }
+            }.guessed(unsure.contains("title"))
             Row(label: "When") {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 10) { Text(dateText(p.start, "EEEE, MMM d")); Text(p.allDay ? "All day" : timeText(p.start, short: true)) }
                     VStack(alignment: .leading, spacing: 2) { Text(dateText(p.start, "EEEE, MMM d")); Text(p.allDay ? "All day" : timeText(p.start, short: true)) }
                 }
-            }
-            if !p.place.isEmpty { Row(label: "Where") { Text(p.place) } }
+            }.guessed(unsure.contains("when"), note: whenNote)
+            if !p.place.isEmpty { Row(label: "Where") { Text(p.place) }.guessed(unsure.contains("place")) }
             Row(label: "Calendar") {
                 Dot(color: calendar?.color ?? T.text2)
                 Text(calendar?.title ?? "No calendar can take new events")
@@ -31,6 +33,20 @@ struct Understood: View {
             if let r = p.repeats { Row(label: "Repeats") { Text(r.text) } }
             Row(label: "Alert", last: true) { Text(!alert.isEmpty ? alert : p.alertMinutes.map(alertText) ?? "None") }
         }
+    }
+}
+
+extension View {
+    /// A guessed part of an email's event: an orange outline and the reason under it (the Mac's email sheet does the same).
+    @ViewBuilder func guessed(_ on: Bool, note: String = "") -> some View {
+        if on {
+            VStack(alignment: .leading, spacing: 0) {
+                self
+                if !note.isEmpty { Text(note).font(.footnote).foregroundStyle(Palette.family).padding(.horizontal, 16).padding(.bottom, 8) }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.family, lineWidth: 1.5).padding(3))
+            .accessibilityElement(children: .combine).accessibilityHint("Guessed. Check it before adding.")
+        } else { self }
     }
 }
 
@@ -126,7 +142,7 @@ struct EmailSheet: View {
                         .background(T.card, in: RoundedRectangle(cornerRadius: 12))
                         .padding(.horizontal, 16).padding(.top, 8)
                     SectionLabel("Dateline found")
-                    Understood(p: find.parsed, calendar: app.calendarFor(find.parsed), emoji: find.emoji, alert: find.alert)
+                    Understood(p: find.parsed, calendar: app.calendarFor(find.parsed), emoji: find.emoji, alert: find.alert, unsure: find.unsure, whenNote: find.whenNote)
                     Text("Read on this iPhone with Apple Intelligence. The email never leaves your phone.")
                         .font(.footnote).foregroundStyle(T.text2).padding(.horizontal, 32).padding(.top, 14)
                 }

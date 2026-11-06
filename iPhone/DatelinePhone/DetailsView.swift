@@ -158,31 +158,18 @@ struct DetailsView: View {
     }
 }
 
-/// The weather icon, colored as on the Mac: grey cloud, yellow sun, blue rain.
-struct WxIcon: View {
-    let code: Int
-    var body: some View {
-        let sym = wxLook(code).symbol
-        let tint: Color = sym.contains("rain") || sym.contains("drizzle") || sym.contains("snow") ? .blue : sym.contains("fog") ? T.text2 : .yellow
-        if sym.hasPrefix("cloud") { Image(systemName: sym).symbolRenderingMode(.palette).foregroundStyle(T.text2, tint) }
-        else { Image(systemName: sym).foregroundStyle(tint) }
-    }
-}
-
 /// Under the event's map: the forecast at the place when it starts (as on the Mac), then hour by hour from an hour before to an hour after.
 struct WxAtPlace: View {
     let geo: Geo, start: Date, end: Date, allDay: Bool
     @ObservedObject private var wx = WeatherStore.shared
     var body: some View {
-        if WeatherPrefs.on, let f = wx.forecast(geo), let d = f.days[wxDayKey(start)] {
-            let h = allDay ? nil : f.hours[wxHourKey(start)], code = h?.code ?? d.code
+        if WeatherPrefs.on, let f = wx.forecast(geo), let now = wxAtStart(f, start, allDay: allDay) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 12) {
-                    WxIcon(code: code).font(.title2).frame(width: 32)
+                    WxIcon(code: now.code, grey: T.text2).font(.title2).frame(width: 32)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(h.map { "\(degrees($0.temp)), \(wxLook(code).words.lowercased()) at \(timeText(start))" } ?? "\(wxLook(code).words), high \(degrees(d.hi)), low \(degrees(d.lo))")
-                            .font(.subheadline)
-                        Text("\(h?.rain ?? d.rain)% chance of rain" + (h.map { " · wind \(Int($0.wind.rounded())) km/h" } ?? "")).font(.footnote).foregroundStyle(T.text2)
+                        Text(now.line).font(.subheadline)
+                        Text(now.sub).font(.footnote).foregroundStyle(T.text2)
                     }
                 }
                 let hours = allDay ? [] : around(f)
@@ -191,7 +178,7 @@ struct WxAtPlace: View {
                         ForEach(hours, id: \.0) { t, w in
                             VStack(spacing: 4) {
                                 Text(timeText(t, short: true)).font(.caption2).foregroundStyle(T.text2)
-                                WxIcon(code: w.code).font(.callout).frame(height: 22)
+                                WxIcon(code: w.code, grey: T.text2).font(.callout).frame(height: 22)
                                 Text(degrees(w.temp)).font(.footnote.weight(.medium))
                                 Text("\(w.rain)%").font(.caption2).foregroundStyle(w.rain >= 30 ? Color.blue : T.text2)
                             }

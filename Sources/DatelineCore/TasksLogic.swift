@@ -17,6 +17,13 @@ public struct ToDo: Identifiable, Equatable {
     public init(id: String, listID: String, title: String, due: Date? = nil, timed: Bool = false, done: Bool = false, notes: String = "", remind: Remind = Remind.time, place: Spot? = nil, a4: A4Task? = nil) { self.id = id; self.listID = listID; self.title = title; self.due = due; self.timed = timed; self.done = done; self.notes = notes; self.remind = remind; self.place = place; self.a4 = a4 }
 }
 
+/// A task dropped on an hour (both apps) gets that day and time. A repeating A4 task's time belongs to its rule in A4, so it takes only the day.
+public func dropped(_ t: ToDo, at time: Date) -> ToDo {
+    var n = t
+    if t.a4?.repeating == true { n.due = t.timed ? sameClock(t.due!, on: time) : cal.startOfDay(for: time) } else { if !t.timed { n.a4?.ring = true }; n.due = time; n.timed = true }
+    return n
+}
+
 public enum Remind: String, CaseIterable { case time = "At a time", arriving = "Arriving", leaving = "Leaving" }
 
 public struct Spot: Equatable {
