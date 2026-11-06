@@ -88,7 +88,7 @@ struct CalHeader: View {
         switch app.mode {
         case .list: return "Schedule"
         case .day: return dateText(a, "EEEE, MMM d")
-        case .week: return dateText(a, "MMM d") + " to " + dateText(last, cal.isDate(a, equalTo: last, toGranularity: .month) ? "d" : "MMM d")
+        case .week: let f = app.days[0]; return dateText(f, "MMM d") + " to " + dateText(last, cal.isDate(f, equalTo: last, toGranularity: .month) ? "d" : "MMM d")
         case .month: return dateText(a, "MMMM yyyy")
         case .year: return dateText(a, "yyyy")
         }
@@ -132,6 +132,7 @@ struct WeekStrip: View {
             .scrollTargetLayout()
         }
         .scrollTargetBehavior(.paging).scrollIndicators(.hidden)
+        .fixedSize(horizontal: false, vertical: true)  // only as tall as one week's row
         .scrollPosition(id: $week)
         .onAppear { week = index(app.anchor, base) }
         .onChange(of: base) { week = index(app.anchor, base) }
