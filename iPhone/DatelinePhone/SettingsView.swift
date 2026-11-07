@@ -1,4 +1,4 @@
-// Settings and Trial and unlock (approved mockups). The unlock works with the Mac's buyer keys; buying through Apple comes with the App Store step.
+// Settings and Trial and unlock (approved mockups). The unlock is bought through Apple here; a Mac buyer key arrives through iCloud.
 import SwiftUI
 import DatelineCore
 
@@ -426,6 +426,7 @@ struct UnlockView: View {
     @ObservedObject private var license = License.shared
     @Environment(\.dismiss) private var dismiss
     @State private var note: String?
+    @State private var busy = false
 
     var body: some View {
         let status = license.status
@@ -461,12 +462,12 @@ struct UnlockView: View {
                     .font(.headline).foregroundStyle(.white).background(T.tint, in: RoundedRectangle(cornerRadius: 14)).padding(.horizontal, 16).padding(.bottom, 24)
             } else {
                 VStack(spacing: 0) {
-                    Button { note = Self.storeLater } label: { Text("Unlock Dateline").frame(maxWidth: .infinity, minHeight: 54) }
-                        .font(.headline).foregroundStyle(.white).background(T.tint, in: RoundedRectangle(cornerRadius: 14))
+                    Button(action: buy) { Text("Unlock Dateline").frame(maxWidth: .infinity, minHeight: 54) }
+                        .font(.headline).foregroundStyle(.white).background(T.tint, in: RoundedRectangle(cornerRadius: 14)).disabled(busy).opacity(busy ? 0.6 : 1)
                     Text("Paid through the App Store. Price shown by Apple.").font(.footnote).foregroundStyle(T.text2).padding(.top, 6)
                     Text("Already bought Dateline? It unlocks by itself on an iPhone signed in to the same Apple Account.").font(.footnote).foregroundStyle(T.text2).multilineTextAlignment(.center).padding(.top, 14)
                     HStack(spacing: 24) {
-                        Button("Restore purchase") { license.syncCloudKey(); if case .bought = license.status { note = "Dateline is unlocked. Thank you!" } else { note = Self.storeLater } }.frame(minHeight: 44)
+                        Button("Restore purchase", action: restore).frame(minHeight: 44).disabled(busy)
                         Button("Not now") { dismiss() }.frame(minHeight: 44)
                     }
                     .font(.subheadline).foregroundStyle(T.tint).padding(.top, 12)
@@ -478,7 +479,27 @@ struct UnlockView: View {
         .alert(note ?? "", isPresented: Binding(get: { note != nil }, set: { if !$0 { note = nil } })) { Button("OK") {} }
     }
 
-    static let storeLater = "Buying inside the app comes with the App Store version."
+    private func buy() {
+        busy = true
+        Task {
+            switch await license.buyInApp() {
+            case .bought: note = "Dateline is unlocked. Thank you!"
+            case .pending: note = "Your purchase is waiting for approval. Dateline unlocks by itself once it goes through."
+            case .cancelled: break
+            case .failed(let m): note = m
+            }
+            busy = false
+        }
+    }
+
+    private func restore() {
+        busy = true
+        Task {
+            await license.restore()
+            if case .bought = license.status { note = "Dateline is unlocked. Thank you!" } else { note = "No purchase found for this Apple Account. Bought Dateline for Mac? Enter your key on the Mac once and this iPhone unlocks by itself." }
+            busy = false
+        }
+    }
 
     private func headline(_ s: License.Status) -> String {
         switch s {

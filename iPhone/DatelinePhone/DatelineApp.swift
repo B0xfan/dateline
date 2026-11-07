@@ -17,6 +17,7 @@ struct DatelineApp: App {
 
     init() {
         let made: PhoneState = MainActor.assumeIsolated {
+            License.shared.watchStore()  // Apple's purchases: new, restored, refunded (never in the checks and pictures)
             #if DEBUG
             if let demo = Demo.make() { return demo }  // debug builds only: sample calendars for the checks and pictures, never a real calendar
             #endif

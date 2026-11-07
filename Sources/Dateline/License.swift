@@ -73,7 +73,7 @@ struct LicenseSettings: View {
             switch lic.status {
             case .bought(let n):
                 head("checkmark", Palette.personal, "Dateline is yours. Thank you!", n > 0 ? "Key #\(n)" : "")
-                Text("Lost the key? It's in the email from Payhip. A new Mac uses the same key.").font(.ui(12)).foregroundStyle(Palette.text3)
+                Text(n > 0 ? "Lost the key? It's in the email from Payhip. A new Mac uses the same key." : "Bought through the App Store on your iPhone. It unlocks this Mac through your iCloud.").font(.ui(12)).foregroundStyle(Palette.text3)
             case .trial(let left):
                 head("clock", Palette.accent, "Free trial: \(left) \(left == 1 ? "day" : "days") left",
                      "Started \(dateText(lic.started, "MMM d")). Ends \(dateText(lic.trialEnds, "MMM d")). After that your calendar stays, but adding and changing events is off until you enter a key.")
