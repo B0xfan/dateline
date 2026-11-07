@@ -41,7 +41,12 @@ struct RootView: View {
             app.today = now
             License.shared.tick(now)
         }
-        .task { if !app.sample { Here.shared.start() } }  // sunrise and weather for where the phone is; never in a test
+        .task {
+            guard !app.sample else { return }
+            Here.shared.start()  // sunrise and weather for where the phone is; never in a test
+            await License.shared.storeReady()
+            if License.shared.trialNotStarted { app.showUnlock = true }  // first open: the trial's terms before it starts (App Review 3.1.1)
+        }
     }
 }
 

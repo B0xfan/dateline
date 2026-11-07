@@ -65,7 +65,7 @@ struct SettingsView: View {
         switch license.status {
         case .bought: return "Unlocked"
         case .trial(let n): return "Free trial, \(n) day\(n == 1 ? "" : "s") left"
-        case .ended: return "Free trial ended"
+        case .ended: return license.trialNotStarted ? "Free trial not started" : "Free trial ended"
         }
     }
     private var statusDetail: String { if case .bought(let s) = license.status, s > 0 { return "Unlocked" }; return "" }
@@ -462,10 +462,16 @@ struct UnlockView: View {
                     .font(.headline).foregroundStyle(.white).background(T.tint, in: RoundedRectangle(cornerRadius: 14)).padding(.horizontal, 16).padding(.bottom, 24)
             } else {
                 VStack(spacing: 0) {
-                    Button(action: buy) { Text("Unlock Dateline").frame(maxWidth: .infinity, minHeight: 54) }
-                        .font(.headline).foregroundStyle(.white).background(T.tint, in: RoundedRectangle(cornerRadius: 14)).disabled(busy).opacity(busy ? 0.6 : 1)
-                    Text("Paid through the App Store. Price shown by Apple.").font(.footnote).foregroundStyle(T.text2).padding(.top, 6)
-                    Text("Already bought Dateline? It unlocks by itself on an iPhone signed in to the same Apple Account.").font(.footnote).foregroundStyle(T.text2).multilineTextAlignment(.center).padding(.top, 14)
+                    if license.trialNotStarted {
+                        Button(action: startTrial) { Text("Start \(License.trialDays)-day free trial").frame(maxWidth: .infinity, minHeight: 54) }
+                            .font(.headline).foregroundStyle(.white).background(T.tint, in: RoundedRectangle(cornerRadius: 14)).disabled(busy).opacity(busy ? 0.6 : 1)
+                        Button(action: buy) { Text("Unlock now for \(price)").frame(minHeight: 44) }.font(.subheadline.weight(.semibold)).foregroundStyle(T.tint).disabled(busy).padding(.top, 6)
+                    } else {
+                        Button(action: buy) { Text("Unlock Dateline").frame(maxWidth: .infinity, minHeight: 54) }
+                            .font(.headline).foregroundStyle(.white).background(T.tint, in: RoundedRectangle(cornerRadius: 14)).disabled(busy).opacity(busy ? 0.6 : 1)
+                        Text("Paid through the App Store. Price shown by Apple.").font(.footnote).foregroundStyle(T.text2).padding(.top, 6)
+                    }
+                    Text("Already bought Dateline? It unlocks by itself on an iPhone signed in to the same Apple Account.").font(.footnote).foregroundStyle(T.text2).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).padding(.top, 14)  // wraps, never cut off
                     HStack(spacing: 24) {
                         Button("Restore purchase", action: restore).frame(minHeight: 44).disabled(busy)
                         Button("Not now") { dismiss() }.frame(minHeight: 44)
@@ -477,6 +483,7 @@ struct UnlockView: View {
         }
         .background(T.bg)
         .alert(note ?? "", isPresented: Binding(get: { note != nil }, set: { if !$0 { note = nil } })) { Button("OK") {} }
+        .task { await license.loadPrice() }
     }
 
     private func buy() {
@@ -485,6 +492,22 @@ struct UnlockView: View {
             switch await license.buyInApp() {
             case .bought: note = "Dateline is unlocked. Thank you!"
             case .pending: note = "Your purchase is waiting for approval. Dateline unlocks by itself once it goes through."
+            case .cancelled: break
+            case .failed(let m): note = m
+            }
+            busy = false
+        }
+    }
+
+    // shortcut: the US price shows until the App Store answers; fine offline on first open, the button itself always charges Apple's local price.
+    private var price: String { license.unlockPrice ?? License.price }
+
+    private func startTrial() {
+        busy = true
+        Task {
+            switch await license.startTrial() {
+            case .bought: if license.canEdit { dismiss() }  // a reinstall can bring back a trial that already ended; the sheet then shows that
+            case .pending: note = "Your trial is waiting for approval. It starts by itself once it goes through."
             case .cancelled: break
             case .failed(let m): note = m
             }
@@ -504,7 +527,7 @@ struct UnlockView: View {
     private func headline(_ s: License.Status) -> String {
         switch s {
         case .trial(let n): return "\(n) day\(n == 1 ? "" : "s") left in your trial"
-        case .ended: return "Your free trial has ended"
+        case .ended: return license.trialNotStarted ? "Try Dateline free for \(License.trialDays) days" : "Your free trial has ended"
         case .bought: return "Dateline is unlocked"
         }
     }
@@ -512,6 +535,8 @@ struct UnlockView: View {
     private func message(_ s: License.Status) -> String {
         switch s {
         case .trial: return "Everything works during the \(License.trialDays) free days. After that, unlock Dateline to keep adding and changing events."
+        case .ended where license.trialNotStarted:
+            return "Everything works for \(License.trialDays) days, free. After that, your calendar stays here to look at, and adding and changing events needs a one-time unlock for \(price). No subscription."
         case .ended: return "Your calendar is still here to look at. Unlock Dateline to add and change events again."
         case .bought: return "Thank you for buying Dateline."
         }
