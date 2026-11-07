@@ -29,6 +29,29 @@ import CryptoKit
         if live, let s = d.object(forKey: "trialStarted") as? Date { started = s } else { started = Date() }
         if live, d.object(forKey: "trialStarted") == nil { d.set(started, forKey: "trialStarted") }
         serial = live ? d.string(forKey: "licenseKey").flatMap { keySerial($0) } : nil
+        guard live else { return }
+        cloud.synchronize()
+        syncCloudKey()
+        cloudWatch = NotificationCenter.default.addObserver(forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification, object: cloud, queue: .main) { _ in
+            Task { @MainActor in License.shared.syncCloudKey() }
+        }
+    }
+
+    // The bought key travels through the person's own iCloud (John 2026-11-07): typed once on the Mac, the iPhone unlocks by itself.
+    // The phone never asks for a key (Apple rule 3.1.1). Test and picture modes never reach this (`live`).
+    private let cloud = NSUbiquitousKeyValueStore.default
+    private static let cloudKey = "license.v1"
+    private var cloudWatch: Any?
+
+    /// Takes a good key from iCloud when this device has none, and shares this device's good key when iCloud has none.
+    public func syncCloudKey() {
+        guard live else { return }
+        let d = UserDefaults.standard
+        switch pickKey(local: d.string(forKey: "licenseKey"), cloud: cloud.string(forKey: Self.cloudKey)) {
+        case .adopt(let k): d.set(k, forKey: "licenseKey"); serial = keySerial(k)
+        case .share(let k): cloud.set(k, forKey: Self.cloudKey)
+        case .none: break
+        }
     }
 
     /// Redraws the trial parts only when a clock tick changes the days left or ends the trial.
@@ -43,6 +66,7 @@ import CryptoKit
         guard let s = keySerial(key) else { return false }
         if live { UserDefaults.standard.set(key.filter { !$0.isWhitespace }, forKey: "licenseKey") }
         serial = s; test = nil
+        syncCloudKey()
         return true
     }
 
@@ -56,6 +80,15 @@ public func trialStatus(started: Date, now: Date, serial: Int?) -> License.Statu
     if let serial { return .bought(serial: serial) }
     let left = started.addingTimeInterval(Double(License.trialDays) * 86400).timeIntervalSince(now)
     return left > 0 ? .trial(daysLeft: min(Int((left / 86400).rounded(.up)), License.trialDays)) : .ended  // never more than 7, even with the clock set back
+}
+
+public enum KeyMove: Equatable { case adopt(String), share(String), none }
+
+/// Pure, for the self-test: which way the bought key moves between this device and iCloud. Two different good keys both stay.
+public nonisolated func pickKey(local: String?, cloud: String?, check: (String) -> Int? = { keySerial($0) }) -> KeyMove {
+    if let l = local, check(l) != nil { return cloud.flatMap(check) == nil ? .share(l) : .none }
+    if let c = cloud, check(c) != nil { return .adopt(c) }
+    return .none
 }
 
 /// The key's number when it is a good Dateline key: DLK-K<6 digits>.<86-char base64url Ed25519 signature of "K<6 digits>">.
@@ -91,6 +124,12 @@ public func licenseSelftest(_ expect: (Bool, String) -> Void) {
     expect(keySerial(make(586300, Curve25519.Signing.PrivateKey()), publicKeys: [pub], revoked: []) == nil, "keys: a key signed by someone else is refused")
     expect(keySerial(good.replacingOccurrences(of: "K586300", with: "K586301"), publicKeys: [pub], revoked: []) == nil, "keys: a changed number is refused")
     expect(keySerial("RVPK" + good.dropFirst(3), publicKeys: [pub], revoked: []) == nil && keySerial("", publicKeys: [pub], revoked: []) == nil, "keys: other shapes are refused")
+    let check = { keySerial($0, publicKeys: [pub], revoked: [586301]) }, refunded = make(586301)
+    expect(pickKey(local: nil, cloud: good, check: check) == .adopt(good), "iCloud key: a phone with no key takes the Mac's good key")
+    expect(pickKey(local: good, cloud: nil, check: check) == .share(good), "iCloud key: a good key on this device goes to iCloud when it has none")
+    expect(pickKey(local: good, cloud: good, check: check) == .none && pickKey(local: nil, cloud: nil, check: check) == .none, "iCloud key: nothing moves when both match or neither has one")
+    expect(pickKey(local: nil, cloud: refunded, check: check) == .none && pickKey(local: nil, cloud: "junk", check: check) == .none, "iCloud key: a refunded or broken key in iCloud never unlocks")
+    expect(pickKey(local: good, cloud: refunded, check: check) == .share(good) && pickKey(local: good, cloud: make(586302), check: check) == .none, "iCloud key: a good key replaces a refunded one, never another good one")
     let start = Date(timeIntervalSince1970: 1_800_000_000), day = 86400.0
     expect(trialStatus(started: start, now: start, serial: nil) == .trial(daysLeft: 7), "trial: 7 days left on the first day")
     expect(trialStatus(started: start, now: start + 2.5 * day, serial: nil) == .trial(daysLeft: 5), "trial: 5 days left half way through day 3")
