@@ -86,6 +86,7 @@ enum Demo {
             let parts = page.dropFirst(9).components(separatedBy: "+")  // settings-accounts+iCloud opens an account's calendars
             app.settingsPath = parts.map { $0 == "icloud" ? (app.store.calendars.first?.account ?? $0) : $0 }
         case "unlock": License.shared.test = .trial(daysLeft: 3); app.showUnlock = true
+        case "unlock-start": License.shared.test = .ended; License.shared.trialBegun = false; app.showUnlock = true
         case "widgets": app.demoWidgets = true
         default: app.mode = .week
         }

@@ -26,14 +26,23 @@ import StoreKit
     @Published public private(set) var serial: Int?
     @Published public private(set) var purchased = false  // the App Store unlock: owned on this iPhone, or Apple's signed record of it reached this device through iCloud
     private var storeOwned = false  // the iPhone's App Store says this Apple Account owns the unlock
+    @Published public private(set) var unlockPrice: String?  // the unlock's price as Apple shows it in this country (iPhone only); nil until the App Store answers
     public nonisolated static let productID = "com.johnhesch.dateline.unlock"  // App Store Connect in-app purchase 6831993222, non-consumable, $29.99
     @Published public var test: Status?  // set by --render to draw each state
     @Published public var now = Date()  // moved on by the window's clock, so the days left count down while Dateline stays open
+    /// False on an iPhone until the free "7-day Trial" item is taken from Apple (App Review 3.1.1); editing stays off until then. Always true on the Mac.
+    @Published public var trialBegun = true
+    public var trialNotStarted: Bool { !trialBegun && status == .ended }
 
     private init() {
         let d = UserDefaults.standard
         if live, let s = d.object(forKey: "trialStarted") as? Date { started = s } else { started = Date() }
+        #if os(iOS)
+        // The phone's trial starts only from the "Start 7-day free trial" button, never by itself.
+        if live, d.object(forKey: "trialStarted") == nil { started = .distantPast; trialBegun = false }
+        #else
         if live, d.object(forKey: "trialStarted") == nil { d.set(started, forKey: "trialStarted") }
+        #endif
         serial = live ? d.string(forKey: "licenseKey").flatMap { keySerial($0) } : nil
         guard live else { return }
         cloud.synchronize()
@@ -123,14 +132,38 @@ extension License {
         Task { await refreshStore() }
     }
 
+    public nonisolated static let trialID = "com.johnhesch.dateline.trial"  // App Store Connect free non-consumable "7-day Trial" (App Review 3.1.1)
+    /// The trial began when Apple recorded the free trial item; the earliest record wins, so deleting the app never restarts it.
+    private func beginTrial(_ at: Date) {
+        guard let s = trialStart(saved: trialBegun ? started : nil, store: at) else { return }
+        started = s; trialBegun = true; UserDefaults.standard.set(s, forKey: "trialStarted"); now = Date()
+    }
+
+    /// Start 7-day free trial: takes the free trial item from Apple. True once the trial runs.
+    public func startTrial() async -> BuyResult {
+        do {
+            guard let p = try await Product.products(for: [Self.trialID]).first else { return .failed("The App Store didn't answer. Try again in a moment.") }
+            switch try await p.purchase() {
+            case .success(let r): await take(r); return trialBegun ? .bought : .failed("Apple couldn't confirm the trial. Try again in a moment.")
+            case .pending: return .pending
+            default: return .cancelled
+            }
+        } catch { return .failed(error.localizedDescription) }
+    }
+
     private func take(_ r: VerificationResult<StoreKit.Transaction>) async {
+        if case .verified(let t) = r, t.productID == Self.trialID { beginTrial(t.originalPurchaseDate); await t.finish(); return }
         guard case .verified(let t) = r, t.productID == Self.productID else { return }
         if t.revocationDate != nil { dropPurchase(r.jwsRepresentation) } else { recordPurchase(r.jwsRepresentation) }
         await t.finish()
     }
 
     // The latest transaction, refunded ones included, so a refund made while Dateline was closed still locks it.
-    private func refreshStore() async { if let r = await StoreKit.Transaction.latest(for: Self.productID) { await take(r) } }
+    private func refreshStore() async {
+        if let r = await StoreKit.Transaction.latest(for: Self.trialID) { await take(r) }
+        if let r = await StoreKit.Transaction.latest(for: Self.productID) { await take(r) }
+        if unlockPrice == nil { unlockPrice = try? await Product.products(for: [Self.productID]).first?.displayPrice }
+    }
 
     public func buyInApp() async -> BuyResult {
         do {
@@ -204,6 +237,11 @@ public nonisolated func appleLeafKey(_ certs: [Data], at date: Date) -> P256.Sig
 public let appleRootG3 = Data(base64Encoded: "MIICQzCCAcmgAwIBAgIILcX8iNLFS5UwCgYIKoZIzj0EAwMwZzEbMBkGA1UEAwwSQXBwbGUgUm9vdCBDQSAtIEczMSYwJAYDVQQLDB1BcHBsZSBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTETMBEGA1UECgwKQXBwbGUgSW5jLjELMAkGA1UEBhMCVVMwHhcNMTQwNDMwMTgxOTA2WhcNMzkwNDMwMTgxOTA2WjBnMRswGQYDVQQDDBJBcHBsZSBSb290IENBIC0gRzMxJjAkBgNVBAsMHUFwcGxlIENlcnRpZmljYXRpb24gQXV0aG9yaXR5MRMwEQYDVQQKDApBcHBsZSBJbmMuMQswCQYDVQQGEwJVUzB2MBAGByqGSM49AgEGBSuBBAAiA2IABJjpLz1AcqTtkyJygRMc3RCV8cWjTnHcFBbZDuWmBSp3ZHtfTjjTuxxEtX/1H7YyYl3J6YRbTzBPEVoA/VhYDKX1DyxNB0cTddqXl5dvMVztK517IDvYuVTZXpmkOlEKMaNCMEAwHQYDVR0OBBYEFLuw3qFYM4iapIqZ3r6966/ayySrMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEGMAoGCCqGSM49BAMDA2gAMGUCMQCD6cHEFl4aXTQY2e3v9GwOAEZLuN+yRhHFD/3meoyhpmvOwgPUnPWTxnS4at+qIxUCMG1mihDK1A3UT82NQz60imOlM27jbdoXt2QfyFMm+YhidDkLF1vLUagM6BgD56KyKA==")!
 
 /// Pure, for the self-test: 7 days from the first open, counted in whole days left (the last day says 1).
+/// When the trial began: the earlier of this device's saved start and Apple's record of the free trial item.
+public nonisolated func trialStart(saved: Date?, store: Date?) -> Date? {
+    [saved, store].compactMap { $0 }.min()
+}
+
 public func trialStatus(started: Date, now: Date, serial: Int?) -> License.Status {
     if let serial { return .bought(serial: serial) }
     let left = started.addingTimeInterval(Double(License.trialDays) * 86400).timeIntervalSince(now)
@@ -285,5 +323,8 @@ public func licenseSelftest(_ expect: (Bool, String) -> Void) {
     expect(trialStatus(started: start, now: start + 7 * day, serial: nil) == .ended, "trial: ended after 7 days")
     expect(trialStatus(started: start, now: start - 30 * day, serial: nil) == .trial(daysLeft: 7), "trial: setting the clock back never adds days")
     expect(trialStatus(started: start, now: start + 30 * day, serial: 586300) == .bought(serial: 586300), "trial: a key ends it for good")
+    expect(trialStart(saved: nil, store: start) == start && trialStart(saved: nil, store: nil) == nil, "trial: Apple's free trial record starts it")
+    expect(trialStart(saved: start + day, store: start) == start && trialStart(saved: start, store: start + 9 * day) == start, "trial: reinstalling never restarts it (earliest start wins)")
+    expect(trialStatus(started: .distantPast, now: start, serial: nil) == .ended && trialStatus(started: .distantPast, now: start, serial: 586300) == .bought(serial: 586300), "trial: not started yet means no editing, unless bought")
 }
 
