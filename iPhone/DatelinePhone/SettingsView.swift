@@ -471,7 +471,7 @@ struct UnlockView: View {
                             .font(.headline).foregroundStyle(.white).background(T.tint, in: RoundedRectangle(cornerRadius: 14)).disabled(busy).opacity(busy ? 0.6 : 1)
                         Text("Paid through the App Store. Price shown by Apple.").font(.footnote).foregroundStyle(T.text2).padding(.top, 6)
                     }
-                    Text("Already bought Dateline? It unlocks by itself on an iPhone signed in to the same Apple Account.").font(.footnote).foregroundStyle(T.text2).multilineTextAlignment(.center).padding(.top, 14)
+                    Text("Already bought Dateline? It unlocks by itself on an iPhone signed in to the same Apple Account.").font(.footnote).foregroundStyle(T.text2).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).padding(.top, 14)  // wraps, never cut off
                     HStack(spacing: 24) {
                         Button("Restore purchase", action: restore).frame(minHeight: 44).disabled(busy)
                         Button("Not now") { dismiss() }.frame(minHeight: 44)
