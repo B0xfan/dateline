@@ -68,7 +68,7 @@ struct SettingsView: View {
         case .ended: return "Free trial ended"
         }
     }
-    private var statusDetail: String { if case .bought(let s) = license.status, s > 0 { return "Mac key" }; return "" }
+    private var statusDetail: String { if case .bought(let s) = license.status, s > 0 { return "Unlocked" }; return "" }
 
     private func link(_ page: String, _ icon: String, _ color: Color, _ title: String, _ value: String) -> some View {
         NavigationLink(value: page) { line(icon, color, title, value, opens: false) }
@@ -425,8 +425,6 @@ struct UnlockView: View {
     @EnvironmentObject var app: PhoneState
     @ObservedObject private var license = License.shared
     @Environment(\.dismiss) private var dismiss
-    @State private var askKey = false
-    @State private var key = ""
     @State private var note: String?
 
     var body: some View {
@@ -466,10 +464,9 @@ struct UnlockView: View {
                     Button { note = Self.storeLater } label: { Text("Unlock Dateline").frame(maxWidth: .infinity, minHeight: 54) }
                         .font(.headline).foregroundStyle(.white).background(T.tint, in: RoundedRectangle(cornerRadius: 14))
                     Text("Paid through the App Store. Price shown by Apple.").font(.footnote).foregroundStyle(T.text2).padding(.top, 6)
-                    Button { askKey = true } label: { Text("I bought Dateline for Mac").frame(maxWidth: .infinity, minHeight: 50) }
-                        .font(.callout.weight(.semibold)).foregroundStyle(T.tint).background(T.bg2, in: RoundedRectangle(cornerRadius: 14)).padding(.top, 14)
+                    Text("Already bought Dateline? It unlocks by itself on an iPhone signed in to the same Apple Account.").font(.footnote).foregroundStyle(T.text2).multilineTextAlignment(.center).padding(.top, 14)
                     HStack(spacing: 24) {
-                        Button("Restore purchase") { note = Self.storeLater }.frame(minHeight: 44)
+                        Button("Restore purchase") { license.syncCloudKey(); if case .bought = license.status { note = "Dateline is unlocked. Thank you!" } else { note = Self.storeLater } }.frame(minHeight: 44)
                         Button("Not now") { dismiss() }.frame(minHeight: 44)
                     }
                     .font(.subheadline).foregroundStyle(T.tint).padding(.top, 12)
@@ -478,18 +475,10 @@ struct UnlockView: View {
             }
         }
         .background(T.bg)
-        .alert("Enter your Mac key", isPresented: $askKey) {
-            TextField("DLK-K…", text: $key).autocorrectionDisabled().textInputAutocapitalization(.never)
-            Button("Cancel", role: .cancel) { key = "" }
-            Button("Unlock") {
-                note = license.enter(key) ? "Dateline is unlocked. Thank you!" : "That key doesn't look right. Paste the whole key from your email."
-                key = ""
-            }
-        } message: { Text("It's in the email you got when you bought Dateline.") }
         .alert(note ?? "", isPresented: Binding(get: { note != nil }, set: { if !$0 { note = nil } })) { Button("OK") {} }
     }
 
-    static let storeLater = "Buying inside the app comes with the App Store version. Until then, unlock it with the key from your Mac purchase."
+    static let storeLater = "Buying inside the app comes with the App Store version."
 
     private func headline(_ s: License.Status) -> String {
         switch s {
