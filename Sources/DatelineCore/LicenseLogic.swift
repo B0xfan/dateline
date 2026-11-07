@@ -119,18 +119,18 @@ extension License {
     /// Watches Apple's purchase list for the life of the app: new, restored and refunded unlocks. Test and picture modes never reach the store.
     public func watchStore() {
         guard live else { return }
-        Task { for await r in Transaction.updates { await take(r) } }
+        Task { for await r in StoreKit.Transaction.updates { await take(r) } }
         Task { await refreshStore() }
     }
 
-    private func take(_ r: VerificationResult<Transaction>) async {
+    private func take(_ r: VerificationResult<StoreKit.Transaction>) async {
         guard case .verified(let t) = r, t.productID == Self.productID else { return }
         if t.revocationDate != nil { dropPurchase(r.jwsRepresentation) } else { recordPurchase(r.jwsRepresentation) }
         await t.finish()
     }
 
     // The latest transaction, refunded ones included, so a refund made while Dateline was closed still locks it.
-    private func refreshStore() async { if let r = await Transaction.latest(for: Self.productID) { await take(r) } }
+    private func refreshStore() async { if let r = await StoreKit.Transaction.latest(for: Self.productID) { await take(r) } }
 
     public func buyInApp() async -> BuyResult {
         do {
