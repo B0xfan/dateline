@@ -71,19 +71,20 @@ public final class AppleCalendar: CalendarSource {
         #endif
         return CalInfo(id: c.calendarIdentifier, title: c.title, account: c.source.title, color: color, writable: c.allowsContentModifications)
     }
-    private func elsewhere(_ s: EKSource) -> Bool { shownElsewhere(s.title, s.sourceType == .calDAV) }
+    // A Dateline account reads only its own calendars, so the Mac's subscriptions in that account (football feeds) stay shown here.
+    private func elsewhere(_ c: EKCalendar) -> Bool { c.type != .subscription && shownElsewhere(c.source.title, c.source.sourceType == .calDAV) }
 
     public func calendars() -> [CalInfo] {
-        ek.calendars(for: .event).filter { !elsewhere($0.source) }.sorted { ($0.source.title, $0.title) < ($1.source.title, $1.title) }.map(info)
+        ek.calendars(for: .event).filter { !elsewhere($0) }.sorted { ($0.source.title, $0.title) < ($1.source.title, $1.title) }.map(info)
     }
     public func allCalendars() -> [CalInfo] { ek.calendars(for: .event).map(info) }
     public func defaultCalendar() -> (id: String, title: String, elsewhere: Bool)? {
-        ek.defaultCalendarForNewEvents.map { ($0.calendarIdentifier, $0.title, elsewhere($0.source)) }
+        ek.defaultCalendarForNewEvents.map { ($0.calendarIdentifier, $0.title, elsewhere($0)) }
     }
 
     // The calendars to read, nil when that's all of them. Empty: nothing to read.
     private func kept() -> (cals: [EKCalendar]?, none: Bool) {
-        let all = ek.calendars(for: .event), keep = all.filter { !elsewhere($0.source) }
+        let all = ek.calendars(for: .event), keep = all.filter { !elsewhere($0) }
         return (keep.count == all.count ? nil : keep, keep.isEmpty)
     }
 
