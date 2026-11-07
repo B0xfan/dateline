@@ -41,7 +41,7 @@ ditto build/Dateline.app "$APP"
 # First sign locally with hardened runtime and Dateline's permissions (Xcode keeps both when it re-signs), then let Xcode re-sign with Developer ID, embed the
 # all-Macs profile (needed for the Focus permission) and send it to Apple; the checked, stapled app comes back into $APP.
 ID=AB33048703517BE9CB52B2E3781C8B1B00C8A64D
-security find-identity -v -p codesigning | grep -q "$ID" || { echo "Apple Development identity missing: Xcode > Settings > Accounts"; exit 1; }
+grep -q "$ID" <<<"$(security find-identity -v -p codesigning)" || { echo "Apple Development identity missing: Xcode > Settings > Accounts"; exit 1; }
 SPK="$APP/Contents/Frameworks/Sparkle.framework"
 for part in "$SPK/Versions/B/Autoupdate" "$SPK/Versions/B/Updater.app" "$SPK"; do codesign --force --options runtime --timestamp=none --sign "$ID" "$part"; done
 codesign --force --options runtime --timestamp=none --entitlements App/Dateline.entitlements --sign "$ID" "$APP"
@@ -71,7 +71,7 @@ done
 ditto "$OUT/notarized/Dateline.app" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 xcrun stapler validate "$APP"
-spctl -a -vvv -t exec "$APP" 2>&1 | grep -q "source=Notarized Developer ID" || { spctl -a -vvv -t exec "$APP"; echo "Not accepted as a checked Developer ID app"; exit 1; }
+grep -q "source=Notarized Developer ID" <<<"$(spctl -a -vvv -t exec "$APP" 2>&1)" || { spctl -a -vvv -t exec "$APP"; echo "Not accepted as a checked Developer ID app"; exit 1; }
 taskpolicy -b nice -n 19 "$APP/Contents/MacOS/Dateline" --selftest >/dev/null || { echo "The signed app does not open"; exit 1; }   # proves macOS accepts its permissions
 
 ZIP="$OUT/Dateline-$VER.zip"
@@ -119,7 +119,7 @@ echo "Checked: $ZIP (version $VER, build $N)"
 # The disk image buyers open (drag Dateline onto Applications), checked by Apple and stapled. Updates still use the zip.
 # Signed with the local Developer ID identity (key + certificate in the login keychain; key file and certificate kept in Application Support/Dateline/devid).
 DEVID="Developer ID Application: John Hesch (LJZ32VB25F)"
-security find-identity -v -p codesigning | grep -q "$DEVID" || { echo "Developer ID identity missing: $DEVID"; exit 1; }
+grep -q "$DEVID" <<<"$(security find-identity -v -p codesigning)" || { echo "Developer ID identity missing: $DEVID"; exit 1; }
 ASC_KEY=S93537G5A5; ASC_P8="$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY.p8"
 ISS="${ASC_ISSUER_ID:-$( { grep '^ASC_ISSUER_ID=' "$HOME/Projects/A4/.env" 2>/dev/null || true; } | cut -d= -f2- | tr -d '"')}"
 [ -f "$ASC_P8" ] && [ -n "$ISS" ] || { echo "App Store Connect key or issuer missing: $ASC_P8, ASC_ISSUER_ID"; exit 1; }
@@ -127,7 +127,8 @@ DMG="$OUT/Dateline.dmg"; ST="$OUT/dmg-stage"; rm -rf "$ST" "$DMG"; mkdir -p "$ST
 ditto "$VAPP" "$ST/Dateline.app"; ln -s /Applications "$ST/Applications"
 hdiutil create -quiet -volname Dateline -srcfolder "$ST" -fs HFS+ -format UDZO "$DMG"; rm -rf "$ST"
 codesign --sign "$DEVID" --timestamp "$DMG"
-xcrun notarytool submit "$DMG" --key "$ASC_P8" --key-id "$ASC_KEY" --issuer "$ISS" --wait --timeout 30m | grep -q "status: Accepted" || { echo "Apple did not accept the disk image"; exit 1; }
+NT=$(xcrun notarytool submit "$DMG" --key "$ASC_P8" --key-id "$ASC_KEY" --issuer "$ISS" --wait --timeout 30m) || true   # read the whole answer: grep -q in a pipe stops early and pipefail counts that as a failure
+grep -q "status: Accepted" <<<"$NT" || { echo "$NT"; echo "Apple did not accept the disk image"; exit 1; }
 xcrun stapler staple -q "$DMG"
 spctl -a -t open --context context:primary-signature "$DMG" || { echo "The disk image is not accepted as signed and checked"; exit 1; }
 echo "Checked: $DMG"
