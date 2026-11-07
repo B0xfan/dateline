@@ -483,6 +483,7 @@ struct UnlockView: View {
         }
         .background(T.bg)
         .alert(note ?? "", isPresented: Binding(get: { note != nil }, set: { if !$0 { note = nil } })) { Button("OK") {} }
+        .task { await license.loadPrice() }
     }
 
     private func buy() {
@@ -505,7 +506,7 @@ struct UnlockView: View {
         busy = true
         Task {
             switch await license.startTrial() {
-            case .bought: dismiss()
+            case .bought: if license.canEdit { dismiss() }  // a reinstall can bring back a trial that already ended; the sheet then shows that
             case .pending: note = "Your trial is waiting for approval. It starts by itself once it goes through."
             case .cancelled: break
             case .failed(let m): note = m

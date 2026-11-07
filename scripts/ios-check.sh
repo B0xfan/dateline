@@ -55,23 +55,25 @@ xcrun simctl terminate "$UDID" $BID >/dev/null 2>&1 || true
 BIG=$(xcrun simctl list devices available -j | python3 -c '
 import json,sys
 d=json.load(sys.stdin)["devices"]
-c=sorted((x["name"],x["udid"]) for k,v in d.items() if "iOS" in k for x in v if "Pro Max" in x["name"])
-print(c[-1][1] if c else "")')
+c=sorted((x["name"],[int(n) for n in k.split("iOS-")[-1].split("-")],x["udid"]) for k,v in d.items() if "iOS" in k for x in v if "Pro Max" in x["name"])
+print(c[-1][2] if c else "")')  # newest Pro Max on its newest iOS
 if [ -n "$BIG" ]; then
   mkdir -p "$OUT/store"
+  xcrun simctl shutdown "$UDID" || true  # one simulator at a time on the runner
   xcrun simctl boot "$BIG" || true; xcrun simctl bootstatus "$BIG" -b
   xcrun simctl spawn "$BIG" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true || true
   xcrun simctl status_bar "$BIG" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
-  xcrun simctl install "$BIG" "$APP"; xcrun simctl ui "$BIG" appearance light
+  xcrun simctl install "$BIG" "$APP" || rc=1; xcrun simctl ui "$BIG" appearance light
   n=1
   for s in week add details tasks places; do
     xcrun simctl terminate "$BIG" $BID >/dev/null 2>&1 || true
     xcrun simctl launch "$BIG" $BID --sample -demo $s >/dev/null || rc=1
     case $s in places) sleep 12;; *) sleep 6;; esac
     xcrun simctl io "$BIG" screenshot "$OUT/store/$n-$s.png" >/dev/null 2>&1 || rc=1
+    [ "$(sips -g pixelWidth "$OUT/store/$n-$s.png" 2>/dev/null | awk '/pixelWidth/{print $2}')" = 1320 ] || { echo "store picture $n-$s is not 6.9 inch (1320 wide)"; rc=1; }
     n=$((n+1))
   done
   xcrun simctl shutdown "$BIG" || true
 else echo "no Pro Max simulator: no App Store pictures"; rc=1; fi
-ls -la "$OUT" "$OUT/store"
+ls -la "$OUT"; [ -d "$OUT/store" ] && ls -la "$OUT/store"
 exit $rc

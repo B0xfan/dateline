@@ -26,6 +26,7 @@ import StoreKit
     @Published public private(set) var serial: Int?
     @Published public private(set) var purchased = false  // the App Store unlock: owned on this iPhone, or Apple's signed record of it reached this device through iCloud
     private var storeOwned = false  // the iPhone's App Store says this Apple Account owns the unlock
+    private var storeChecked: Task<Void, Never>?  // the first look at Apple's trial and unlock records (iPhone only)
     @Published public private(set) var unlockPrice: String?  // the unlock's price as Apple shows it in this country (iPhone only); nil until the App Store answers
     public nonisolated static let productID = "com.johnhesch.dateline.unlock"  // App Store Connect in-app purchase 6831993222, non-consumable, $29.99
     @Published public var test: Status?  // set by --render to draw each state
@@ -129,8 +130,14 @@ extension License {
     public func watchStore() {
         guard live else { return }
         Task { for await r in StoreKit.Transaction.updates { await take(r) } }
-        Task { await refreshStore() }
+        storeChecked = Task { await refreshStore() }
     }
+
+    /// Waits for the first look at Apple's records, so a reinstall or a buyer is never offered a trial they already have.
+    public func storeReady() async { await storeChecked?.value }
+
+    /// The unlock's local price from Apple; tried again each time the unlock screen opens until Apple answers.
+    public func loadPrice() async { if live, unlockPrice == nil { unlockPrice = try? await Product.products(for: [Self.productID]).first?.displayPrice } }
 
     public nonisolated static let trialID = "com.johnhesch.dateline.trial"  // App Store Connect free non-consumable "7-day Trial" (App Review 3.1.1)
     /// The trial began when Apple recorded the free trial item; the earliest record wins, so deleting the app never restarts it.
@@ -162,7 +169,7 @@ extension License {
     private func refreshStore() async {
         if let r = await StoreKit.Transaction.latest(for: Self.trialID) { await take(r) }
         if let r = await StoreKit.Transaction.latest(for: Self.productID) { await take(r) }
-        if unlockPrice == nil { unlockPrice = try? await Product.products(for: [Self.productID]).first?.displayPrice }
+        await loadPrice()
     }
 
     public func buyInApp() async -> BuyResult {
