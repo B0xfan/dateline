@@ -2,7 +2,7 @@
 
 A calendar app for the Mac. It works with the calendars and Apple Reminders already set up on your Mac (iCloud, Google, Exchange and anything else in Apple Calendar), so there are no new accounts to set up. Your data stays on your Mac.
 
-**[Download the free 7 day trial](https://github.com/B0xfan/dateline/releases/latest)** · **[Buy Dateline for $29.99](https://payhip.com/b/P4iIX)** · [dateline.app](https://dateline.app)
+**[Download the free 7 day trial](https://github.com/B0xfan/dateline/releases/latest/download/Dateline.dmg)** · **[Buy Dateline for $29.99](https://payhip.com/b/P4iIX)** · [dateline.app](https://dateline.app)
 
 One payment, no subscription. All updates are free.
 
@@ -76,8 +76,8 @@ Press ? in the app for every keyboard shortcut.
 
 You need a Mac with macOS 14 (Sonoma) or newer.
 
-1. Download the newest `Dateline-0.1.x.zip` from [Releases](https://github.com/B0xfan/dateline/releases/latest). It is signed and checked by Apple.
-2. Open the zip and drag Dateline into your Applications folder, then open it.
+1. Download [Dateline.dmg](https://github.com/B0xfan/dateline/releases/latest/download/Dateline.dmg), the newest version. It is signed and checked by Apple.
+2. Open Dateline.dmg and drag Dateline onto the Applications folder in the window that appears, then open Dateline from Applications.
 3. When macOS asks for permission to use Calendar and Reminders, click Allow for both. Dateline asks for your location only when you first use drive times or sunrise and sunset.
 
 ### Free trial and buying
