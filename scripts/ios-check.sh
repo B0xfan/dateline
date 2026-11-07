@@ -64,6 +64,8 @@ if [ -n "$BIG" ]; then
   xcrun simctl spawn "$BIG" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true || true
   xcrun simctl status_bar "$BIG" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
   xcrun simctl install "$BIG" "$APP" || rc=1; xcrun simctl ui "$BIG" appearance light
+  # First launch on a fresh simulator is slow; a throwaway launch keeps the first picture from coming out blank.
+  xcrun simctl launch "$BIG" $BID --sample -demo week >/dev/null || true; sleep 15
   n=1
   for s in week add details tasks places; do
     xcrun simctl terminate "$BIG" $BID >/dev/null 2>&1 || true
@@ -71,6 +73,8 @@ if [ -n "$BIG" ]; then
     case $s in places) sleep 12;; *) sleep 6;; esac
     xcrun simctl io "$BIG" screenshot "$OUT/store/$n-$s.png" >/dev/null 2>&1 || rc=1
     [ "$(sips -g pixelWidth "$OUT/store/$n-$s.png" 2>/dev/null | awk '/pixelWidth/{print $2}')" = 1320 ] || { echo "store picture $n-$s is not 6.9 inch (1320 wide)"; rc=1; }
+    # shortcut: a near-empty screen compresses under ~150 KB; real screens here are 290 KB+. Upgrade to a pixel check if a screen gets that plain.
+    [ "$(stat -f %z "$OUT/store/$n-$s.png" 2>/dev/null || echo 0)" -gt 150000 ] || { echo "store picture $n-$s looks blank"; rc=1; }
     n=$((n+1))
   done
   xcrun simctl shutdown "$BIG" || true
