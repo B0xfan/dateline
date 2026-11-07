@@ -116,12 +116,24 @@ Ed25519PublicKey.from_public_bytes(base64.b64decode(sys.argv[1])).verify(base64.
 PY
 echo "Checked: $ZIP (version $VER, build $N)"
 
+# The disk image buyers open (drag Dateline onto Applications), checked by Apple and stapled. Updates still use the zip.
+# shortcut: the image itself is unsigned (no Developer ID certificate on this Mac, signing happens in Xcode's cloud); the app inside is the notarized one. Sign it here once a local Developer ID identity exists.
+ASC_KEY=S93537G5A5; ASC_P8="$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY.p8"
+ISS="${ASC_ISSUER_ID:-$( { grep '^ASC_ISSUER_ID=' "$HOME/Projects/A4/.env" 2>/dev/null || true; } | cut -d= -f2- | tr -d '"')}"
+[ -f "$ASC_P8" ] && [ -n "$ISS" ] || { echo "App Store Connect key or issuer missing: $ASC_P8, ASC_ISSUER_ID"; exit 1; }
+DMG="$OUT/Dateline.dmg"; ST="$OUT/dmg-stage"; rm -rf "$ST" "$DMG"; mkdir -p "$ST"
+ditto "$VAPP" "$ST/Dateline.app"; ln -s /Applications "$ST/Applications"
+hdiutil create -quiet -volname Dateline -srcfolder "$ST" -fs HFS+ -format UDZO "$DMG"; rm -rf "$ST"
+xcrun notarytool submit "$DMG" --key "$ASC_P8" --key-id "$ASC_KEY" --issuer "$ISS" --wait --timeout 30m | grep -q "status: Accepted" || { echo "Apple did not accept the disk image"; exit 1; }
+xcrun stapler staple -q "$DMG"
+echo "Checked: $DMG"
+
 if [ -z "$PUBLISH" ]; then echo "Dry run: nothing published. Files are in $OUT/. Add --publish to release it."; exit 0; fi
 # Atomic: draft first, attach the files, publish last. Any failure deletes the draft, so releases/latest never points at a release without an appcast.
 DRAFTED=""; trap 'rm -rf "$V"; [ -z "$DRAFTED" ] || gh release delete "$TAG" --repo "$REPO" --yes --cleanup-tag >/dev/null 2>&1 || true' EXIT
 DRAFTED=1
-cp "$ZIP" "$OUT/Dateline.zip"   # same file under a name that never changes: releases/latest/download/Dateline.zip is the link Payhip and the website give buyers
-gh release create "$TAG" "$ZIP" "$OUT/Dateline.zip" "$OUT/appcast.xml" --repo "$REPO" --draft --title "Dateline $VER" --notes "$NOTES"
+cp "$ZIP" "$OUT/Dateline.zip"   # same file under a name that never changes: releases/latest/download/Dateline.zip is the link the website gives buyers; Payhip links Dateline.dmg
+gh release create "$TAG" "$ZIP" "$OUT/Dateline.zip" "$DMG" "$OUT/appcast.xml" --repo "$REPO" --draft --title "Dateline $VER" --notes "$NOTES"
 gh release edit "$TAG" --repo "$REPO" --draft=false --latest
 DRAFTED=""   # published: a failed check below must not delete a live release
 for i in 1 2 3 4 5 6; do
