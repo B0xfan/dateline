@@ -117,15 +117,19 @@ PY
 echo "Checked: $ZIP (version $VER, build $N)"
 
 # The disk image buyers open (drag Dateline onto Applications), checked by Apple and stapled. Updates still use the zip.
-# shortcut: the image itself is unsigned (no Developer ID certificate on this Mac, signing happens in Xcode's cloud); the app inside is the notarized one. Sign it here once a local Developer ID identity exists.
+# Signed with the local Developer ID identity (key + certificate in the login keychain; key file and certificate kept in Application Support/Dateline/devid).
+DEVID="Developer ID Application: John Hesch (LJZ32VB25F)"
+security find-identity -v -p codesigning | grep -q "$DEVID" || { echo "Developer ID identity missing: $DEVID"; exit 1; }
 ASC_KEY=S93537G5A5; ASC_P8="$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY.p8"
 ISS="${ASC_ISSUER_ID:-$( { grep '^ASC_ISSUER_ID=' "$HOME/Projects/A4/.env" 2>/dev/null || true; } | cut -d= -f2- | tr -d '"')}"
 [ -f "$ASC_P8" ] && [ -n "$ISS" ] || { echo "App Store Connect key or issuer missing: $ASC_P8, ASC_ISSUER_ID"; exit 1; }
 DMG="$OUT/Dateline.dmg"; ST="$OUT/dmg-stage"; rm -rf "$ST" "$DMG"; mkdir -p "$ST"
 ditto "$VAPP" "$ST/Dateline.app"; ln -s /Applications "$ST/Applications"
 hdiutil create -quiet -volname Dateline -srcfolder "$ST" -fs HFS+ -format UDZO "$DMG"; rm -rf "$ST"
+codesign --sign "$DEVID" --timestamp "$DMG"
 xcrun notarytool submit "$DMG" --key "$ASC_P8" --key-id "$ASC_KEY" --issuer "$ISS" --wait --timeout 30m | grep -q "status: Accepted" || { echo "Apple did not accept the disk image"; exit 1; }
 xcrun stapler staple -q "$DMG"
+spctl -a -t open --context context:primary-signature "$DMG" || { echo "The disk image is not accepted as signed and checked"; exit 1; }
 echo "Checked: $DMG"
 
 if [ -z "$PUBLISH" ]; then echo "Dry run: nothing published. Files are in $OUT/. Add --publish to release it."; exit 0; fi
