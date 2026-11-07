@@ -151,7 +151,12 @@ import DatelineCore
     expect(FullScreen.shared.on && f.frame == (f.screen ?? NSScreen.main)?.visibleFrame && !f.styleMask.contains(.fullScreen), "full screen fills the screen without a desktop of its own")
     FullScreen.shared.toggle(f)
     expect(!FullScreen.shared.on && f.frame == before && NSApp.presentationOptions.isEmpty, "leaving full screen puts the window back")
+    FullScreen.shared.toggle(f)
+    f.setFrame(before, display: true)  // as tiling from the green button's menu does
+    expect(!FullScreen.shared.on && NSApp.presentationOptions.isEmpty, "moving or tiling the window ends full screen")
+    FullScreen.shared.toggle(f)
     f.close()
+    expect(!FullScreen.shared.on && f.frame == before, "closing in full screen puts the normal size back first, so it is the one saved")
     print(fails == 0 ? "follow-check: all passed" : "follow-check: \(fails) failed")
     return fails == 0 ? 0 : 1
 }

@@ -57,7 +57,10 @@ struct AppCommands: Commands {
             Button(app.panels.tasksOpen ? "Hide Tasks" : "Show Tasks") { app.openMain?(); app.panels.tasksOpen.toggle() }.keyboardShortcut("r", modifiers: [.option, .command])
             Button("Show Map") { app.openMain?(); app.panels.mapOpen = true }.keyboardShortcut("p", modifiers: [.option, .command])
             Divider()
-            Button(fullScreen.on ? "Exit Full Screen" : "Enter Full Screen") { app.openMain?(); fullScreen.toggle() }.keyboardShortcut("f", modifiers: [.control, .command])
+            Button(fullScreen.on ? "Exit Full Screen" : "Enter Full Screen") {
+                app.openMain?()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { fullScreen.toggle() }  // shortcut: a reopened window is handed to FullScreen a moment after it appears; fine unless the Mac is very slow
+            }.keyboardShortcut("f", modifiers: [.control, .command])
         }
         CommandMenu("Event") {
             Button("Open Details") { app.openMain?(); app.panels.panelOpen = true }.disabled(app.selected == nil)
