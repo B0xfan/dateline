@@ -141,6 +141,17 @@ import DatelineCore
     app.quick.text = "Quick one"; settle()
     expect(fields(q.contentView).map(\.stringValue).contains("Quick one"), "quick add shows its text")
     q.close()
+    // John 2026-11-07: Apple's full screen gave Dateline a desktop of its own, so Control-Up showed Desktop 1. Full screen must stay on the window's desktop.
+    let f = window(Text("full screen")), before = f.frame
+    FullScreen.shared.adopt(f)
+    expect(f.collectionBehavior.contains(.fullScreenNone) && !f.collectionBehavior.contains(.fullScreenPrimary), "the main window never takes Apple's full screen")
+    expect(f.standardWindowButton(.zoomButton)?.target === FullScreen.shared, "the green button fills the screen on this desktop")
+    FullScreen.shared.toggle(f)
+    // macOS keeps a window below the menu bar while it shows; this hidden check is never the front app, so the menu bar stays and the window fills the rest
+    expect(FullScreen.shared.on && f.frame == (f.screen ?? NSScreen.main)?.visibleFrame && !f.styleMask.contains(.fullScreen), "full screen fills the screen without a desktop of its own")
+    FullScreen.shared.toggle(f)
+    expect(!FullScreen.shared.on && f.frame == before && NSApp.presentationOptions.isEmpty, "leaving full screen puts the window back")
+    f.close()
     print(fails == 0 ? "follow-check: all passed" : "follow-check: \(fails) failed")
     return fails == 0 ? 0 : 1
 }
