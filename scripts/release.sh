@@ -117,10 +117,11 @@ PY
 echo "Checked: $ZIP (version $VER, build $N)"
 
 if [ -z "$PUBLISH" ]; then echo "Dry run: nothing published. Files are in $OUT/. Add --publish to release it."; exit 0; fi
-# Atomic: draft first, attach both files, publish last. Any failure deletes the draft, so releases/latest never points at a release without an appcast.
+# Atomic: draft first, attach the files, publish last. Any failure deletes the draft, so releases/latest never points at a release without an appcast.
 DRAFTED=""; trap 'rm -rf "$V"; [ -z "$DRAFTED" ] || gh release delete "$TAG" --repo "$REPO" --yes --cleanup-tag >/dev/null 2>&1 || true' EXIT
 DRAFTED=1
-gh release create "$TAG" "$ZIP" "$OUT/appcast.xml" --repo "$REPO" --draft --title "Dateline $VER" --notes "$NOTES"
+cp "$ZIP" "$OUT/Dateline.zip"   # same file under a name that never changes: releases/latest/download/Dateline.zip is the link Payhip and the website give buyers
+gh release create "$TAG" "$ZIP" "$OUT/Dateline.zip" "$OUT/appcast.xml" --repo "$REPO" --draft --title "Dateline $VER" --notes "$NOTES"
 gh release edit "$TAG" --repo "$REPO" --draft=false --latest
 DRAFTED=""   # published: a failed check below must not delete a live release
 for i in 1 2 3 4 5 6; do
