@@ -58,7 +58,7 @@ struct MonthView: View {
             (Text(dateText(sel, "EEEE, MMMM d")).foregroundColor(T.text).fontWeight(.semibold)
              + Text("  " + (list.isEmpty ? "No events" : list.count == 1 ? "1 event" : "\(list.count) events")))
                 .font(.footnote).foregroundStyle(T.text2)
-                .padding(.horizontal, 18).padding(.top, 13).padding(.bottom, 7)
+                .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 6)
                 .accessibilityAddTraits(.isHeader)
             ScrollView {
                 DayCard(day: sel, rows: agendaRows(store, sel, now: app.today).filter { if case .event(let it) = $0 { !it.allDay } else { true } },
@@ -76,14 +76,14 @@ struct MonthView: View {
         var seen = Set<String>()
         let dots = store.shown(on: d).filter { it in seen.insert(it.color.map { n in "c\(n)" } ?? it.calendarID).inserted }.prefix(3).map { store.color($0) }
         return Button { picked = d } label: {
-            VStack(spacing: 4) {
-                Text(dateText(d, "d")).font(.subheadline.weight(today ? .semibold : .regular))
+            VStack(spacing: 2) {  // compact like Fantastical (John 2026-11-08): 34 pt weeks instead of 56
+                Text(dateText(d, "d")).font(.subheadline.weight(today ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(today ? .white : on ? T.tint : inMonth ? T.text : T.text2.opacity(0.6))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 24, height: 24)
                     .background(today ? T.accent : on ? T.tint.opacity(0.14) : .clear, in: Circle())
-                HStack(spacing: 3) { ForEach(Array(dots.enumerated()), id: \.offset) { _, c in Dot(color: c, size: 5) } }.frame(height: 5)
+                HStack(spacing: 2) { ForEach(Array(dots.enumerated()), id: \.offset) { _, c in Dot(color: c, size: 4) } }.frame(height: 4)
             }
-            .frame(maxWidth: .infinity, minHeight: 52, alignment: .top).padding(.top, 4).contentShape(Rectangle())
+            .frame(maxWidth: .infinity, minHeight: 32, alignment: .top).padding(.top, 2).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)  // seven days across: like the week strip, it stops growing before the numbers clip

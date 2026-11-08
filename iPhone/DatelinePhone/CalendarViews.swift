@@ -253,48 +253,45 @@ struct AgendaDay: View {
     }
 }
 
-/// A day's events and tasks as rows in one rounded card: the time beside each, then its colour, name and place.
+/// A day's events and tasks as rows in one rounded card: its colour, then the time above its name and place.
 struct DayCard: View {
     @EnvironmentObject var app: PhoneState
     let day: Date
     let rows: [AgendaRow]
     let allDay: [Item]
-    @ScaledMetric(relativeTo: .caption) private var timeRaw: CGFloat = 56
-    private var timeW: CGFloat { min(timeRaw, 100) }
 
     var body: some View {
         let n = cal.dateComponents([.day], from: cal.startOfDay(for: app.today), to: day).day ?? 99
         let next: String? = n == 0 ? rows.lazy.compactMap { if case .event(let it) = $0, it.start > app.today { it.id } else { nil } }.first : nil  // rows run in time order
-        VStack(spacing: 0) {
+        VStack(spacing: 0) {  // compact like Fantastical (John 2026-11-08): no dividers, the time sits above the title
             if rows.isEmpty && allDay.isEmpty {
                 Text("Nothing planned").font(.subheadline).foregroundStyle(T.text2)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).frame(minHeight: 48)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).frame(minHeight: 44)
             }
-            ForEach(Array((allDay.map(AgendaRow.event) + rows).enumerated()), id: \.element.id) { i, r in
-                Group {
-                    switch r {
-                    case .event(let it): AgendaEvent(it: it, day: day, next: it.id == next, timeW: timeW)
-                    case .task(let t): AgendaTask(t: t, timeW: timeW)
-                    }
+            ForEach(allDay.map(AgendaRow.event) + rows, id: \.id) { r in
+                switch r {
+                case .event(let it): AgendaEvent(it: it, day: day, next: it.id == next)
+                case .task(let t): AgendaTask(t: t)
                 }
-                .overlay(alignment: .top) { if i > 0 { Rectangle().fill(T.line).frame(height: 0.5).padding(.leading, 14 + timeW + 12) } }
             }
         }
+        .padding(.vertical, 4)
         .background(T.card, in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
-/// The time beside a list row: start over end, or one line.
-struct TimeColumn: View {
-    let lines: [String]
-    let width: CGFloat
+/// The small line above a list row's title: its time on the left, a countdown or leave-by on the right.
+struct TimeLine: View {
+    let text: String
     var color = T.text2
+    var tag: (String, Color)? = nil
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            ForEach(lines.indices, id: \.self) { Text(lines[$0]).lineLimit(1).minimumScaleFactor(0.75) }  // two lines can match
+        HStack(spacing: 8) {
+            Text(text).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.8)
+            Spacer(minLength: 0)
+            if let tag { Text(tag.0).foregroundStyle(tag.1).lineLimit(1).fixedSize() }
         }
-        .font(.caption.weight(.medium)).foregroundStyle(color)
-        .frame(width: width, alignment: .leading).padding(.top, 2)
+        .font(.caption.weight(.medium))
     }
 }
 
@@ -304,44 +301,29 @@ struct AgendaEvent: View {
     let it: Item
     let day: Date
     let next: Bool
-    let timeW: CGFloat
     var body: some View {
         let past = it.end <= app.today
         let leave = app.drive[it.id].map { it.start.addingTimeInterval(-Double($0) * 60) }.flatMap { $0 > app.today ? $0 : nil }
-        let time: [String] = it.allDay ? ["all-day"]
-            : it.start >= day ? [timeText(it.start, short: true), timeText(it.end, short: true)]
-            : cal.isDate(it.end, inSameDayAs: day) ? ["until", timeText(it.end, short: true)] : ["all-day"]  // a timed event running across several days
+        let time = it.allDay ? "all-day"
+            : it.start >= day ? timeText(it.start, short: true) + " – " + timeText(it.end, short: true)
+            : cal.isDate(it.end, inSameDayAs: day) ? "until " + timeText(it.end, short: true) : "all-day"  // a timed event running across several days
+        let tag: (String, Color)? = leave.map { ("Leave \(dateText($0, "h:mm"))", .orange) } ?? (next ? ("in " + span(it.start.timeIntervalSince(app.today)), T.tint) : nil)
         Button { app.open(it) } label: {
-            HStack(alignment: .top, spacing: 12) {
-                TimeColumn(lines: time, width: timeW)
+            HStack(alignment: .top, spacing: 10) {
                 RoundedRectangle(cornerRadius: 2).fill(store.color(it)).frame(width: 4).frame(maxHeight: .infinity)
-                    .frame(width: 12, alignment: .leading)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(it.shownTitle).font(.body.weight(.semibold)).foregroundStyle(T.text).lineLimit(3)
-                    if !it.place.isEmpty { Text(it.place).font(.footnote).foregroundStyle(T.text2).lineLimit(2) }
+                    .frame(width: 12, alignment: .leading)  // same column as a task's circle, so titles line up
+                VStack(alignment: .leading, spacing: 1) {
+                    TimeLine(text: time, tag: tag)
+                    Text(it.shownTitle).font(.body).foregroundStyle(T.text).lineLimit(3)
+                    if !it.place.isEmpty { Text(it.place).font(.caption).foregroundStyle(T.text2).lineLimit(2) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if let leave {
-                    RowTag(text: "Leave \(dateText(leave, "h:mm"))", color: .orange)
-                } else if next {
-                    RowTag(text: "in " + span(it.start.timeIntervalSince(app.today)), color: T.tint)
-                }
             }
             .fixedSize(horizontal: false, vertical: true)  // the colour bar runs the row's height
-            .padding(.horizontal, 14).padding(.vertical, 11).frame(minHeight: 56)
+            .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 44)
             .opacity(past ? 0.45 : 1).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-}
-
-/// A countdown or leave-by label on a list row.
-struct RowTag: View {
-    let text: String
-    let color: Color
-    var body: some View {
-        Text(text).font(.footnote.weight(.semibold)).foregroundStyle(color).lineLimit(1).fixedSize()
-            .padding(.horizontal, 10).padding(.vertical, 4).background(color.opacity(0.14), in: Capsule())
     }
 }
 
@@ -349,20 +331,20 @@ struct AgendaTask: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     let t: ToDo
-    let timeW: CGFloat
+    @ScaledMetric(relativeTo: .body) private var ringTop: CGFloat = 21  // beside the title at every text size
     var body: some View {
         let late = isOverdue(t, now: app.today), c = late ? T.late : store.taskList(t.listID)?.color ?? T.tint
         Button { app.toggle(t) } label: {
-            HStack(alignment: .top, spacing: 12) {
-                TimeColumn(lines: late ? ["overdue"] : t.timed ? [timeText(t.due!, short: true)] : ["anytime"], width: timeW, color: late ? T.late : T.text2)
-                Circle().strokeBorder(c, lineWidth: 1.8).background(Circle().fill(t.done ? c : .clear)).frame(width: 12, height: 12).padding(.top, 4)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(t.title).font(.body.weight(.medium)).strikethrough(t.done).foregroundStyle(t.done ? T.text2 : T.text).lineLimit(3)
-                    if late, let d = t.due { Text("From \(shortDay(d, now: app.today))").font(.footnote).foregroundStyle(T.late) }
+            HStack(alignment: .top, spacing: 10) {
+                Circle().strokeBorder(c, lineWidth: 1.8).background(Circle().fill(t.done ? c : .clear)).frame(width: 12, height: 12).padding(.top, ringTop)
+                VStack(alignment: .leading, spacing: 1) {
+                    TimeLine(text: late ? "overdue" : t.timed ? timeText(t.due!, short: true) : "anytime", color: late ? T.late : T.text2)
+                    Text(t.title).font(.body).strikethrough(t.done).foregroundStyle(t.done ? T.text2 : T.text).lineLimit(3)
+                    if late, let d = t.due { Text("From \(shortDay(d, now: app.today))").font(.caption).foregroundStyle(T.late) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 14).padding(.vertical, 11).frame(minHeight: 56).contentShape(Rectangle())
+            .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 44).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(t.done ? "\(t.title), done" : "Finish \(t.title)")
