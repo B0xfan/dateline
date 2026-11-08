@@ -122,9 +122,9 @@ func selftest() -> Int32 {
     expect(soon.map(\.title) == ["Review", "Lunch", "Beach day"], "coming up order: \(soon.map(\.title))")
     expect(soon[1].big == "1 h 40 min" && soon[2].big == "6 days" && soon[2].tail == " · Sunday" && soon[0].lead == "ends in 40 min · started 41 min ago" && soon[0].dim, "coming up text: \(soon)")
     // The second event today still shows (the Packers game, John 2026-11-08), all-day sits on its day, and the list stops at 4.
-    let many = comingUp([it2("Game", at(10, 26, 9), at(10, 26, 11)), it2("Post", at(10, 26, 11, 0), at(10, 26, 11, 15)), it2("Packers", at(10, 26, 13), at(10, 26, 16)),
+    let many = comingUp([it2("Game", at(10, 26, 9), at(10, 26, 11)), it2("Packers", at(10, 26, 13), at(10, 26, 16)),
                          it2("Birthday", at(10, 28, 0), at(10, 29, 0), allDay: true), it2("Dentist", at(10, 28, 9), at(10, 28, 10)), it2("Later", at(10, 30, 9), at(10, 30, 10))], now: now)
-    expect(many.map(\.title) == ["Game", "Post", "Packers", "Birthday"], "coming up keeps time order: \(many.map(\.title))")
+    expect(many.map(\.title) == ["Game", "Packers", "Birthday", "Dentist"], "coming up keeps time order: \(many.map(\.title))")
     expect(comingUp([it2("Trip", at(10, 29, 8), at(10, 29, 9))], now: now).first?.big == "3 days", "far next event counts days")
     expect(timeText(at(10, 26, 19)) == "7:00 PM" && timeText(at(10, 26, 19), short: true) == "7 PM", "clock text")
     // Phase 3: formatted notes keep plain text the phone can read.

@@ -328,7 +328,7 @@ public func comingUp(_ items: [Item], now: Date) -> [Soon] {
     let onNow = items.filter { !$0.allDay && $0.start <= now && $0.end > now }.sorted { $0.start < $1.start }.map {
         Soon(title: $0.shownTitle, calendarID: $0.calendarID, lead: "ends in \(span($0.end.timeIntervalSince(now))) · started \(span(now.timeIntervalSince($0.start))) ago", big: "", tail: "", dim: true)
     }
-    let next = items.filter { $0.start > now }.sorted { $0.start < $1.start }.map { n -> Soon in
+    let next = items.filter { $0.start > now }.sorted { $0.start < $1.start }.prefix(4).map { n -> Soon in
         if !n.allDay && n.start.timeIntervalSince(now) < 86400 { return Soon(title: n.shownTitle, calendarID: n.calendarID, lead: "starts in ", big: span(n.start.timeIntervalSince(now)), tail: "", dim: false) }
         let (b, t) = days(n.start); return Soon(title: n.shownTitle, calendarID: n.calendarID, lead: "in ", big: b, tail: t, dim: false)
     }
