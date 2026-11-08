@@ -61,7 +61,10 @@ struct DatelineApp: App {
         Window("Dateline", id: "main") {
             MainView(app: app, store: app.store, panels: app.panels)
                 .frame(minWidth: 980, minHeight: 600)
-                .onAppear { Look.apply(); app.startKeys() }
+                .onAppear {
+                    Look.apply(); app.startKeys()
+                    DispatchQueue.main.async { if let w = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) { FullScreen.shared.adopt(w) } }  // the window is attached a moment after it appears
+                }
         }
         .defaultSize(width: 1380, height: 800)
         .windowToolbarStyle(.unified(showsTitle: true))
@@ -70,4 +73,5 @@ struct DatelineApp: App {
     }
 }
 
+UserDefaults.standard.register(defaults: ["NSFullScreenMenuItemEverywhere": false])  // no Apple full screen menu item: View > Enter Full Screen is Dateline's own
 DatelineApp.main()

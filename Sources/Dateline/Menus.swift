@@ -7,6 +7,7 @@ struct AppCommands: Commands {
     let app: AppState
     @ObservedObject var store: Store  // the set list and its keys follow changes; the app only redraws menus for its own
     @ObservedObject var panels: Panels  // Show or Hide Tasks, and what the set editor blocks
+    @ObservedObject var fullScreen = FullScreen.shared  // Enter or Exit Full Screen
 
     func toggle(_ title: String, _ on: Bool, _ pick: @escaping () -> Void) -> Toggle<Text> {
         Toggle(title, isOn: Binding(get: { on }, set: { _ in pick() }))
@@ -56,6 +57,10 @@ struct AppCommands: Commands {
             Button(app.panels.tasksOpen ? "Hide Tasks" : "Show Tasks") { app.openMain?(); app.panels.tasksOpen.toggle() }.keyboardShortcut("r", modifiers: [.option, .command])
             Button("Show Map") { app.openMain?(); app.panels.mapOpen = true }.keyboardShortcut("p", modifiers: [.option, .command])
             Divider()
+            Button(fullScreen.on ? "Exit Full Screen" : "Enter Full Screen") {
+                app.openMain?()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { fullScreen.toggle() }  // shortcut: a reopened window is handed to FullScreen a moment after it appears; fine unless the Mac is very slow
+            }.keyboardShortcut("f", modifiers: [.control, .command])
         }
         CommandMenu("Event") {
             Button("Open Details") { app.openMain?(); app.panels.panelOpen = true }.disabled(app.selected == nil)
