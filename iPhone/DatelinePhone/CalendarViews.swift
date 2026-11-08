@@ -253,7 +253,7 @@ struct AgendaDay: View {
     }
 }
 
-/// A day's events and tasks as rows in one rounded card: the time beside each, then its colour, name and place.
+/// A day's events and tasks as rows in one rounded card: its colour, then the time above its name and place.
 struct DayCard: View {
     @EnvironmentObject var app: PhoneState
     let day: Date
@@ -331,11 +331,12 @@ struct AgendaTask: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     let t: ToDo
+    @ScaledMetric(relativeTo: .body) private var ringTop: CGFloat = 21  // beside the title at every text size
     var body: some View {
         let late = isOverdue(t, now: app.today), c = late ? T.late : store.taskList(t.listID)?.color ?? T.tint
         Button { app.toggle(t) } label: {
             HStack(alignment: .top, spacing: 10) {
-                Circle().strokeBorder(c, lineWidth: 1.8).background(Circle().fill(t.done ? c : .clear)).frame(width: 12, height: 12).padding(.top, 21)  // beside the title, under the time line
+                Circle().strokeBorder(c, lineWidth: 1.8).background(Circle().fill(t.done ? c : .clear)).frame(width: 12, height: 12).padding(.top, ringTop)
                 VStack(alignment: .leading, spacing: 1) {
                     TimeLine(text: late ? "overdue" : t.timed ? timeText(t.due!, short: true) : "anytime", color: late ? T.late : T.text2)
                     Text(t.title).font(.body).strikethrough(t.done).foregroundStyle(t.done ? T.text2 : T.text).lineLimit(3)
@@ -351,6 +352,7 @@ struct AgendaTask: View {
     }
 }
 
+/// Hold an open task and drag it onto an hour to give it that day and time (as on the Mac).
 struct TaskDrag: ViewModifier {
     let t: ToDo
     func body(content: Content) -> some View {
