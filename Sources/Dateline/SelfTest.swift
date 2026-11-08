@@ -119,8 +119,12 @@ func selftest() -> Int32 {
     func it2(_ t: String, _ a: Date, _ b: Date, allDay: Bool = false) -> Item { Item(id: t, calendarID: "w", title: t, start: a, end: b, allDay: allDay, place: "", notes: "", showAs: .busy) }
     let soon = comingUp([it2("Review", at(10, 26, 9), at(10, 26, 10, 21)), it2("Lunch", at(10, 26, 11, 21), at(10, 26, 12)),
                          it2("Beach day", at(11, 1, 0), at(11, 2, 0), allDay: true), it2("Old", at(10, 26, 0), at(10, 27, 0), allDay: true)], now: now)
-    expect(soon.map(\.title) == ["Lunch", "Beach day", "Review"], "coming up order: \(soon.map(\.title))")
-    expect(soon[0].big == "1 h 40 min" && soon[1].big == "6 days" && soon[1].tail == " · Sunday" && soon[2].lead == "ends in 40 min · started 41 min ago", "coming up text: \(soon)")
+    expect(soon.map(\.title) == ["Review", "Lunch", "Beach day"], "coming up order: \(soon.map(\.title))")
+    expect(soon[1].big == "1 h 40 min" && soon[2].big == "6 days" && soon[2].tail == " · Sunday" && soon[0].lead == "ends in 40 min · started 41 min ago" && soon[0].dim, "coming up text: \(soon)")
+    // The second event today still shows (the Packers game, John 2026-11-08), all-day sits on its day, and the list stops at 4.
+    let many = comingUp([it2("Game", at(10, 26, 9), at(10, 26, 11)), it2("Post", at(10, 26, 11, 0), at(10, 26, 11, 15)), it2("Packers", at(10, 26, 13), at(10, 26, 16)),
+                         it2("Birthday", at(10, 28, 0), at(10, 29, 0), allDay: true), it2("Dentist", at(10, 28, 9), at(10, 28, 10)), it2("Later", at(10, 30, 9), at(10, 30, 10))], now: now)
+    expect(many.map(\.title) == ["Game", "Post", "Packers", "Birthday"], "coming up keeps time order: \(many.map(\.title))")
     expect(comingUp([it2("Trip", at(10, 29, 8), at(10, 29, 9))], now: now).first?.big == "3 days", "far next event counts days")
     expect(timeText(at(10, 26, 19)) == "7:00 PM" && timeText(at(10, 26, 19), short: true) == "7 PM", "clock text")
     // Phase 3: formatted notes keep plain text the phone can read.

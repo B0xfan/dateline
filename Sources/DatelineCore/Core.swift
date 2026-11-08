@@ -313,7 +313,6 @@ public func quarterStart(_ d: Date) -> Date {
 public struct Soon: Equatable { public let title: String; public let calendarID: String; public let lead: String; public let big: String; public let tail: String; public let dim: Bool
     public init(title: String, calendarID: String, lead: String, big: String, tail: String, dim: Bool) { self.title = title; self.calendarID = calendarID; self.lead = lead; self.big = big; self.tail = tail; self.dim = dim } }
 
-// The next event, the next all-day event (the next big day), and the event under way now.
 // "5 min", "2 h", "5 h 28 min" (also the menu bar's "What's next").
 public func span(_ s: TimeInterval) -> String {
     let m = max(1, Int(s / 60)), h = m / 60, r = m % 60
@@ -325,19 +324,14 @@ public func comingUp(_ items: [Item], now: Date) -> [Soon] {
         let n = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: d)).day!
         return (n == 1 ? "1 day" : "\(n) days", " · " + dateText(d, "EEEE"))
     }
-    var out: [Soon] = []
-    let timed = items.filter { !$0.allDay }.sorted { $0.start < $1.start }
-    if let n = timed.first(where: { $0.start > now }) {
-        if n.start.timeIntervalSince(now) < 86400 { out.append(Soon(title: n.shownTitle, calendarID: n.calendarID, lead: "starts in ", big: span(n.start.timeIntervalSince(now)), tail: "", dim: false)) }
-        else { let (b, t) = days(n.start); out.append(Soon(title: n.shownTitle, calendarID: n.calendarID, lead: "in ", big: b, tail: t, dim: false)) }
+    // In time order (John 2026-11-08): what is on now, then the next events; an all-day event sits at the start of its day.
+    let onNow = items.filter { !$0.allDay && $0.start <= now && $0.end > now }.sorted { $0.start < $1.start }.map {
+        Soon(title: $0.shownTitle, calendarID: $0.calendarID, lead: "ends in \(span($0.end.timeIntervalSince(now))) · started \(span(now.timeIntervalSince($0.start))) ago", big: "", tail: "", dim: true)
     }
-    if let b = items.filter({ $0.allDay && $0.start > now }).min(by: { $0.start < $1.start }) {
-        let (big, t) = days(b.start)
-        out.append(Soon(title: b.shownTitle, calendarID: b.calendarID, lead: "in ", big: big, tail: t, dim: false))
+    let next = items.filter { $0.start > now }.sorted { $0.start < $1.start }.map { n -> Soon in
+        if !n.allDay && n.start.timeIntervalSince(now) < 86400 { return Soon(title: n.shownTitle, calendarID: n.calendarID, lead: "starts in ", big: span(n.start.timeIntervalSince(now)), tail: "", dim: false) }
+        let (b, t) = days(n.start); return Soon(title: n.shownTitle, calendarID: n.calendarID, lead: "in ", big: b, tail: t, dim: false)
     }
-    if let c = timed.first(where: { $0.start <= now && $0.end > now }) {
-        out.append(Soon(title: c.shownTitle, calendarID: c.calendarID, lead: "ends in \(span(c.end.timeIntervalSince(now))) · started \(span(now.timeIntervalSince(c.start))) ago", big: "", tail: "", dim: true))
-    }
-    return out
+    return Array((onNow + next).prefix(4))
 }
 
