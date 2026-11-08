@@ -19,9 +19,8 @@ struct MonthView: View {
         let grid = monthGrid(app.anchor), month = cal.component(.month, from: app.anchor)
         let sel = picked ?? (cal.isDate(app.today, equalTo: app.anchor, toGranularity: .month) ? cal.startOfDay(for: app.today) : cal.startOfDay(for: app.anchor))
         let list = store.shown(on: sel)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-              VStack(alignment: .leading, spacing: 0) {  // the calendar on white; the day's card below on grey
+        VStack(alignment: .leading, spacing: 0) {  // the month stays put; only the day's list scrolls (John 2026-11-07)
+            VStack(alignment: .leading, spacing: 0) {  // the calendar on white; the day's card below on grey
                 HStack(spacing: 0) {
                     SetMenu()
                     Spacer(minLength: 0)
@@ -54,18 +53,20 @@ struct MonthView: View {
                     .padding(.horizontal, 10)
                     .overlay(alignment: .bottom) { Rectangle().fill(T.line).frame(height: 0.5) }
                 }
-              }
-              .background(T.bg)
-                (Text(dateText(sel, "EEEE, MMMM d")).foregroundColor(T.text).fontWeight(.semibold)
-                 + Text("  " + (list.isEmpty ? "No events" : list.count == 1 ? "1 event" : "\(list.count) events")))
-                    .font(.footnote).foregroundStyle(T.text2)
-                    .padding(.horizontal, 18).padding(.top, 13).padding(.bottom, 7)
-                    .accessibilityAddTraits(.isHeader)
+            }
+            .background(T.bg)
+            (Text(dateText(sel, "EEEE, MMMM d")).foregroundColor(T.text).fontWeight(.semibold)
+             + Text("  " + (list.isEmpty ? "No events" : list.count == 1 ? "1 event" : "\(list.count) events")))
+                .font(.footnote).foregroundStyle(T.text2)
+                .padding(.horizontal, 18).padding(.top, 13).padding(.bottom, 7)
+                .accessibilityAddTraits(.isHeader)
+            ScrollView {
                 DayCard(day: sel, rows: agendaRows(store, sel, now: app.today).filter { if case .event(let it) = $0 { !it.allDay } else { true } },
                         allDay: list.filter(\.allDay))
                     .padding(.horizontal, 16).padding(.bottom, 20)
             }
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(T.grouped)
         .onChange(of: app.anchor) { picked = nil }
     }
