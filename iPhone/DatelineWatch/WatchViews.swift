@@ -22,7 +22,7 @@ struct NextUp: View {
     @EnvironmentObject var app: WatchState
     @EnvironmentObject var store: Store
     var body: some View {
-        Group {
+        VStack {
             if let it = app.coming.first {
                 NavigationLink(value: it.id) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -39,11 +39,12 @@ struct NextUp: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                Text("Nothing more today").font(.headline).foregroundStyle(.secondary)
+                Text("Nothing more today").font(.headline).foregroundStyle(.secondary).frame(maxHeight: .infinity)
             }
+            Spacer(minLength: 0)
+            Text("Turn the crown for today").font(.caption2).foregroundStyle(.tertiary)
         }
         .navigationTitle("Next")
-        .overlay(alignment: .bottom) { Text("Turn the crown for today").font(.caption2).foregroundStyle(.tertiary) }
     }
 }
 
@@ -79,7 +80,7 @@ struct TodayList: View {
                 .opacity(!it.allDay && it.end <= app.now ? 0.5 : 1)  // already over
             }
         }
-        .navigationTitle(app.now.formatted(.dateTime.weekday(.abbreviated).day()))
+        .navigationTitle(dayText(app.now).components(separatedBy: ",").first! + " " + String(cal.component(.day, from: app.now)))
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { app.addStart = ""; app.adding = true } label: { Image(systemName: "mic.fill") } } }
     }
 }
@@ -129,7 +130,7 @@ struct AddByVoice: View {
                 if !text.isEmpty {
                     let p = parseSentence(text, now: app.now)
                     Text(p.title.isEmpty ? "New event" : p.title).font(.headline)
-                    Text(p.start.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + (p.allDay ? "" : " · " + timeText(p.start)))
+                    Text(dayText(p.start) + (p.allDay ? "" : " · " + timeText(p.start)))
                         .font(.footnote)
                     if !p.place.isEmpty { Text(p.place).font(.footnote).foregroundStyle(.secondary) }
                     if let problem { Text(problem).font(.footnote).foregroundStyle(.red) }
@@ -137,7 +138,7 @@ struct AddByVoice: View {
                         sending = true
                         app.add(text) { err in sending = false; if let err { problem = err } else { dismiss() } }
                     }
-                    .tint(.accentColor).disabled(sending)
+                    .tint(Palette.tags[3]).disabled(sending)
                 }
             }
         }

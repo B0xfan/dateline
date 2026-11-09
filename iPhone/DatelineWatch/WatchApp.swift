@@ -37,6 +37,7 @@ final class WatchState: ObservableObject {
 
     init(store: Store, sample: Bool, now: Date = Date()) {
         self.store = store; self.sample = sample; self.now = now
+        load()
         guard !sample else { return }
         LeaveAlerts.shared.install()  // the leave alert's Directions button
         Here.shared.start()
@@ -48,11 +49,14 @@ final class WatchState: ObservableObject {
     func wake() {
         guard !sample else { return }
         now = Date()
-        store.refetch(); store.reloadReminders()
+        load(); store.reloadReminders()
         Here.shared.refresh()
         let soon = store.between(now, now.addingTimeInterval(86400)).filter { $0.geo != nil && !$0.allDay && !$0.noTravel && $0.start > now }.sorted { $0.start < $1.start }
         Task { _ = await trips.run(soon, all: soon, store: store) { m in if self.drive != m { self.drive = m } } }
     }
+
+    /// The engine reads only the days asked for: yesterday (late tasks' days are not needed) to tomorrow.
+    private func load() { store.show(from: addDays(cal.startOfDay(for: now), -1), to: addDays(cal.startOfDay(for: now), 2)) }
 
     /// Today's timed events not yet over, soonest first; all-day ones are left to the Today list.
     var coming: [Item] { store.shown(on: now).filter { !$0.allDay && $0.end > now }.sorted { $0.start < $1.start } }
@@ -90,6 +94,13 @@ final class Phone: NSObject, WCSessionDelegate {
         s.sendMessage(m, replyHandler: { done($0["error"] as? String) }, errorHandler: { _ in s.transferUserInfo(m); done(nil) })
     }
     func session(_ s: WCSession, activationDidCompleteWith st: WCSessionActivationState, error: Error?) {}
+}
+
+/// "Fri, Oct 30" in the engine's time zone (the pictures pin Costa Rica; the runner is on UTC).
+func dayText(_ d: Date) -> String {
+    var f = Date.FormatStyle.dateTime.weekday(.abbreviated).month(.abbreviated).day()
+    f.timeZone = cal.timeZone
+    return d.formatted(f)
 }
 
 /// "in 2 h 21 min", "in 5 min", "now".
