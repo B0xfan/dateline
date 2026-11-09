@@ -33,6 +33,27 @@ jobs:
           path: ios-shots
           retention-days: 3
           if-no-files-found: ignore
+  # The Apple Watch app on the sample calendars: built for the watch simulator and a picture of each screen at 41, 45 and 49 mm.
+  watch-app:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Xcode 26
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)" && xcodebuild -version
+      - name: Build the watch app
+        run: |
+          xcodebuild build -project iPhone/Dateline.xcodeproj -scheme DatelineWatch -configuration Debug \
+            -destination 'generic/platform=watchOS Simulator' -derivedDataPath dd CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+      - name: Screen pictures
+        run: scripts/watch-check.sh "$(find dd/Build/Products -maxdepth 3 -name DatelineWatch.app | head -1)" watch-shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: watch-shots
+          path: watch-shots
+          retention-days: 3
+          if-no-files-found: ignore
   # The shared DatelineCore package must keep compiling for the iPhone. No signing, nothing uploaded.
   ios-core:
     runs-on: macos-15

@@ -13,7 +13,11 @@ public enum Palette {
         return Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? ns(dark) : ns(light) })
         #else
         func ui(_ v: UInt32) -> UIColor { UIColor(red: CGFloat(v >> 16 & 255) / 255, green: CGFloat(v >> 8 & 255) / 255, blue: CGFloat(v & 255) / 255, alpha: 1) }
+        #if os(watchOS)
+        return Color(uiColor: ui(dark))  // the watch is always dark
+        #else
         return Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? ui(dark) : ui(light) })
+        #endif
         #endif
     }
     public static let win = c(0xffffff, 0x1e1e22), side = c(0xf3f3f6, 0x26262b), bar = c(0xf8f8fa, 0x232327)

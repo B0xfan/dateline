@@ -21,7 +21,9 @@ struct DatelineApp: App {
             #if DEBUG
             if let demo = Demo.make() { return demo }  // debug builds only: sample calendars for the checks and pictures, never a real calendar
             #endif
-            return PhoneState(store: Store(sample: false), today: Date(), sample: false)
+            let real = PhoneState(store: Store(sample: false), today: Date(), sample: false)
+            WatchLink.shared.start(real)  // saves the watch's ticks and spoken events
+            return real
         }
         _app = StateObject(wrappedValue: made)
     }

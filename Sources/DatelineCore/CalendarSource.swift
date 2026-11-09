@@ -33,6 +33,11 @@ public protocol CalendarSource: AnyObject {
     func deleteReminder(_ t: ToDo) -> Failure?
 }
 
+#if os(watchOS)
+// The watch may read calendars and reminders but never save them (Apple's rule): its changes go to the phone instead.
+private let onPhone = Failure("The watch can't save this; it goes through your iPhone.")
+#endif
+
 @MainActor
 public final class AppleCalendar: CalendarSource {
     private let ek = EKEventStore()
@@ -140,6 +145,9 @@ public final class AppleCalendar: CalendarSource {
     }
 
     public func add(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure> {
+        #if os(watchOS)
+        return .failure(onPhone)
+        #else
         guard let c = ek.calendar(withIdentifier: it.calendarID) else { return .failure(Failure("That calendar is gone.")) }
         let e = EKEvent(eventStore: ek)
         e.calendar = c
@@ -151,30 +159,43 @@ public final class AppleCalendar: CalendarSource {
         }
         do { try ek.save(e, span: .thisEvent, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
         return .success(Self.item(e))
+        #endif
     }
 
     public func update(_ it: Item, before: Item?) -> Result<String?, Failure> {
+        #if os(watchOS)
+        return .failure(onPhone)
+        #else
         guard let e = event(it, now: before) else { return .failure(Failure("That event is gone.")) }
         if e.calendar.calendarIdentifier != it.calendarID, let c = ek.calendar(withIdentifier: it.calendarID) { e.calendar = c }
         apply(it, to: e)
         do { try ek.save(e, span: .thisEvent, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
         return .success(e.eventIdentifier)
+        #endif
     }
 
     public func repeats(_ it: Item) -> Bool { event(it)?.hasRecurrenceRules == true }
     public func delete(_ it: Item, series: Bool) -> Result<Bool, Failure> {
+        #if os(watchOS)
+        return .failure(onPhone)
+        #else
         guard let e = event(it) else { return .failure(Failure("That event is gone.")) }
         let alarms = e.alarms ?? [], oneTime = !e.hasRecurrenceRules
         do { try ek.remove(e, span: series ? .futureEvents : .thisEvent, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
         deletedAlarms[it.id] = alarms  // undo puts them back
         return .success(oneTime)
+        #endif
     }
 
     public func copyAlerts(from old: Item, to new: Item) {
+        #if os(watchOS)
+        return
+        #else
         if let alarms = event(old)?.alarms ?? deletedAlarms[old.id], !alarms.isEmpty, let e = ek.event(withIdentifier: new.id) {
             alarms.forEach { a in e.addAlarm(a.absoluteDate.map(EKAlarm.init(absoluteDate:)) ?? EKAlarm(relativeOffset: a.relativeOffset)) }
             try? ek.save(e, span: .thisEvent)
         }
+        #endif
     }
 
     private func apply(_ it: Item, to e: EKEvent) {
@@ -231,6 +252,9 @@ public final class AppleCalendar: CalendarSource {
     }
 
     public func addReminder(_ t: ToDo, listID: String?) -> Result<ToDo, Failure> {
+        #if os(watchOS)
+        return .failure(onPhone)
+        #else
         guard let c = listID.flatMap(ek.calendar(withIdentifier:)) ?? ek.defaultCalendarForNewReminders() else { return .failure(Failure("No Reminders list on this Mac can take new tasks.")) }
         let r = EKReminder(eventStore: ek)
         r.calendar = c
@@ -240,22 +264,31 @@ public final class AppleCalendar: CalendarSource {
         }
         do { try ek.save(r, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
         return .success(Self.todo(r))
+        #endif
     }
 
     public func updateReminder(_ t: ToDo, old: ToDo?) -> Failure? {
+        #if os(watchOS)
+        return onPhone
+        #else
         guard let r = ek.calendarItem(withIdentifier: t.id) as? EKReminder else { return Failure("That task is gone.") }
         if r.calendar.calendarIdentifier != t.listID, let c = ek.calendar(withIdentifier: t.listID) { r.calendar = c }
         apply(t, old: old, to: r)
         do { try ek.save(r, commit: true) } catch { return Failure(error.localizedDescription) }
         return nil
+        #endif
     }
 
     public func deleteReminder(_ t: ToDo) -> Failure? {
+        #if os(watchOS)
+        return onPhone
+        #else
         guard let r = ek.calendarItem(withIdentifier: t.id) as? EKReminder else { return Failure("That task is gone.") }
         let keep = (r.recurrenceRules?.map { $0.copy() as! EKRecurrenceRule }, r.alarms?.map { $0.copy() as! EKAlarm }, r.priority, r.url)
         do { try ek.remove(r, commit: true) } catch { return Failure(error.localizedDescription) }
         removed[t.id] = keep
         return nil
+        #endif
     }
 
     private func apply(_ t: ToDo, old: ToDo?, to r: EKReminder) {
