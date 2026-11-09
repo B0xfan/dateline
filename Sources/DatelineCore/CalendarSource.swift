@@ -46,6 +46,7 @@ public final class AppleCalendar: CalendarSource {
     private var observer: Any?
     private var deletedAlarms: [String: [EKAlarm]] = [:]
     public var shownElsewhere: (String, Bool) -> Bool = { _, _ in false }
+    public init() {}  // the watch face pieces read through one of their own
 
     public static var hasEventAccess: Bool { EKEventStore.authorizationStatus(for: .event) == .fullAccess }
 
