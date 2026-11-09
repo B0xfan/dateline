@@ -25,8 +25,10 @@ struct SettingsView: View {
                 Section {
                     Toggle("Emoji, colors, tags, notes, sets", isOn: $sync)
                         .onChange(of: sync) { _, on in if on { store.syncNow() } }
+                    // Nothing else tells an iPhone buyer the Mac app exists (John 2026-11-09).
+                    Link(destination: URL(string: "https://dateline.app")!) { line("laptopcomputer", .gray, "Dateline for Mac", "dateline.app") }
                 } header: { Text("Sync with your Mac") } footer: {
-                    Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "Through your own iCloud. Look and °F or °C you change here change on the Mac too.\n\nMac only, not on the phone: menu bar icon, Quick add shortcut key, Assistant for AI apps, A4 tasks, Check for Updates.")
+                    Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "Through your own iCloud. Look and °F or °C you change here change on the Mac too.\n\nGet Dateline for Mac at dateline.app. Buying here unlocks it too, through the same iCloud.\n\nMac only, not on the phone: menu bar icon, Quick add shortcut key, Assistant for AI apps, A4 tasks, Check for Updates.")
                 }
                 Section("About") {
                     let info = Bundle.main.infoDictionary ?? [:]
