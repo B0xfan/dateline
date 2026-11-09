@@ -128,12 +128,14 @@ enum WatchDemo {
         switch args[i + 1] {
         case "today": app.page = 1
         case "today-ticked": app.page = 1; if let t = app.tasks.first { app.ticked[t.id] = true }
-        case "details": if let it = app.coming.first(where: { $0.geo != nil }) ?? app.coming.first { app.path = [it.id] }
-        case "details-call": if let it = app.today.first(where: { callLink($0) != nil }) { app.path = [it.id] }
+        // the first sample event today or tomorrow with a place on the map, and with a video call
+        case "details": if let it = soon(app).first(where: { $0.geo != nil }) { app.path = [it.id] }
+        case "details-call": if let it = soon(app).first(where: { callLink($0) != nil }) { app.path = [it.id] }
         case "add": app.page = 1; app.addStart = "Dinner with Ana Friday 7pm at Casa Luna"; app.adding = true
         default: break  // "next"
         }
         return app
     }
+    static func soon(_ app: WatchState) -> [Item] { app.store.between(today, addDays(cal.startOfDay(for: today), 2)).sorted { $0.start < $1.start } }
 }
 #endif
