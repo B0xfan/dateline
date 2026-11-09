@@ -1,7 +1,7 @@
 // Email to event, shared by the Mac and the iPhone: reads an email file (.eml) into its sender, subject and text, and Apple's on-device AI
 // turns it into an event draft that is added only after a review. Moved here from the Mac app (2026-11-06) so the phone reads emails the same way.
 import Foundation
-#if canImport(FoundationModels)
+#if canImport(FoundationModels) && !os(watchOS)  // no on-device AI on the watch
 import FoundationModels
 #endif
 
@@ -211,7 +211,7 @@ public func makeDraft(found: Bool, title: String, when: String = "", sent: Date 
     return d
 }
 
-#if canImport(FoundationModels)
+#if canImport(FoundationModels) && !os(watchOS)  // no on-device AI on the watch
 @available(macOS 26, iOS 26, *)
 @Generable struct EmailGuess {
     @Guide(description: "true only if the email is about one event, appointment, booking, flight, reservation or meeting that has a date. Ads, newsletters and sales are false") var found: Bool
@@ -240,7 +240,7 @@ public func steering(_ m: Mail) -> Bool {
         d.problem = "This email has text that tries to tell the AI what to do, so nothing was filled in."
         return d
     }
-    #if canImport(FoundationModels)
+    #if canImport(FoundationModels) && !os(watchOS)  // no on-device AI on the watch
     if #available(macOS 26, iOS 26, *) {
         guard case .available = SystemLanguageModel.default.availability else { off.problem = "Apple Intelligence is off on this \(device), so nothing was filled in."; return off }
         let s = LanguageModelSession(instructions: """
