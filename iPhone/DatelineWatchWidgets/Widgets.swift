@@ -6,20 +6,18 @@ import DatelineCore
 
 @main
 struct DatelineWidgets: WidgetBundle {
-    var body: some Widget {
-        Piece(kind: "next", name: "Next event", about: "Your next event: time and name, or a line along the top.", families: [.accessoryRectangular, .accessoryInline])
-        Piece(kind: "countdown", name: "Countdown", about: "How long until your next event.", families: [.accessoryCircular])
-        Piece(kind: "date", name: "Date", about: "Today's date.", families: [.accessoryCircular])
-        Piece(kind: "tasks", name: "Tasks left", about: "Tasks still open today.", families: [.accessoryCircular])
-    }
+    var body: some Widget { NextPiece(); CountdownPiece(); DatePiece(); TasksPiece() }
 }
 
-struct Piece: Widget {
-    let kind: String, name: String, about: String, families: [WidgetFamily]
-    var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: Provider()) { e in PieceView(kind: kind, e: e) }
-            .configurationDisplayName(name).description(about).supportedFamilies(families)
-    }
+// WidgetKit makes each widget with init(), so one small type per piece.
+struct NextPiece: Widget { var body: some WidgetConfiguration { piece("next", "Next event", "Your next event: time and name, or a line along the top.", [.accessoryRectangular, .accessoryInline]) } }
+struct CountdownPiece: Widget { var body: some WidgetConfiguration { piece("countdown", "Countdown", "How long until your next event.", [.accessoryCircular]) } }
+struct DatePiece: Widget { var body: some WidgetConfiguration { piece("date", "Date", "Today's date.", [.accessoryCircular]) } }
+struct TasksPiece: Widget { var body: some WidgetConfiguration { piece("tasks", "Tasks left", "Tasks still open today.", [.accessoryCircular]) } }
+
+func piece(_ kind: String, _ name: String, _ about: String, _ families: [WidgetFamily]) -> some WidgetConfiguration {
+    StaticConfiguration(kind: kind, provider: Provider()) { e in PieceView(kind: kind, e: e) }
+        .configurationDisplayName(name).description(about).supportedFamilies(families)
 }
 
 struct PieceView: View {
