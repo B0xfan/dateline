@@ -79,7 +79,8 @@ struct FacePiece: View {
     /// The line along the top: "Lunch 12:30 · in 2 h 21 m".
     @ViewBuilder var inline: some View {
         if let it = e.next {
-            Text("\(firstWord(it.title).capitalized) \(timeText(it.start, short: true)) · \(it.start <= e.date ? "now" : faceCountdown(to: it.start, from: e.date))")
+            let name = it.title.count > 16 ? it.title.prefix(15) + "…" : Substring(it.title)  // the countdown must stay on the line
+            Text("\(name) · \(it.start <= e.date ? "now" : faceCountdown(to: it.start, from: e.date))")
         } else {
             Text("Nothing more today")
         }
@@ -88,10 +89,10 @@ struct FacePiece: View {
     /// The larger box, like the one John circled on his Modular face: time on top, name under it, a bar in the calendar's color.
     var box: some View {
         HStack(spacing: 6) {
-            Capsule().fill(e.next == nil ? .gray : e.color).frame(width: 3).widgetAccentable()
+            Capsule().fill(e.next == nil ? .gray : e.color).frame(width: 3).frame(maxHeight: .infinity).widgetAccentable()
             VStack(alignment: .leading, spacing: 1) {
                 if let it = e.next {
-                    Text("\(timeText(it.start)) – \(timeText(it.end))").font(.headline)
+                    Text(range(it.start, it.end)).font(.headline).lineLimit(1).minimumScaleFactor(0.8)
                     Text(it.title).font(.headline).foregroundStyle(.secondary).lineLimit(2)
                 } else {
                     Text(dateText(e.date, "EEEE")).font(.headline)
@@ -100,6 +101,13 @@ struct FacePiece: View {
             }
             Spacer(minLength: 0)
         }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// "9:45 – 10:15 AM" (as on John's Modular face), "10 AM – 12 PM".
+    private func range(_ a: Date, _ b: Date) -> String {
+        let same = dateText(a, "a") == dateText(b, "a"), first = timeText(a, short: true)
+        return "\(same ? first.replacingOccurrences(of: " " + dateText(a, "a"), with: "") : first) – \(timeText(b, short: true))"
     }
 
     /// The Smart Stack card: the next event, where, and when to leave (or what comes after it).
