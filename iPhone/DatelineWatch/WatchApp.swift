@@ -59,7 +59,7 @@ final class WatchState: ObservableObject {
         // The face pieces read again when what they show changes here: the next event or the tasks left today.
         pieces = store.$items.combineLatest(store.$todos).debounce(for: .seconds(2), scheduler: RunLoop.main).sink { [weak self] _ in
             guard let self else { return }
-            let next = self.coming.first?.id, left = self.store.todos.filter { !$0.done && [.overdue, .today].contains(taskGroup($0, now: self.now)) }.count
+            let next = pickNext(self.coming, at: self.now).map { "\($0.id) \($0.start) \($0.end) \($0.title)" }, left = openToday(self.store.todos, at: Date()).count
             if next != self.shownNext || left != self.shownLeft { self.shownNext = next; self.shownLeft = left; WidgetCenter.shared.reloadAllTimelines() }
         }
         // The countdowns move on each minute; the calendars follow their own change notice, the rest is read again every 5 minutes.
@@ -78,7 +78,9 @@ final class WatchState: ObservableObject {
         let soon = store.between(now, now.addingTimeInterval(86400)).filter { $0.geo != nil && !$0.allDay && !$0.noTravel && $0.start > now }.sorted { $0.start < $1.start }
         Task { _ = await trips.run(soon, all: soon, store: store) { m in
             guard self.drive != m else { return }
-            self.drive = m; Shared.save(drive: m); WidgetCenter.shared.reloadAllTimelines()  // the Smart Stack card's leave time
+            let before = self.drive; self.drive = m; Shared.save(drive: m)
+            // only the Next piece shows a leave time; ask again only when the one shown moved (the reload budget is small)
+            if let it = pickNext(self.coming, at: self.now), before[it.id] != m[it.id] { WidgetCenter.shared.reloadTimelines(ofKind: "next") }
         } }
     }
 

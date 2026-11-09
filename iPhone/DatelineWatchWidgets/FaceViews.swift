@@ -20,33 +20,45 @@ struct FaceEntry: TimelineEntry {
     var then: Item? = nil
     var tasks = 0
     var relevance: TimelineEntryRelevance? = nil
+    var noAccess = false  // calendars not allowed yet: say so instead of a false "Nothing more today"
 
     static var placeholder: FaceEntry {
         let s = Date().addingTimeInterval(2 * 3600)
         return FaceEntry(date: Date(), next: Item(id: "p", calendarID: "", title: "Lunch with Sam", start: s, end: s.addingTimeInterval(3600), allDay: false, place: "", notes: "", showAs: .busy), color: .green, tasks: 3)
     }
 
-    /// One entry a minute for the next 90 minutes (so the countdowns can be plain text), then one at each start and end later
-    /// today, and midnight for the date. The pieces reload every hour, and sooner when the watch app sees a change.
+    /// One entry a minute for the next 90 minutes (so the countdowns can be plain text), then one at each start, end and
+    /// Smart Stack moment in the next 24 hours, and each midnight for the date. Each entry shows its own day's events. The pieces reload every hour, and sooner when the watch app sees a change.
+    /// shortcut: a reload watchOS holds back past 90 minutes leaves the countdown text still until the next start; switch to Text(timerInterval:) if that shows up.
     static func timeline(now: Date, items: [Item], colors: [String: Color], drive: [String: Int], tasks: [ToDo]) -> [FaceEntry] {
-        let start = cal.date(bySetting: .second, value: 0, of: now) ?? now
-        let midnight = cal.startOfDay(for: addDays(now, 1))
-        let timed = items.filter { !$0.allDay && $0.end > now && $0.start < midnight }.sorted { $0.start < $1.start }
+        let start = cal.date(bySetting: .second, value: 0, of: now) ?? now, until = now.addingTimeInterval(86400)
+        let timed = items.filter { !$0.allDay && $0.end > now && $0.start < until }.sorted { $0.start < $1.start }
+        let leave = { (it: Item) in drive[it.id].map { it.start.addingTimeInterval(-Double($0) * 60) } }
+        // Smart Stack: to the top from 15 minutes before leaving (or 30 before the start) until it starts.
+        let rises = { (it: Item) in leave(it).map { $0.addingTimeInterval(-900) } ?? it.start.addingTimeInterval(-1800) }
         var dates = Set((0..<90).map { start.addingTimeInterval(Double($0) * 60) })
-        for it in timed { dates.insert(it.start); dates.insert(it.end) }
-        dates.insert(midnight)
-        return dates.filter { $0 >= start && $0 <= midnight }.sorted().map { d in
-            let left = tasks.filter { !$0.done && [.overdue, .today].contains(taskGroup($0, now: d)) }.count
-            let rest = timed.filter { $0.end > d }
-            guard let it = rest.first else { return FaceEntry(date: d, tasks: left) }
-            let leave = drive[it.id].map { it.start.addingTimeInterval(-Double($0) * 60) }
-            // Smart Stack: to the top from 15 minutes before leaving (or 30 before the start) until it starts.
-            let from = (leave ?? it.start).addingTimeInterval(leave == nil ? -1800 : -900)
-            let rel = d >= from && d < it.start ? TimelineEntryRelevance(score: 100, duration: it.start.timeIntervalSince(d)) : nil
-            return FaceEntry(date: d, next: it, color: colors[it.calendarID] ?? .gray, leave: leave, then: rest.dropFirst().first, tasks: left, relevance: rel)
+        for it in timed { dates.formUnion([it.start, it.end, rises(it)]) }
+        dates.formUnion([cal.startOfDay(for: addDays(now, 1)), cal.startOfDay(for: until)])
+        return dates.filter { $0 >= start && $0 < until }.sorted().map { d in
+            let left = openToday(tasks, at: d).count
+            // the entry's own day: what is on now, and what is still to come that day
+            let rest = timed.filter { $0.end > d && (cal.isDate($0.start, inSameDayAs: d) || $0.start <= d) }
+            guard let it = pickNext(rest, at: d) else { return FaceEntry(date: d, tasks: left) }
+            let rel = d >= rises(it) && d < it.start ? TimelineEntryRelevance(score: 100, duration: it.start.timeIntervalSince(d)) : nil
+            return FaceEntry(date: d, next: it, color: colors[it.calendarID] ?? .gray, leave: leave(it), then: rest.first { $0.start > it.start }, tasks: left, relevance: rel)
         }
     }
 }
+
+/// The event to show from events not yet over, soonest first: the one on now, unless another starts before it ends
+/// (an all-morning block must not hide the 10:00 dentist).
+func pickNext(_ rest: [Item], at d: Date) -> Item? {
+    guard let cur = rest.first, cur.start <= d, let up = rest.first(where: { $0.start > d }), up.start < cur.end else { return rest.first }
+    return up
+}
+
+/// Tasks still open today, late ones included: the Tasks piece's count.
+func openToday(_ tasks: [ToDo], at d: Date) -> [ToDo] { tasks.filter { !$0.done && [.overdue, .today].contains(taskGroup($0, now: d)) } }
 
 /// "in 2 h 21 m", "in 5 m", "now"; `short` gives "2h21", "5m".
 func faceCountdown(to d: Date, from now: Date, short: Bool = false) -> String {
@@ -76,9 +88,11 @@ struct FacePiece: View {
         }
     }
 
-    /// The line along the top: "Lunch 12:30 · in 2 h 21 m".
+    /// The line along the top: "Lunch with Sam · in 2 h 21 m", "… · now" while it is on.
     @ViewBuilder var inline: some View {
-        if let it = e.next {
+        if e.noAccess {
+            Text("Open Dateline to allow calendars")
+        } else if let it = e.next {
             let name = it.title.count > 16 ? it.title.prefix(15) + "…" : Substring(it.title)  // the countdown must stay on the line
             Text("\(name) · \(it.start <= e.date ? "now" : faceCountdown(to: it.start, from: e.date))")
         } else {
@@ -91,7 +105,10 @@ struct FacePiece: View {
         HStack(spacing: 6) {
             Capsule().fill(e.next == nil ? .gray : e.color).frame(width: 3).frame(maxHeight: .infinity).widgetAccentable()
             VStack(alignment: .leading, spacing: 1) {
-                if let it = e.next {
+                if e.noAccess {
+                    Text("Dateline").font(.headline)
+                    Text("Open the app to allow calendars").font(.headline).foregroundStyle(.secondary).lineLimit(2)
+                } else if let it = e.next {
                     Text(range(it.start, it.end)).font(.headline).lineLimit(1).minimumScaleFactor(0.8)
                     Text(it.title).font(.headline).foregroundStyle(.secondary).lineLimit(2)
                 } else {
@@ -106,15 +123,17 @@ struct FacePiece: View {
 
     /// "9:45 – 10:15 AM" (as on John's Modular face), "10 AM – 12 PM".
     private func range(_ a: Date, _ b: Date) -> String {
-        let same = dateText(a, "a") == dateText(b, "a"), first = timeText(a, short: true)
-        return "\(same ? first.replacingOccurrences(of: " " + dateText(a, "a"), with: "") : first) – \(timeText(b, short: true))"
+        let same = dateText(a, "a") == dateText(b, "a")
+        return "\(same ? dateText(a, cal.component(.minute, from: a) == 0 ? "h" : "h:mm") : timeText(a, short: true)) – \(timeText(b, short: true))"
     }
 
     /// The Smart Stack card: the next event, where, and when to leave (or what comes after it).
     var card: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text("DATELINE").font(.caption2.weight(.bold)).foregroundStyle(.red)
-            if let it = e.next {
+            if e.noAccess {
+                Text("Open the app to allow calendars").font(.headline).foregroundStyle(.secondary).lineLimit(2)
+            } else if let it = e.next {
                 Text(it.title).font(.headline).lineLimit(1)
                 Text(timeText(it.start) + (it.place.isEmpty ? "" : " · " + it.place)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 if let l = e.leave, l > e.date {

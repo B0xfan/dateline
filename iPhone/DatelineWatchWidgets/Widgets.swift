@@ -42,8 +42,9 @@ struct Provider: TimelineProvider {
 
     @MainActor private func read() async -> [FaceEntry] {
         let now = Date(), src = AppleCalendar()
+        guard AppleCalendar.hasEventAccess else { return [FaceEntry(date: now, noAccess: true)] }
         let colors = Dictionary(src.calendars().map { ($0.id, $0.color) }, uniquingKeysWith: { a, _ in a })
         let tasks = await withCheckedContinuation { c in src.readReminders { c.resume(returning: $0) } }
-        return FaceEntry.timeline(now: now, items: src.events(from: now, to: addDays(cal.startOfDay(for: now), 1)), colors: colors, drive: Shared.drive, tasks: tasks)
+        return FaceEntry.timeline(now: now, items: src.events(from: now, to: now.addingTimeInterval(86400)), colors: colors, drive: Shared.drive, tasks: tasks)
     }
 }

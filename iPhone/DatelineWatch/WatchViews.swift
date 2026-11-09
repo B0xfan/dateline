@@ -30,7 +30,7 @@ struct NextUp: View {
     @EnvironmentObject var store: Store
     var body: some View {
         VStack {
-            if let it = app.coming.first {
+            if let it = pickNext(app.coming, at: app.now) {
                 NavigationLink(value: it.id) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(it.start <= app.now ? "Now" : countdown(to: it.start, from: app.now))
@@ -166,11 +166,11 @@ struct FacePictures: View {
                                    drive: app.drive, tasks: store.todos)[0]
         VStack(spacing: 6) {
             if stack {
-                Text(timeText(app.now).replacingOccurrences(of: " AM", with: "").replacingOccurrences(of: " PM", with: "")).font(.system(size: 34, weight: .semibold, design: .rounded))
+                Text(dateText(app.now, "h:mm")).font(.system(size: 34, weight: .semibold, design: .rounded))
                 FacePiece(kind: .card, e: e).padding(10).background(Color.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
             } else {
                 FacePiece(kind: .inline, e: e).font(.footnote.weight(.semibold)).foregroundStyle(.red).lineLimit(1)
-                Text(timeText(app.now).replacingOccurrences(of: " AM", with: "").replacingOccurrences(of: " PM", with: "")).font(.system(size: 40, weight: .semibold, design: .rounded))
+                Text(dateText(app.now, "h:mm")).font(.system(size: 40, weight: .semibold, design: .rounded))
                 FacePiece(kind: .box, e: e).padding(8).background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
                 HStack {
                     ForEach([FaceKind.countdown, .date, .tasks], id: \.self) { k in FacePiece(kind: k, e: e).frame(width: 46, height: 46).clipShape(Circle()) }
