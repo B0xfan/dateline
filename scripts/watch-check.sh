@@ -21,7 +21,7 @@ while read label udid name; do
   xcrun simctl bootstatus "$udid" -b
   xcrun simctl status_bar "$udid" override --time 9:41 >/dev/null 2>&1 || true
   xcrun simctl install "$udid" "$APP" || { rc=1; continue; }
-  for s in next today today-ticked details details-call add; do
+  for s in next today today-ticked details details-call add face stack; do
     xcrun simctl terminate "$udid" $BID >/dev/null 2>&1 || true
     xcrun simctl launch "$udid" $BID --sample -demo $s >/dev/null || rc=1
     sleep 6

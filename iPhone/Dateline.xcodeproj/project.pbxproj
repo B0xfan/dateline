@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D30000000000000000000001 /* FaceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000011 /* FaceViews.swift */; };
+		D30000000000000000000002 /* Widgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000012 /* Widgets.swift */; };
+		D30000000000000000000003 /* DatelineCore in Frameworks */ = {isa = PBXBuildFile; productRef = D30000000000000000000030 /* DatelineCore */; };
+		D30000000000000000000004 /* FaceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000011 /* FaceViews.swift */; };
+		D30000000000000000000005 /* DatelineWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D30000000000000000000013 /* DatelineWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		D100000000000000000000E3 /* WatchLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = D100000000000000000000E2 /* WatchLink.swift */; };
 		D20000000000000000000001 /* WatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000011 /* WatchApp.swift */; };
 		D20000000000000000000002 /* WatchViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000012 /* WatchViews.swift */; };
@@ -31,6 +36,12 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		D30000000000000000000011 /* FaceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceViews.swift; sourceTree = "<group>"; };
+		D30000000000000000000012 /* Widgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Widgets.swift; sourceTree = "<group>"; };
+		D30000000000000000000013 /* DatelineWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DatelineWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D30000000000000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		D30000000000000000000015 /* DatelineWatchWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DatelineWatchWidgets.entitlements; sourceTree = "<group>"; };
+		D30000000000000000000016 /* DatelineWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DatelineWatch.entitlements; sourceTree = "<group>"; };
 		D100000000000000000000E2 /* WatchLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLink.swift; sourceTree = "<group>"; };
 		D20000000000000000000011 /* WatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchApp.swift; sourceTree = "<group>"; };
 		D20000000000000000000012 /* WatchViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchViews.swift; sourceTree = "<group>"; };
@@ -54,6 +65,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		D30000000000000000000021 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D30000000000000000000003 /* DatelineCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		D10000000000000000000009 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -73,6 +92,17 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		D30000000000000000000023 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				D30000000000000000000005 /* DatelineWatchWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		D20000000000000000000024 /* Embed Watch Content */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -87,6 +117,13 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXContainerItemProxy section */
+		D30000000000000000000026 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D10000000000000000000007 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D30000000000000000000025;
+			remoteInfo = DatelineWatchWidgets;
+		};
 		D20000000000000000000026 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = D10000000000000000000007 /* Project object */;
@@ -97,6 +134,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXTargetDependency section */
+		D30000000000000000000027 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D30000000000000000000025 /* DatelineWatchWidgets */;
+			targetProxy = D30000000000000000000026 /* PBXContainerItemProxy */;
+		};
 		D20000000000000000000027 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = D20000000000000000000025 /* DatelineWatch */;
@@ -110,6 +152,7 @@
 			children = (
 				D10000000000000000000004 /* DatelinePhone */,
 				D20000000000000000000014 /* DatelineWatch */,
+				D30000000000000000000017 /* DatelineWatchWidgets */,
 				D10000000000000000000005 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -142,6 +185,7 @@
 			children = (
 				D10000000000000000000002 /* DatelinePhone.app */,
 				D20000000000000000000013 /* DatelineWatch.app */,
+				D30000000000000000000013 /* DatelineWatchWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -151,8 +195,20 @@
 			children = (
 				D20000000000000000000011 /* WatchApp.swift */,
 				D20000000000000000000012 /* WatchViews.swift */,
+				D30000000000000000000016 /* DatelineWatch.entitlements */,
 			);
 			path = DatelineWatch;
+			sourceTree = "<group>";
+		};
+		D30000000000000000000017 /* DatelineWatchWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				D30000000000000000000011 /* FaceViews.swift */,
+				D30000000000000000000012 /* Widgets.swift */,
+				D30000000000000000000014 /* Info.plist */,
+				D30000000000000000000015 /* DatelineWatchWidgets.entitlements */,
+			);
+			path = DatelineWatchWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -187,10 +243,12 @@
 				D20000000000000000000020 /* Sources */,
 				D20000000000000000000021 /* Frameworks */,
 				D20000000000000000000022 /* Resources */,
+				D30000000000000000000023 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				D30000000000000000000027 /* PBXTargetDependency */,
 			);
 			name = DatelineWatch;
 			packageProductDependencies = (
@@ -199,6 +257,26 @@
 			productName = DatelineWatch;
 			productReference = D20000000000000000000013 /* DatelineWatch.app */;
 			productType = "com.apple.product-type.application";
+		};
+		D30000000000000000000025 /* DatelineWatchWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D30000000000000000000040 /* Build configuration list for PBXNativeTarget "DatelineWatchWidgets" */;
+			buildPhases = (
+				D30000000000000000000020 /* Sources */,
+				D30000000000000000000021 /* Frameworks */,
+				D30000000000000000000022 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DatelineWatchWidgets;
+			packageProductDependencies = (
+				D30000000000000000000030 /* DatelineCore */,
+			);
+			productName = DatelineWatchWidgets;
+			productReference = D30000000000000000000013 /* DatelineWatchWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -228,6 +306,7 @@
 			targets = (
 				D10000000000000000000006 /* DatelinePhone */,
 				D20000000000000000000025 /* DatelineWatch */,
+				D30000000000000000000025 /* DatelineWatchWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -246,6 +325,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				D20000000000000000000004 /* AppIcon.icon in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D30000000000000000000022 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -279,6 +365,16 @@
 			files = (
 				D20000000000000000000001 /* WatchApp.swift in Sources */,
 				D20000000000000000000002 /* WatchViews.swift in Sources */,
+				D30000000000000000000004 /* FaceViews.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D30000000000000000000020 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D30000000000000000000001 /* FaceViews.swift in Sources */,
+				D30000000000000000000002 /* Widgets.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -355,6 +451,7 @@
 				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = LJZ32VB25F;
 				GENERATE_INFOPLIST_FILE = YES;
+				CODE_SIGN_ENTITLEMENTS = DatelineWatch/DatelineWatch.entitlements;
 				INFOPLIST_KEY_CFBundleDisplayName = Dateline;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Dateline shows the events in your calendars on your watch.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Dateline shows your reminders as tasks on your watch.";
@@ -383,6 +480,7 @@
 				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = LJZ32VB25F;
 				GENERATE_INFOPLIST_FILE = YES;
+				CODE_SIGN_ENTITLEMENTS = DatelineWatch/DatelineWatch.entitlements;
 				INFOPLIST_KEY_CFBundleDisplayName = Dateline;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Dateline shows the events in your calendars on your watch.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Dateline shows your reminders as tasks on your watch.";
@@ -393,6 +491,66 @@
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.johnhesch.dateline.watchkitapp;
 				PRODUCT_NAME = DatelineWatch;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
+		D30000000000000000000041 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = DatelineWatchWidgets/DatelineWatchWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = LJZ32VB25F;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = DatelineWatchWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Dateline;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Dateline shows your next event on your watch face.";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Dateline shows how many tasks are left today on your watch face.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.johnhesch.dateline.watchkitapp.widgets;
+				PRODUCT_NAME = DatelineWatchWidgets;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		D30000000000000000000042 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = DatelineWatchWidgets/DatelineWatchWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = LJZ32VB25F;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = DatelineWatchWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Dateline;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Dateline shows your next event on your watch face.";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Dateline shows how many tasks are left today on your watch face.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.johnhesch.dateline.watchkitapp.widgets;
+				PRODUCT_NAME = DatelineWatchWidgets;
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -433,6 +591,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		D30000000000000000000040 /* Build configuration list for PBXNativeTarget "DatelineWatchWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D30000000000000000000041 /* Debug */,
+				D30000000000000000000042 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -448,6 +615,10 @@
 			productName = DatelineCore;
 		};
 		D20000000000000000000030 /* DatelineCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DatelineCore;
+		};
+		D30000000000000000000030 /* DatelineCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = DatelineCore;
 		};

@@ -4,6 +4,7 @@
 import SwiftUI
 import Combine
 import WatchConnectivity
+import WidgetKit
 import DatelineCore
 
 @main
@@ -34,10 +35,13 @@ final class WatchState: ObservableObject {
     @Published var path: [String] = []  // event ids open
     @Published var adding = false
     var addStart = ""  // pictures only: the add screen's spoken sentence
+    var face: String?  // pictures only: "face" or "stack" draws the watch face pieces
     private let trips = Trips()
     private var clock: Timer?
     private var lastWake = Date.distantPast
     private var watching: AnyCancellable?
+    private var pieces: AnyCancellable?
+    private var shownNext: String?, shownLeft = -1
 
     init(store: Store, sample: Bool, now: Date = Date()) {
         self.store = store; self.sample = sample; self.now = now
@@ -51,6 +55,12 @@ final class WatchState: ObservableObject {
             guard let self, !self.ticked.isEmpty else { return }
             let agree = Set(list.filter { self.ticked[$0.id] == $0.done }.map(\.id))
             if !agree.isEmpty { self.ticked = self.ticked.filter { !agree.contains($0.key) } }
+        }
+        // The face pieces read again when what they show changes here: the next event or the tasks left today.
+        pieces = store.$items.combineLatest(store.$todos).debounce(for: .seconds(2), scheduler: RunLoop.main).sink { [weak self] _ in
+            guard let self else { return }
+            let next = self.coming.first?.id, left = self.store.todos.filter { !$0.done && [.overdue, .today].contains(taskGroup($0, now: self.now)) }.count
+            if next != self.shownNext || left != self.shownLeft { self.shownNext = next; self.shownLeft = left; WidgetCenter.shared.reloadAllTimelines() }
         }
         // The countdowns move on each minute; the calendars follow their own change notice, the rest is read again every 5 minutes.
         clock = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
@@ -66,7 +76,10 @@ final class WatchState: ObservableObject {
         load(); store.reloadReminders()
         Here.shared.refresh()
         let soon = store.between(now, now.addingTimeInterval(86400)).filter { $0.geo != nil && !$0.allDay && !$0.noTravel && $0.start > now }.sorted { $0.start < $1.start }
-        Task { _ = await trips.run(soon, all: soon, store: store) { m in if self.drive != m { self.drive = m } } }
+        Task { _ = await trips.run(soon, all: soon, store: store) { m in
+            guard self.drive != m else { return }
+            self.drive = m; Shared.save(drive: m); WidgetCenter.shared.reloadAllTimelines()  // the Smart Stack card's leave time
+        } }
     }
 
     /// The engine reads only the days asked for: yesterday (late tasks' days are not needed) to tomorrow.
@@ -155,6 +168,7 @@ enum WatchDemo {
         case "details": if let it = soon(app).first(where: { $0.geo != nil }) { app.path = [it.id] }
         case "details-call": if let it = soon(app).first(where: { callLink($0) != nil }) { app.path = [it.id] }
         case "add": app.page = 1; app.addStart = "Dinner with Ana Friday 7pm at Casa Luna"; app.adding = true
+        case "face", "stack": app.face = args[i + 1]
         default: break  // "next"
         }
         return app

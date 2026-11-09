@@ -5,6 +5,13 @@ import DatelineCore
 struct WatchRoot: View {
     @EnvironmentObject var app: WatchState
     var body: some View {
+        #if DEBUG
+        if let f = app.face { FacePictures(stack: f == "stack") } else { screens }
+        #else
+        screens
+        #endif
+    }
+    var screens: some View {
         NavigationStack(path: $app.path) {
             TabView(selection: $app.page) {
                 NextUp().tag(0)
@@ -145,3 +152,32 @@ struct AddByVoice: View {
         .navigationTitle("Add")
     }
 }
+
+#if DEBUG
+/// Pictures only: the face pieces as they sit on a Modular face (mockup 4), or the Smart Stack card, on the sample calendars.
+/// A stand-in for the real face, which the simulator can't set up; the pieces are the same views the extension shows.
+struct FacePictures: View {
+    let stack: Bool
+    @EnvironmentObject var app: WatchState
+    @EnvironmentObject var store: Store
+    var body: some View {
+        let e = FaceEntry.timeline(now: app.now, items: store.between(app.now, addDays(cal.startOfDay(for: app.now), 1)),
+                                   colors: Dictionary(store.calendars.map { ($0.id, $0.color) }, uniquingKeysWith: { a, _ in a }),
+                                   drive: app.drive, tasks: store.todos)[0]
+        VStack(spacing: 6) {
+            if stack {
+                Text(timeText(app.now).replacingOccurrences(of: " AM", with: "").replacingOccurrences(of: " PM", with: "")).font(.system(size: 34, weight: .semibold, design: .rounded))
+                FacePiece(kind: .card, e: e).padding(10).background(Color.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
+            } else {
+                FacePiece(kind: .inline, e: e).font(.footnote.weight(.semibold)).foregroundStyle(.red).lineLimit(1)
+                Text(timeText(app.now).replacingOccurrences(of: " AM", with: "").replacingOccurrences(of: " PM", with: "")).font(.system(size: 40, weight: .semibold, design: .rounded))
+                FacePiece(kind: .box, e: e).padding(8).background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                HStack {
+                    ForEach([FaceKind.countdown, .date, .tasks], id: \.self) { k in FacePiece(kind: k, e: e).frame(width: 46, height: 46).clipShape(Circle()) }
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+}
+#endif
