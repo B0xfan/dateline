@@ -168,6 +168,8 @@ func selftest() -> Int32 {
     expect(taskRowDay(td(at(10, 23, 0), done: true), now: now) == at(10, 23, 0), "a ticked task stays on its own day")
     // Week settings.
     MainActor.assumeIsolated {
+        sampleToday = now  // sample events must sit in the test's week, or up/down finds none
+        defer { sampleToday = nil }
         let a = AppState(store: Store(sample: true), today: now)
         a.mode = .week; a.days = 5
         expect(a.visibleDays == (0..<5).map { at(10, 26 + $0, 0) }, "5 days from Monday = Mon to Fri")
