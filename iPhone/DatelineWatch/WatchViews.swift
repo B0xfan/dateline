@@ -80,7 +80,7 @@ struct TodayList: View {
                 .opacity(!it.allDay && it.end <= app.now ? 0.5 : 1)  // already over
             }
         }
-        .navigationTitle(dayText(app.now).components(separatedBy: ",").first! + " " + String(cal.component(.day, from: app.now)))
+        .navigationTitle(dayText(app.now, month: false))
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { app.addStart = ""; app.adding = true } label: { Image(systemName: "mic.fill") } } }
     }
 }

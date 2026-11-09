@@ -1,5 +1,6 @@
 // The phone side of the watch link: the watch may not save to calendars or reminders, so it sends ticks and spoken events here to save.
 import Foundation
+import Combine
 import WatchConnectivity
 import DatelineCore
 
@@ -7,11 +8,14 @@ import DatelineCore
 final class WatchLink: NSObject, WCSessionDelegate {
     static let shared = WatchLink()
     private weak var app: PhoneState?
+    // shortcut: a tick for a task deleted meanwhile waits here until the app quits; a handful at most.
     private var ticks: [String: Bool] = [:]  // ticks for tasks not read from Reminders yet (the app was woken in the background)
+    private var watching: AnyCancellable?
 
     func start(_ app: PhoneState) {
         guard !app.sample, WCSession.isSupported() else { return }
         self.app = app
+        watching = app.store.$todos.sink { [weak self] _ in DispatchQueue.main.async { self?.applyTicks() } }  // after each Reminders read
         WCSession.default.delegate = self
         WCSession.default.activate()
     }
@@ -25,12 +29,12 @@ final class WatchLink: NSObject, WCSessionDelegate {
         }
         if let text = m["add"] as? String {
             let p = parseSentence(text, now: Date())
-            if case .failure(let f) = app.store.add(p, calendarID: app.calendarFor(p)?.id) { return f.message }
+            if case .failure(let f) = app.add(p) { return f.message }  // same as an add on the phone: its calendar choice, Undo and "Added" note
         }
         return nil
     }
 
-    @discardableResult private func applyTicks(retry: Bool = true) -> String? {
+    @discardableResult private func applyTicks() -> String? {
         guard let store = app?.store else { return nil }
         var problem: String?
         for (id, done) in ticks {
@@ -38,14 +42,10 @@ final class WatchLink: NSObject, WCSessionDelegate {
             ticks[id] = nil
             if t.done != done { t.done = done; problem = store.updateTask(t)?.message ?? problem }
         }
-        // shortcut: one retry, 2 s after a fresh Reminders read; a tick still unmatched then (task deleted) is dropped.
-        if retry, !ticks.isEmpty { store.reloadReminders(); DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.applyTicks(retry: false) } }
-        if !retry { ticks = [:] }
         return problem
     }
 
     nonisolated func session(_ s: WCSession, didReceiveMessage m: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
-        let m = m as [String: Any]
         Task { @MainActor in replyHandler(handle(m).map { ["error": $0] } ?? [:]) }
     }
     nonisolated func session(_ s: WCSession, didReceiveUserInfo u: [String: Any]) { Task { @MainActor in _ = handle(u) } }
