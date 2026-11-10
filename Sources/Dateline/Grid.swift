@@ -576,8 +576,7 @@ struct DetailPanel: View {
             ForEach(Array(mins.enumerated()), id: \.offset) { i, m in
                 row(i == 0 ? "Alert" : "") {
                     Menu { pick { v in var all = mins; all[i] = v; setAlerts(all) }; custom(i) } label: { Text(alertText(m, allDay: item.allDay)) }
-                        .menuStyle(.borderlessButton).fixedSize()
-                    Spacer(minLength: 0)
+                        .menuStyle(.borderlessButton).fixedSize().frame(maxWidth: .infinity, alignment: .leading)  // keeps every ✕ at the right edge
                     Button { var all = mins; all.remove(at: i); setAlerts(all) } label: { Image(systemName: "xmark").font(.ui(10, weight: .semibold)) }
                         .buttonStyle(.plain).foregroundStyle(Palette.text3).accessibilityLabel("Remove alert")
                 }
