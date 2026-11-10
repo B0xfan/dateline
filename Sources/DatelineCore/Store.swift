@@ -396,6 +396,9 @@ public final class Store: ObservableObject {
     // Saves changes to an event (move, stretch, edits in the details panel). Repeating events change this occurrence only.
     @discardableResult
     public func update(_ it: Item) -> Failure? {
+        var it = it
+        // A moved event keeps its alerts the same time before the start, as the calendars do.
+        if let b = items.first(where: { $0.id == it.id }), b.alerts == it.alerts, b.start != it.start { it.alerts = it.alerts.map { $0.addingTimeInterval(it.start.timeIntervalSince(b.start)) } }
         if trialOver { fetch(); return Failure(License.endedMessage) }  // the fetch puts a dragged event back
         // Only Dateline's extras changed (also on read-only calendars and invites): nothing goes to the calendar.
         if let old = items.first(where: { $0.id == it.id }), sameInCalendar(old, it) { setExtras(it); fetch(); return nil }

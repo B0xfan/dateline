@@ -119,6 +119,8 @@ public final class AppleCalendar: CalendarSource {
         }
     }
 
+    private nonisolated static func shown(_ a: EKAlarm, in e: EKEvent) -> Bool { a.proximity == .none && isShownAlarm(a) && !(e.hasRecurrenceRules && a.absoluteDate != nil) }
+
     public nonisolated static func item(_ e: EKEvent) -> Item {
         let s: ShowAs = e.availability == .free ? .free : e.availability == .tentative ? .maybe : .busy
         // A repeating event's occurrences share one identifier; the start date tells them apart. A one-time event keeps its plain identifier so moving it keeps it selected.
@@ -127,7 +129,7 @@ public final class AppleCalendar: CalendarSource {
                     calendarID: e.calendar.calendarIdentifier, title: e.title ?? "", start: e.startDate, end: e.endDate,
                     allDay: e.isAllDay, place: e.location ?? "", notes: e.notes ?? "", showAs: s,
                     geo: e.structuredLocation?.geoLocation.map { Geo(lat: $0.coordinate.latitude, lon: $0.coordinate.longitude) },
-                    alerts: (e.alarms ?? []).filter { $0.proximity == .none && isShownAlarm($0) && !(e.hasRecurrenceRules && $0.absoluteDate != nil) }
+                    alerts: (e.alarms ?? []).filter { shown($0, in: e) }
                         .map { $0.absoluteDate ?? e.startDate.addingTimeInterval($0.relativeOffset) },
                     link: e.url?.absoluteString ?? "", uid: e.calendarItemExternalIdentifier ?? "")
     }
@@ -170,6 +172,10 @@ public final class AppleCalendar: CalendarSource {
         guard let e = event(it, now: before) else { return .failure(Failure("That event is gone.")) }
         if e.calendar.calendarIdentifier != it.calendarID, let c = ek.calendar(withIdentifier: it.calendarID) { e.calendar = c }
         apply(it, to: e)
+        if let before, alertMinutes(before) != alertMinutes(it) {  // the panel's Alert rows: replace only the alerts Dateline shows
+            (e.alarms ?? []).filter { Self.shown($0, in: e) }.forEach(e.removeAlarm)
+            it.alerts.forEach { e.addAlarm(EKAlarm(relativeOffset: $0.timeIntervalSince(it.start))) }
+        }
         do { try ek.save(e, span: .thisEvent, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
         return .success(e.eventIdentifier)
         #endif
@@ -351,6 +357,7 @@ public final class SampleCalendar: CalendarSource {
         ev("work", "Lunch with the team", -27, 12, 0, 60, place: "Office")
         ev("work", "Team standup", 0, 9, 0, 30)
         ev("work", "Write proposal", 0, 10, 0, 120, notes: "Sample notes: outline goals, budget and next steps for the proposal.")
+        made[made.count - 1].alerts = [at(0, 9, 0), at(0, 9, 45)]  // shows the Alert rows in the details picture
         ev("personal", "Lunch with Sam", 0, 12, 30, 60, .maybe, place: "Café Playa")
         ev("family", "School pickup", 0, 15, 0, 30)
         ev("personal", "Gym", 0, 17, 30, 60, .free)

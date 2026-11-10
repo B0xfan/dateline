@@ -105,6 +105,11 @@ func selftest() -> Int32 {
     expect(matchCalendar("f", in: cals, hidden: ["Finance"])?.id == "Family" && matchCalendar("funstuff", in: cals, hidden: [])?.id == "Fun Stuff"
            && matchCalendar("fin", in: cals, hidden: ["Finance"])?.id == "Finance" && matchCalendar("x", in: cals, hidden: []) == nil, "/code prefers shown calendars")
     expect(alertText(15) == "15 minutes before" && alertText(60) == "1 hour before" && alertText(2880) == "2 days before", "alert text")
+    expect(alertText(900, allDay: true) == "1 day before, 9 AM" && alertText(-540, allDay: true) == "On the day, 9 AM"
+           && alertText(9540, allDay: true) == "1 week before, 9 AM" && alertText(2370, allDay: true) == "2 days before, 8:30 AM", "all-day alert text")
+    let alerted = Item(id: "a", calendarID: "c", title: "", start: Date(timeIntervalSince1970: 100_000), end: Date(timeIntervalSince1970: 103_600), allDay: false,
+                       place: "", notes: "", showAs: .busy, alerts: [Date(timeIntervalSince1970: 100_000 - 900), Date(timeIntervalSince1970: 100_000 + 32400)])
+    expect(alertMinutes(alerted) == [15, -540], "alert minutes from the saved alert times")
     let pastList = [Item(id: "a", calendarID: "personal", title: "Lunch with the team", start: at(9, 30, 12), end: at(9, 30, 13), allDay: false, place: "Office", notes: "", showAs: .busy),
                     Item(id: "b", calendarID: "personal", title: "Lunch with Sam", start: at(10, 13, 12), end: at(10, 13, 13, 30), allDay: false, place: "Casa Luna", notes: "", showAs: .maybe),
                     Item(id: "c", calendarID: "work", title: "Gym", start: at(10, 1, 7), end: at(10, 1, 8), allDay: false, place: "", notes: "", showAs: .busy)]

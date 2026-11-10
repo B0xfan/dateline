@@ -295,6 +295,19 @@ public func alertText(_ m: Int) -> String {
     return "\(n) \(unit)\(n == 1 ? "" : "s") before"
 }
 
+// The event panel's alert choices, in minutes before the start. All-day events count from their midnight: 900 is the day before at 9 AM, -540 the day itself at 9 AM.
+public let alertChoices = [0, 5, 15, 30, 60, 120, 1440, 2880]
+public let allDayAlertChoices = [-540, 900, 2340, 9540]
+public func alertMinutes(_ it: Item) -> [Int] { it.alerts.map { Int((it.start.timeIntervalSince($0) / 60).rounded()) } }
+public func alertText(_ m: Int, allDay: Bool) -> String {
+    guard allDay else { return alertText(m) }
+    let days = Int((Double(m) / 1440).rounded(.up)), t = days * 1440 - m  // whole days before, then minutes after that midnight
+    let h = t / 60 % 12 == 0 ? 12 : t / 60 % 12
+    let time = "\(h)" + (t % 60 == 0 ? "" : String(format: ":%02d", t % 60)) + (t / 60 < 12 ? " AM" : " PM")
+    let when = days <= 0 ? "On the day" : days % 7 == 0 ? (days == 7 ? "1 week before" : "\(days / 7) weeks before") : days == 1 ? "1 day before" : "\(days) days before"
+    return when + ", " + time
+}
+
 // "/fam" or "/f" -> the calendar named that, or starting with it. Calendars shown in the sidebar win over hidden ones.
 public func matchCalendar(_ code: String, in cals: [CalInfo], hidden: Set<String>) -> CalInfo? {
     let k = code.lowercased()

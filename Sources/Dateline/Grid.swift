@@ -393,6 +393,7 @@ struct DetailPanel: View {
     @State var item: Item
     @FocusState private var field: String?
     @State private var notesEditing = false
+    @State private var customOpen = false, customAt = 0, customN = 10, customUnit = 1  // the alert menu's Custom… box
     @AppStorage("attachHintOff") private var attachHintOff = false  // "Not now" on the attachments hint
 
     var body: some View {
@@ -453,6 +454,7 @@ struct DetailPanel: View {
                     }
                     Text(lengthText).font(.ui(12)).foregroundStyle(Palette.text3).padding(.leading, 72)
                 }
+                alertRows.disabled(locked)
                 section("SHOW AS")
                 Seg(options: ShowAs.allCases.map(\.rawValue), selected: item.showAs.rawValue) { item.showAs = ShowAs(rawValue: $0)!; commit() }
                 section("PLACE")
@@ -551,6 +553,51 @@ struct DetailPanel: View {
             return
         }
         app.save(item)
+    }
+
+    // Alerts (approved mockup 2026-11-10): up to two, saved on the event so they also ring on the phone and in Apple Calendar.
+    var alertRows: some View {
+        let mins = alertMinutes(item)
+        let google = store.accCal(item.calendarID)?.0.kind == "google"  // Google takes only alerts before the start
+        let choices = (item.allDay ? allDayAlertChoices : alertChoices).filter { !(google && $0 < 0) }
+        func pick(_ act: @escaping (Int) -> Void) -> some View {
+            ForEach(choices, id: \.self) { m in Button(alertText(m, allDay: item.allDay)) { act(m) } }
+        }
+        func custom(_ i: Int) -> some View {
+            Group { if !item.allDay { Divider(); Button("Custom…") { customAt = i; customOpen = true } } }
+        }
+        let add = Menu { pick { setAlerts(mins + [$0]) }; custom(mins.count) } label: { Text("+ Add alert").foregroundStyle(Color.accentColor) }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(mins.enumerated()), id: \.offset) { i, m in
+                row(i == 0 ? "Alert" : "") {
+                    Menu { pick { v in var all = mins; all[i] = v; setAlerts(all) }; custom(i) } label: { Text(alertText(m, allDay: item.allDay)) }
+                        .menuStyle(.borderlessButton).fixedSize()
+                    Spacer(minLength: 0)
+                    Button { var all = mins; all.remove(at: i); setAlerts(all) } label: { Image(systemName: "xmark").font(.ui(10, weight: .semibold)) }
+                        .buttonStyle(.plain).foregroundStyle(Palette.text3).accessibilityLabel("Remove alert")
+                }
+            }
+            if mins.isEmpty { row("Alert") { add } } else if mins.count < 2 { add.padding(.leading, 72).padding(.top, 6) }
+        }
+        .popover(isPresented: $customOpen, arrowEdge: .leading) {
+            HStack(spacing: 8) {
+                TextField("", value: $customN, format: .number).frame(width: 48).textFieldStyle(.roundedBorder)
+                Picker("", selection: $customUnit) { Text("minutes").tag(1); Text("hours").tag(60); Text("days").tag(1440) }.labelsHidden().fixedSize()
+                Text("before").foregroundStyle(Palette.text3)
+                Button("Set") {
+                    var all = mins; let v = max(0, customN) * customUnit
+                    if customAt < all.count { all[customAt] = v } else { all.append(v) }
+                    setAlerts(all); customOpen = false
+                }.keyboardShortcut(.defaultAction)
+            }.padding(12)
+        }
+    }
+
+    func setAlerts(_ mins: [Int]) {
+        var seen = Set<Int>()
+        item.alerts = mins.filter { seen.insert($0).inserted }.prefix(2).map { item.start.addingTimeInterval(-Double($0 * 60)) }
+        commit()
     }
 
     func section(_ t: String) -> some View {
