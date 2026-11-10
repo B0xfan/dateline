@@ -75,6 +75,7 @@ struct AppCommands: Commands {
             Button("Undo Last Change") { app.openMain?(); app.undo() }.disabled(!app.canUndo)
         }
         CommandGroup(replacing: .help) {
+            Button("Dateline Manual") { NSWorkspace.shared.open(URL(string: "https://dateline.app/manual")!) }
             Button("Keyboard Shortcuts") { app.openMain?(); app.panels.showShortcuts = true }.keyboardShortcut("/", modifiers: [.command, .shift])
         }
     }
