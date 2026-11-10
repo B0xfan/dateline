@@ -191,6 +191,9 @@ func selftest() -> Int32 {
         a.selectedID = nil
         let gap = [at(10, 29, 0), at(10, 30, 0), at(11, 2, 0)]
         expect(dayShift(columns: 1, from: gap[1], in: gap) == 3 && dayShift(columns: -1, from: gap[2], in: gap) == -3 && dayShift(columns: 2, from: gap[2], in: gap) == 2 && dayShift(columns: 2, from: gap[1], in: gap) == 4, "dragging over the weekend gap moves by the days between columns")
+        let xPost = Item(id: "x", calendarID: "", title: "X post", start: at(11, 10, 7, 51), end: at(11, 10, 8, 6), allDay: false, place: "", notes: "", showAs: .busy)
+        let dentist = taskSpan(ToDo(id: "d", listID: "", title: "Dentist", due: at(11, 10, 8), timed: true)), ln = lanes([xPost, dentist])
+        expect(ln["x"]?.1 == 2 && ln["task:d"]?.1 == 2 && ln["x"]?.0 != ln["task:d"]?.0, "a timed task beside an event it overlaps gets its own lane, not on top")
         a.days = 3; a.anchor = at(10, 26, 0); a.now = at(10, 26, 23)
         a.tick(at(10, 28, 8)); expect(a.anchor == at(10, 28, 0) && a.now == at(10, 28, 8), "a new day: the view showing today moves on")
         a.anchor = at(10, 26, 0); a.now = at(10, 28, 8); a.tick(at(10, 29, 8)); expect(a.anchor == at(10, 26, 0), "a new day: a view paged elsewhere stays, even with today on screen")

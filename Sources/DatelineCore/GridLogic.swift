@@ -16,6 +16,12 @@ public func lanes(_ items: [Item]) -> [String: (Int, Int)] {
     return out
 }
 
+// A timed task as a half-hour span (its block's height), so it takes a lane beside the events it overlaps instead of covering them.
+public func taskSpan(_ t: ToDo) -> Item {
+    let d = t.due ?? .distantPast
+    return Item(id: "task:" + t.id, calendarID: "", title: t.title, start: d, end: d.addingTimeInterval(1800), allDay: false, place: "", notes: "", showAs: .free)
+}
+
 // Days between two columns of a week view: the 5 day week can skip days off, so one column can be several days. Past either end, each further column = one day.
 public func dayShift(columns n: Int, from day: Date, in days: [Date]) -> Int {
     guard let i = days.firstIndex(of: day) else { return n }

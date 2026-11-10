@@ -110,7 +110,8 @@ struct DayColumn: View {
     var body: some View {
         GeometryReader { g in
             let w = g.size.width
-            let lane = lanes(items)
+            let timed = app.calendarTodos.filter { t in t.timed && !isOverdue(t, now: app.now) && !store.a4OnCalendar(t) && t.due.map { cal.isDate($0, inSameDayAs: day) } == true }
+            let lane = lanes(items + timed.map(taskSpan))
             ZStack(alignment: .topLeading) {
                 OffHours(day: day)
                 if WorkWeek.sun, let g = here.spot { SunHours(day: day, at: g, labels: day == days.first && w >= 70) }
@@ -156,10 +157,11 @@ struct DayColumn: View {
                     }.allowsHitTesting(false).zIndex(3)
                 }
                 // Reminders with a time on this day (not overdue: those sit in today's Tasks row).
-                ForEach(app.calendarTodos.filter { t in t.timed && !isOverdue(t, now: app.now) && !store.a4OnCalendar(t) && t.due.map { cal.isDate($0, inSameDayAs: day) } == true }) { t in
+                ForEach(timed) { t in
+                    let (l, n) = lane["task:" + t.id] ?? (0, 1), colW = (w - 4) / CGFloat(max(n, 1))
                     TaskBlock(app: app, store: store, task: t)
-                        .frame(width: w - 8, height: max(20, hourH / 2 - 2))
-                        .offset(x: 4, y: CGFloat(t.due!.timeIntervalSince(day) / 3600) * hourH + 1)
+                        .frame(width: colW - 2, height: max(20, hourH / 2 - 2))
+                        .offset(x: 2 + CGFloat(l) * colW, y: CGFloat(t.due!.timeIntervalSince(day) / 3600) * hourH + 1)
                         .zIndex(2)
                 }
             }
