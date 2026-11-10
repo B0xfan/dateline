@@ -1,25 +1,25 @@
 // The maths behind the day, week and month grids: side-by-side lanes, day shifts, calendars per day.
 import SwiftUI
 
-// Side-by-side columns for events that overlap in time: (column, columns in its group).
-public func lanes(_ items: [Item]) -> [String: (Int, Int)] {
+// Side-by-side columns for events that overlap on screen: (column, columns in its group). `minLength`: the shortest block drawn, so a short event still counts for the space it covers.
+public func lanes(_ items: [Item], minLength: TimeInterval = 0) -> [String: (Int, Int)] {
     var out: [String: (Int, Int)] = [:]
     var group: [Item] = [], ends: [Date] = [], groupEnd = Date.distantPast
     func flush() { for it in group { out[it.id] = (out[it.id]!.0, ends.count) }; group = []; ends = [] }
-    for it in items.sorted(by: { ($0.start, $1.end) < ($1.start, $0.end) }) {
+    func end(_ it: Item) -> Date { max(it.end, it.start.addingTimeInterval(minLength)) }
+    for it in items.sorted(by: { ($0.start, end($1)) < ($1.start, end($0)) }) {
         if it.start >= groupEnd { flush() }
         let lane = ends.firstIndex(where: { $0 <= it.start }) ?? ends.count
-        if lane == ends.count { ends.append(it.end) } else { ends[lane] = it.end }
-        out[it.id] = (lane, 0); group.append(it); groupEnd = max(groupEnd, it.end)
+        if lane == ends.count { ends.append(end(it)) } else { ends[lane] = end(it) }
+        out[it.id] = (lane, 0); group.append(it); groupEnd = max(groupEnd, end(it))
     }
     flush()
     return out
 }
 
-// A timed task as a half-hour span (its block's height), so it takes a lane beside the events it overlaps instead of covering them.
-public func taskSpan(_ t: ToDo) -> Item {
-    let d = t.due ?? .distantPast
-    return Item(id: "task:" + t.id, calendarID: "", title: t.title, start: d, end: d.addingTimeInterval(1800), allDay: false, place: "", notes: "", showAs: .free)
+// A timed task as a span as long as its drawn block, so it takes a lane beside the events it overlaps instead of covering them.
+public func taskSpan(_ t: ToDo, at due: Date, length: TimeInterval) -> Item {
+    Item(id: "task:" + t.id, calendarID: "", title: t.title, start: due, end: due.addingTimeInterval(length), allDay: false, place: "", notes: "", showAs: .free)
 }
 
 // Days between two columns of a week view: the 5 day week can skip days off, so one column can be several days. Past either end, each further column = one day.

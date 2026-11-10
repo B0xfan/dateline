@@ -111,7 +111,8 @@ struct DayColumn: View {
         GeometryReader { g in
             let w = g.size.width
             let timed = app.calendarTodos.filter { t in t.timed && !isOverdue(t, now: app.now) && !store.a4OnCalendar(t) && t.due.map { cal.isDate($0, inSameDayAs: day) } == true }
-            let lane = lanes(items + timed.map(taskSpan))
+            let perPoint = 3600 / Double(hourH)  // seconds of day per point of height
+            let lane = lanes(items + timed.map { taskSpan($0, at: $0.due!, length: Double(max(20, hourH / 2 - 2)) * perPoint) }, minLength: 18 * perPoint)
             ZStack(alignment: .topLeading) {
                 OffHours(day: day)
                 if WorkWeek.sun, let g = here.spot { SunHours(day: day, at: g, labels: day == days.first && w >= 70) }
