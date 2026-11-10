@@ -289,11 +289,18 @@ public func icsPatch(_ text: String, occurrence: Date?, _ it: Item, link: String
     var lines = icsUnfold(text)
     let evs = vevents(lines)
     func rewrite(_ r: Range<Int>) {
-        var block = Array(lines[r]), depth = 0, keep: [String] = [], inAlarm = false
+        var block = Array(lines[r]), depth = 0, keep: [String] = [], alarm: [String]?
         for l in block.dropFirst().dropLast() {
             let u = l.uppercased()
-            if alerts != nil, depth == 0, u == "BEGIN:VALARM" { inAlarm = true; continue }
-            if inAlarm { if u == "END:VALARM" { inAlarm = false }; continue }
+            // Changed alerts replace only the alarms Dateline shows (as ICS.swift reads them); a fixed-time or after-the-end one stays.
+            if alerts != nil, depth == 0, u == "BEGIN:VALARM" { alarm = [l]; continue }
+            if var a = alarm {
+                a.append(l); alarm = a
+                guard u == "END:VALARM" else { continue }
+                let t = a.first { propName($0) == "TRIGGER" }?.uppercased() ?? ""
+                if t.contains("VALUE=DATE-TIME") || t.contains("RELATED=END") { keep += a }
+                alarm = nil; continue
+            }
             if u.hasPrefix("BEGIN:") { depth += 1 } else if u.hasPrefix("END:") { depth -= 1; keep.append(l); continue }
             if depth == 0 && icsOwned.contains(propName(l)) { continue }
             keep.append(l)
@@ -1118,6 +1125,9 @@ public func accountsSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, In
     let noAlerts = icsPatch(guest, occurrence: nil, moved, link: "", alerts: [])
     expect(twoAlerts?.alarms == [-3600, -300] && dayOf?.alarms == [32400] && !noAlerts.contains("VALARM") && noAlerts.contains("ATTENDEE;CN=Ana"),
            "accounts: the panel's alerts replace the file's alarms, and none removes them")
+    let fixed = guest.replacingOccurrences(of: "END:VEVENT", with: "BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER;VALUE=DATE-TIME:20261030T100000Z\r\nEND:VALARM\r\nEND:VEVENT")
+    let keptFixed = icsPatch(fixed, occurrence: nil, moved, link: "", alerts: [5])
+    expect(keptFixed.contains("TRIGGER;VALUE=DATE-TIME:20261030T100000Z") && parseICS(keptFixed).first?.alarms == [-300], "accounts: a fixed-time alarm the panel doesn't show is kept")
     let weekly = icsNew(uid: "w1", base, link: "", alertMinutes: nil, rule: "FREQ=WEEKLY")
     let occ = addDays(base.start, 7)
     var one = base; one.title = "Just this week"; one.start = occ.addingTimeInterval(3600); one.end = occ.addingTimeInterval(7200)

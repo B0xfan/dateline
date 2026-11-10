@@ -397,13 +397,13 @@ public final class Store: ObservableObject {
     @discardableResult
     public func update(_ it: Item) -> Failure? {
         var it = it
+        let before = items.first { $0.id == it.id }
         // A moved event keeps its alerts the same time before the start, as the calendars do.
-        if let b = items.first(where: { $0.id == it.id }), b.alerts == it.alerts, b.start != it.start { it.alerts = it.alerts.map { $0.addingTimeInterval(it.start.timeIntervalSince(b.start)) } }
+        if let b = before, b.alerts == it.alerts, b.start != it.start { it.alerts = it.alerts.map { $0.addingTimeInterval(it.start.timeIntervalSince(b.start)) } }
         if trialOver { fetch(); return Failure(License.endedMessage) }  // the fetch puts a dragged event back
         // Only Dateline's extras changed (also on read-only calendars and invites): nothing goes to the calendar.
-        if let old = items.first(where: { $0.id == it.id }), sameInCalendar(old, it) { setExtras(it); fetch(); return nil }
+        if let old = before, sameInCalendar(old, it) { setExtras(it); fetch(); return nil }
         if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be changed.") }
-        let before = items.first { $0.id == it.id }
         if isAcc(it.calendarID) || before.map({ isAcc($0.calendarID) }) == true {
             if let f = accUpdate(it, old: before) { fetch(); return f }
             setExtras(it); fetch(); return nil

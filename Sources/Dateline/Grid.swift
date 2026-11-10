@@ -393,7 +393,11 @@ struct DetailPanel: View {
     @State var item: Item
     @FocusState private var field: String?
     @State private var notesEditing = false
-    @State private var customOpen = false, customAt = 0, customN = 10, customUnit = 1  // the alert menu's Custom… box
+    // The alert menu's Custom… box.
+    @State private var customOpen = false
+    @State private var customAt = 0
+    @State private var customN = 10
+    @State private var customUnit = 1
     @AppStorage("attachHintOff") private var attachHintOff = false  // "Not now" on the attachments hint
 
     var body: some View {
@@ -555,7 +559,7 @@ struct DetailPanel: View {
         app.save(item)
     }
 
-    // Alerts (approved mockup 2026-11-10): up to two, saved on the event so they also ring on the phone and in Apple Calendar.
+    // Alerts (approved mockup 2026-11-10): two can be added (more set elsewhere stay), saved on the event so they also ring on the phone and in Apple Calendar.
     var alertRows: some View {
         let mins = alertMinutes(item)
         let google = store.accCal(item.calendarID)?.0.kind == "google"  // Google takes only alerts before the start
@@ -586,7 +590,7 @@ struct DetailPanel: View {
                 Picker("", selection: $customUnit) { Text("minutes").tag(1); Text("hours").tag(60); Text("days").tag(1440) }.labelsHidden().fixedSize()
                 Text("before").foregroundStyle(Palette.text3)
                 Button("Set") {
-                    var all = mins; let v = max(0, customN) * customUnit
+                    var all = mins; let v = min(max(0, customN) * customUnit, google ? 40320 : 525_600)  // Google takes at most 4 weeks
                     if customAt < all.count { all[customAt] = v } else { all.append(v) }
                     setAlerts(all); customOpen = false
                 }.keyboardShortcut(.defaultAction)
@@ -596,7 +600,7 @@ struct DetailPanel: View {
 
     func setAlerts(_ mins: [Int]) {
         var seen = Set<Int>()
-        item.alerts = mins.filter { seen.insert($0).inserted }.prefix(2).map { item.start.addingTimeInterval(-Double($0 * 60)) }
+        item.alerts = mins.filter { seen.insert($0).inserted }.map { item.start.addingTimeInterval(-Double($0 * 60)) }
         commit()
     }
 
