@@ -495,7 +495,8 @@ struct HourGrid: View {
     @EnvironmentObject var store: Store
     @Environment(\.scenePhase) private var scenePhase
     @State private var away = false
-    @GestureState private var held: DragLive? = nil  // the event held in a finger now; it clears itself when the finger lifts or the touch is cancelled
+    @GestureState private var held: DragLive? = nil  // iOS 17: the event held in a finger now; it clears itself when the finger lifts or the touch is cancelled
+    @State private var pressed: DragLive? = nil  // iOS 18 and later: the same, from HoldDrag
     let days: [Date]
     let wide: Bool
     private var hourH: CGFloat { Look.hourHeight }  // Hour height and How packed, as on the Mac (redraws on app.look)
@@ -524,12 +525,12 @@ struct HourGrid: View {
                 }
                 .padding(.bottom, 8)
             }
-            .scrollDisabled(held != nil)
-            .onChange(of: held?.id) {
-                if held != nil { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); app.dragUntil = .distantFuture }
+            .scrollDisabled(holding != nil)
+            .onChange(of: holding?.id) {
+                if holding != nil { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); app.dragUntil = .distantFuture }
                 else { app.dragUntil = Date().addingTimeInterval(0.4) }
             }
-            .onChange(of: held?.minutes) { if held != nil { UISelectionFeedbackGenerator().selectionChanged() } }
+            .onChange(of: holding?.minutes) { if holding != nil { UISelectionFeedbackGenerator().selectionChanged() } }
             // Like the Mac: the current hour's row sits mid-view on opening and each time the app comes back to the front.
             .onAppear { DispatchQueue.main.async { centre(sv) } }
             .onChange(of: app.anchor) { centre(sv) }
@@ -551,7 +552,8 @@ struct HourGrid: View {
         return CGFloat(m) / 60 * hourH
     }
 
-    private var live: DragLive? { held ?? app.demoDrag }
+    private var holding: DragLive? { held ?? pressed }
+    private var live: DragLive? { holding ?? app.demoDrag }
 
     /// The event as it would be saved if the finger lifted now.
     private func lifted(_ it: Item, _ l: DragLive, column: Date) -> Item {
@@ -591,12 +593,12 @@ struct HourGrid: View {
                 let writable = store.calendar(it.calendarID)?.writable == true
                 EventBlock(it: shown, wide: wide, lifted: l != nil)
                     .frame(width: w - 4, height: h)
-                    .gesture(hold(it, column: day, width: g.size.width, stretch: false), including: writable ? .all : .none)
+                    .modifier(Holdable(grid: self, it: it, column: day, width: g.size.width, stretch: false, on: writable))
                     .overlay(alignment: .bottom) {
                         if writable {
                             Color.clear.frame(height: min(22, h0 / 2)).contentShape(Rectangle())
                                 .onTapGesture { app.open(it) }
-                                .gesture(hold(it, column: day, width: g.size.width, stretch: true))
+                                .modifier(Holdable(grid: self, it: it, column: day, width: g.size.width, stretch: true, on: true))
                                 .accessibilityHidden(true)
                         }
                     }
@@ -626,6 +628,26 @@ struct HourGrid: View {
         }
     }
 
+    /// iOS 18 and later hold with HoldDrag: there SwiftUI's own hold-then-drag stops a quick swipe that starts on an event from scrolling the day (John's video 2026-11-12).
+    private struct Holdable: ViewModifier {
+        let grid: HourGrid, it: Item, column: Date, width: CGFloat, stretch: Bool, on: Bool
+        func body(content: Content) -> some View {
+            if !on { content }
+            else if #available(iOS 18.0, *) {
+                let live = { (d: CGSize) in DragLive(id: it.id, day: column, stretch: stretch, minutes: DragMath.minutes(dy: d.height, hourH: grid.hourH), columns: Int((d.width / width).rounded())) }
+                content.gesture(HoldDrag { grid.pressed = $0.map(live) } lifted: { grid.drop(it, live($0), column: column) })
+                    .onDisappear { if grid.pressed?.id == it.id && grid.pressed?.stretch == stretch { grid.pressed = nil } }  // a sync removed the held event: never leave the day frozen
+            } else { content.gesture(grid.hold(it, column: column, width: width, stretch: stretch)) }
+        }
+    }
+
+    /// The finger lifted: save the event where it was let go.
+    private func drop(_ it: Item, _ l: DragLive, column: Date) {
+        let new = lifted(it, l, column: column)
+        guard new != it else { return }
+        if let f = app.change(new, from: it, l.stretch ? "Changed the length of" : "Moved") { if store.trialOver { app.showUnlock = true } else { app.problem = f.message } }
+    }
+
     /// Press and hold, then drag: moves the event (anywhere on it) or changes its length (its bottom edge). 15 minute steps.
     private func hold(_ it: Item, column: Date, width: CGFloat, stretch: Bool) -> some Gesture {
         func live(_ v: SequenceGesture<LongPressGesture, DragGesture>.Value) -> DragLive? {
@@ -634,12 +656,32 @@ struct HourGrid: View {
         }
         return LongPressGesture(minimumDuration: 0.35).sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
             .updating($held) { v, state, _ in if let l = live(v) { state = l } }
-            .onEnded { v in
-                guard let l = live(v) else { return }
-                let new = lifted(it, l, column: column)
-                guard new != it else { return }
-                if let f = app.change(new, from: it, stretch ? "Changed the length of" : "Moved") { if store.trialOver { app.showUnlock = true } else { app.problem = f.message } }
-            }
+            .onEnded { v in if let l = live(v) { drop(it, l, column: column) } }
+    }
+}
+
+/// Press and hold, then drag, as UIKit's long press: a finger that moves before the hold is up fails it and stays a scroll.
+@available(iOS 18.0, *)
+struct HoldDrag: UIGestureRecognizerRepresentable {
+    let moved: (CGSize?) -> Void  // finger travel since the hold began; nil when it ends or is cancelled
+    let lifted: (CGSize) -> Void  // the finger lifted after this travel
+    final class Coordinator { var start: CGPoint? }
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let g = UILongPressGestureRecognizer()
+        g.minimumPressDuration = 0.35
+        return g
+    }
+    func handleUIGestureRecognizerAction(_ g: UILongPressGestureRecognizer, context: Context) {
+        let p = g.location(in: g.view?.window)  // window space: the block moves under the finger, so its own space would jitter
+        if g.state == .began { context.coordinator.start = p }
+        guard let s = context.coordinator.start else { return moved(nil) }  // never saw this hold begin: ignore it rather than jump the event
+        let d = CGSize(width: p.x - s.x, height: p.y - s.y)
+        switch g.state {
+        case .began, .changed: moved(d)
+        case .ended: moved(nil); context.coordinator.start = nil; lifted(d)
+        default: moved(nil); context.coordinator.start = nil  // cancelled or failed: nothing is saved
+        }
     }
 }
 

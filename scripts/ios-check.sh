@@ -19,6 +19,12 @@ xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --ba
 xcrun simctl install "$UDID" "$APP"
 BID=com.johnhesch.dateline
 rc=0
+echo "== touch checks (swipes on the sample day) =="
+# Ad hoc signed for the simulator only; it builds its own copy of the app next to the test.
+perl -e 'alarm 900; exec @ARGV' xcodebuild test -project iPhone/Dateline.xcodeproj -scheme DatelinePhoneUITests -destination "id=$UDID" -derivedDataPath dd-uitests \
+  ONLY_ACTIVE_ARCH=YES CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= -resultBundlePath "$OUT/touch-checks.xcresult" > "$OUT/touch-checks.txt" 2>&1 || rc=1
+grep -E "error:|Test Case|XCTAssert|failed|passed|TEST (SUCCEEDED|FAILED)|\*\* " "$OUT/touch-checks.txt" | tail -40
+xcrun simctl install "$UDID" "$APP"   # the pictures below use the cloud build, not the test's own copy
 echo "== built-in checks =="
 for try in 1 2; do
   perl -e 'alarm 300; exec @ARGV' xcrun simctl launch --console --terminate-running-process "$UDID" $BID --selftest > "$OUT/selftest.txt" 2>&1 || true
