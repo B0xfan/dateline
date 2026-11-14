@@ -62,7 +62,7 @@ final class FullAlert: NSPanel {
                 let ids = items.map(\.id)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 300) { MainActor.assumeIsolated {
                     // the setting, the lock, a Focus and the event may have changed in those 5 minutes
-                    let still = app.store.soon.filter { ids.contains($0.id) }
+                    let still = app.store.soon.filter { ids.contains($0.id) && (app.store.calendar($0.calendarID).map(Alerts.covers) ?? false) && (!Alerts.callsOnly || callLink($0) != nil) }
                     if Alerts.full && !quietNow() && !still.isEmpty { show(still, app: app) }
                 } }
             },
