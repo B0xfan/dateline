@@ -121,6 +121,7 @@ struct MainView: View {
             if app.mode == .week && width >= 800 {
                 Picker("Days", selection: $app.days) { ForEach([3, 5, 7], id: \.self) { Text(String($0)).tag($0) } }
                     .pickerStyle(.segmented).labelsHidden().fixedSize().help("Days to show in the week")
+                    .padding(.trailing, 12)  // John's 2026-11-14 bug: with no gap, "7" ran into "Day" and read as "7 Day"
             }
             Picker("View", selection: $app.mode) {
                 ForEach(Mode.allCases, id: \.self) { m in Text(width < 800 ? String(m.rawValue.prefix(1)) : m.rawValue).tag(m).accessibilityLabel(m.rawValue) }

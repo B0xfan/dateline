@@ -14,6 +14,8 @@ public enum Alerts {
 
     public static var full = d.object(forKey: "fullAlert") as? Bool ?? true { didSet { save(full, "fullAlert") } }
     public static var lead = d.object(forKey: "fullLead") as? Int ?? 0 { didSet { save(lead, "fullLead") } }
+    public static let whichEvents = ["All events", "Only video calls"]
+    public static var callsOnly = d.bool(forKey: "fullCallsOnly") { didSet { save(callsOnly, "fullCallsOnly") } }  // John 2026-11-14: only events with a Zoom, Meet or Teams link
     // nil until the first change: then only calendars called Work are on.
     public static var fullCalendars = (d.array(forKey: "fullCalendars") as? [String]).map(Set.init) { didSet { save(Array(fullCalendars ?? []), "fullCalendars") } }
     public static var sound = d.dictionary(forKey: "alertSounds") as? [String: String] ?? [:] { didSet { save(sound, "alertSounds") } }
@@ -33,14 +35,14 @@ public enum Alerts {
     }
 
     // The mockup's choices, for the off-screen pictures and the self-checks; never saved.
-    public static func reset() { Look.saves = false; full = true; lead = 0; fullCalendars = nil; sound = [:] }
+    public static func reset() { Look.saves = false; full = true; lead = 0; callsOnly = false; fullCalendars = nil; sound = [:] }
 }
 
 // Events whose full screen alert time (start minus `lead` minutes) falls after `from`, up to `to`.
-public func fullScreenDue(_ items: [Item], from: Date, to: Date, lead: Int, covers: (String) -> Bool) -> [Item] {
+public func fullScreenDue(_ items: [Item], from: Date, to: Date, lead: Int, callsOnly: Bool = false, covers: (String) -> Bool) -> [Item] {
     items.filter { it in
         let t = it.start.addingTimeInterval(-Double(lead * 60))
-        return !it.allDay && t > from && t <= to && covers(it.calendarID)
+        return !it.allDay && t > from && t <= to && covers(it.calendarID) && (!callsOnly || callLink(it) != nil)
     }.sorted { $0.start < $1.start }
 }
 

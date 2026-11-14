@@ -264,6 +264,9 @@ func selftest() -> Int32 {
     expect(fullScreenDue([tenAM], from: at(10, 26, 9, 54).addingTimeInterval(55), to: at(10, 26, 9, 55).addingTimeInterval(5), lead: 5) { _ in true }.count == 1, "full alert 5 min before")
     expect(fullScreenDue([tenAM], from: at(10, 26, 10), to: at(10, 26, 10).addingTimeInterval(10), lead: 0) { _ in true }.isEmpty, "a check landing exactly on the start shows it once, not twice")
     expect(fullScreenDue([tenAM], from: at(10, 26, 9, 59), to: at(10, 26, 10), lead: 0) { $0 != "work" }.isEmpty, "only the picked calendars")
+    var zoomTen = tenAM; zoomTen.notes = "Join: https://us02web.zoom.us/j/8123456789"
+    expect(fullScreenDue([tenAM, zoomTen], from: at(10, 26, 9, 59), to: at(10, 26, 10), lead: 0, callsOnly: true) { _ in true }.map(\.notes) == [zoomTen.notes], "only video calls: the event without a call link stays away")
+    expect(fullScreenDue([tenAM, zoomTen], from: at(10, 26, 9, 59), to: at(10, 26, 10), lead: 0) { _ in true }.count == 2, "all events: both cover the screen")
     expect(zoneDiff(TimeZone(identifier: "Asia/Kolkata")!, at: now) == "11 h 30 min ahead", "half-hour zone")
     expect(zoneDiff(TimeZone(identifier: "America/Costa_Rica")!, at: now) == "same time", "same zone")
     expect(zoneOffset(TimeZone(identifier: "America/Los_Angeles")!, at: now) == "-1 h", "zone behind")
