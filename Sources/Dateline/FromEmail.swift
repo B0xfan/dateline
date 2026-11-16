@@ -315,7 +315,13 @@ func inviteSelftest(_ expect: (Bool, String) -> Void) {
     expect(d.notes == "Agenda: goals, dates\nBring the plan.\n\nhttps://meet.google.com/abc-defg-hij", "invite: description and meeting link in the notes (\(d.notes))")
     expect(m.from == "Ana Ruiz <ana@example.com>" && m.fromName == "Ana Ruiz" && m.subject == "Project kickoff", "invite: the organizer shows as the sender (\(m.from))")
     expect(readInvite(sampleInvite.replacingOccurrences(of: "METHOD:REQUEST", with: "METHOD:CANCEL")) == nil, "invite: a cancellation is not added")
+    expect(readInvite(sampleInvite.replacingOccurrences(of: "METHOD:REQUEST", with: "METHOD:REPLY")) == nil, "invite: a reply to your own invite is not added again")
+    expect(readInvite(sampleInvite.replacingOccurrences(of: "\r\n", with: "\r"))?.0.from == "Ana Ruiz <ana@example.com>", "invite: old Mac line endings keep the sender")
     expect(readInvite("BEGIN:VCALENDAR\nEND:VCALENDAR") == nil, "invite: a file with no event")
+    let outlook = readInvite(sampleInvite.replacingOccurrences(of: "TZID=America/New_York", with: "TZID=Eastern Standard Time"))?.1
+    expect(outlook?.start == d.start && outlook?.unsure.isEmpty == true, "invite: Outlook's Windows time zone name is read")
+    let odd = readInvite(sampleInvite.replacingOccurrences(of: "TZID=America/New_York", with: "TZID=Customized Time Zone"))?.1
+    expect(odd?.unsure == ["when"] && odd?.whenNote.contains("Customized Time Zone") == true, "invite: an unknown time zone is marked for checking")
     let day = readInvite("BEGIN:VEVENT\nDTSTART;VALUE=DATE:20261124\nDTEND;VALUE=DATE:20261126\nEND:VEVENT")?.1
     expect(day?.allDay == true && day?.end == addDays(day!.start!, 2) && day?.unsure == ["title"], "invite: two all-day days, no title marked unsure")
 }

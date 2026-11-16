@@ -32,7 +32,7 @@ struct AppCommands: Commands {
                 o.urls.forEach { app.emails.importFile($0) }; app.openMain?()
             }
             Button("Open Calendar Invites in Dateline") {  // the Mac's choice for invite files; Calendar can take it back the same way
-                NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpenContentType: UTType("com.apple.ical.ics") ?? UTType(filenameExtension: "ics")!) { err in
+                NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpen: UTType("com.apple.ical.ics") ?? UTType(filenameExtension: "ics")!) { err in
                     DispatchQueue.main.async {
                         let a = NSAlert(); a.messageText = err == nil ? "Calendar invites now open in Dateline" : "The Mac didn't make Dateline the app for invites"
                         a.informativeText = err == nil ? "Open an invite from an email and it waits under From email, ready to add." : err!.localizedDescription

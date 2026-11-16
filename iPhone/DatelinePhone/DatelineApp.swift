@@ -216,7 +216,7 @@ final class PhoneState: ObservableObject {
         let read = await Self.openedFile(url)
         guard let text = read.1.map({ String(decoding: $0, as: UTF8.self) }) else { problem = "Dateline couldn't open that invite."; return }
         guard let inv = inviteFind(text) else { problem = "This invite has no event to add. It may be a cancellation."; return }
-        show(EmailFind(from: inv.0.fromName.isEmpty ? "the invite" : inv.0.fromName, quote: inv.0.subject, parsed: inv.1, invite: true))
+        show(EmailFind(from: inv.0.fromName.isEmpty ? "the invite" : inv.0.fromName, quote: inv.0.subject, parsed: inv.1, unsure: inv.2.unsure, whenNote: inv.2.whenNote, invite: true))
     }
 
     /// Off the main thread: a big file takes a moment. A copy iOS made for Dateline (its Inbox folder) is removed once read.
@@ -344,8 +344,8 @@ struct EmailFind: Identifiable {
 }
 
 /// An invite's text as the email sheet's sender and event. Pure, so the phone check covers it.
-func inviteFind(_ text: String) -> (Mail, Parsed)? {
+func inviteFind(_ text: String) -> (Mail, Parsed, Draft)? {
     guard let r = readInvite(text), let s = r.1.start else { return nil }
     let d = r.1
-    return (r.0, Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes))
+    return (r.0, Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes), d)
 }

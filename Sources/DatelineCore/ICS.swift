@@ -13,6 +13,8 @@ public struct ICalEvent: Equatable {
     public var url = ""  // Phase 8 accounts: the event's web link, and its alerts as offsets from the start
     public var alarms: [TimeInterval] = []
     public var files: [Attach] = []
+    public var organizerName = "", organizer = "", zoneName = ""  // invites: who sent it, and DTSTART's TZID as written
+    public var stamp: Date? = nil  // DTSTAMP, when the invite was sent
 }
 
 // MARK: reading the file
@@ -75,12 +77,30 @@ private func icsFormatter(_ tz: TimeZone, allDay: Bool) -> DateFormatter {
     return f
 }
 
+// A TZID as a time zone: a place name ("America/New_York", also inside a longer path), or the Windows name Outlook writes.
+public func icsZone(_ id: String) -> TimeZone? {
+    TimeZone(identifier: id) ?? TimeZone(identifier: id.split(separator: "/").suffix(2).joined(separator: "/")) ?? windowsZones[id].flatMap { TimeZone(identifier: $0) }
+}
+private let windowsZones = [
+    "Eastern Standard Time": "America/New_York", "Central Standard Time": "America/Chicago", "Mountain Standard Time": "America/Denver",
+    "US Mountain Standard Time": "America/Phoenix", "Pacific Standard Time": "America/Los_Angeles", "Alaskan Standard Time": "America/Anchorage",
+    "Hawaiian Standard Time": "Pacific/Honolulu", "Central America Standard Time": "America/Costa_Rica", "Central Standard Time (Mexico)": "America/Mexico_City",
+    "SA Pacific Standard Time": "America/Bogota", "Atlantic Standard Time": "America/Halifax", "E. South America Standard Time": "America/Sao_Paulo",
+    "Argentina Standard Time": "America/Argentina/Buenos_Aires", "GMT Standard Time": "Europe/London", "Greenwich Standard Time": "Atlantic/Reykjavik",
+    "W. Europe Standard Time": "Europe/Berlin", "Romance Standard Time": "Europe/Paris", "Central Europe Standard Time": "Europe/Budapest",
+    "Central European Standard Time": "Europe/Warsaw", "GTB Standard Time": "Europe/Bucharest", "FLE Standard Time": "Europe/Kiev",
+    "Israel Standard Time": "Asia/Jerusalem", "Russian Standard Time": "Europe/Moscow", "Arabian Standard Time": "Asia/Dubai",
+    "India Standard Time": "Asia/Kolkata", "China Standard Time": "Asia/Shanghai", "Singapore Standard Time": "Asia/Singapore",
+    "Tokyo Standard Time": "Asia/Tokyo", "AUS Eastern Standard Time": "Australia/Sydney", "New Zealand Standard Time": "Pacific/Auckland",
+    "UTC": "UTC",
+]
+
 // A date or date-time value: (moment, all-day, its time zone). All-day dates are midnight here.
 public func icsDate(_ v: String, _ params: [String: String]) -> (Date, Bool, TimeZone)? {
     let allDay = params["VALUE"] == "DATE" || v.count == 8
     let utc = v.hasSuffix("Z")
-    // shortcut: a TZID that is not a standard place name (some Outlook files) reads as this Mac's time zone; map Windows names if a real calendar needs it.
-    let tz = utc ? TimeZone(identifier: "UTC")! : params["TZID"].flatMap { id in TimeZone(identifier: id) ?? TimeZone(identifier: id.split(separator: "/").suffix(2).joined(separator: "/")) } ?? cal.timeZone
+    // shortcut: a TZID that is neither a place name nor a common Windows name reads as this Mac's time zone (readInvite marks that time unsure).
+    let tz = utc ? TimeZone(identifier: "UTC")! : params["TZID"].flatMap(icsZone) ?? cal.timeZone
     guard let d = icsFormatter(allDay ? cal.timeZone : tz, allDay: allDay).date(from: String(v.prefix(allDay ? 8 : 15))) else { return nil }
     return (d, allDay, tz)
 }
@@ -107,7 +127,7 @@ private func icsEvent(_ props: [(String, [String: String], String)]) -> ICalEven
         case "DESCRIPTION": e.notes = icsText(v)
         case "TRANSP": e.free = v.uppercased() == "TRANSPARENT"
         case "STATUS": e.cancelled = v.uppercased() == "CANCELLED"
-        case "DTSTART": guard let (d, a, tz) = icsDate(v, params) else { return nil }; e.start = d; e.allDay = a; e.tz = tz; hasStart = true
+        case "DTSTART": guard let (d, a, tz) = icsDate(v, params) else { return nil }; e.start = d; e.allDay = a; e.tz = tz; e.zoneName = params["TZID"] ?? ""; hasStart = true
         case "DTEND": end = icsDate(v, params)?.0
         case "DURATION": duration = icsDuration(v)
         case "RRULE": e.rule = Dictionary(v.split(separator: ";").compactMap { p -> (String, String)? in
@@ -115,6 +135,8 @@ private func icsEvent(_ props: [(String, [String: String], String)]) -> ICalEven
         case "EXDATE": for one in v.split(separator: ",") { if let d = icsDate(String(one), params)?.0 { e.exdates.insert(d) } }
         case "RECURRENCE-ID": e.recurrenceID = icsDate(v, params)?.0
         case "URL": e.url = v
+        case "ORGANIZER": e.organizerName = params["CN"] ?? ""; e.organizer = v.replacingOccurrences(of: "mailto:", with: "", options: .caseInsensitive)
+        case "DTSTAMP": e.stamp = icsDate(v, params)?.0
         case "ATTACH" where params["VALUE"]?.uppercased() != "BINARY":  // shortcut: files packed inside the event itself are left out; none of iCloud's are
             let name = params["FILENAME"] ?? params["X-APPLE-FILENAME"] ?? URL(string: v)?.lastPathComponent ?? v
             e.files.append(Attach(name: name.isEmpty ? v : name, url: v, size: params["SIZE"].flatMap { Int($0) }, id: params["MANAGED-ID"], type: params["FMTTYPE"] ?? ""))
