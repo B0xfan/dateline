@@ -259,3 +259,20 @@ public func steering(_ m: Mail) -> Bool {
     return off
 }
 
+
+// A calendar invite file (.ics, the attachment on an emailed invite) read as an email and a finished draft.
+// No AI: the invite already says what, when and where. nil when it holds no event that can be added (a cancellation).
+// shortcut: the first event only, and a repeating invite is added as its first time; read the repeat rule if repeating invites show up.
+public func readInvite(_ text: String) -> (Mail, Draft)? {
+    // Only a real invite: a reply to your own invite (REPLY, COUNTER, REFRESH) would add your event twice.
+    let method = text.components(separatedBy: .newlines).lazy.compactMap { icsLine($0) }.first { $0.0 == "METHOD" }?.2.uppercased() ?? ""
+    guard ["", "REQUEST", "PUBLISH"].contains(method), let e = parseICS(text).first(where: { !$0.cancelled && $0.recurrenceID == nil }) else { return nil }
+    let name = e.organizerName, addr = e.organizer
+    var notes = e.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !e.url.isEmpty, !notes.contains(e.url) { notes += (notes.isEmpty ? "" : "\n\n") + e.url }  // the meeting link, kept where Dateline finds video links
+    let title = plain(e.title)
+    var d = Draft(title: title, place: plain(e.place), notes: notes, start: e.start, end: e.end, allDay: e.allDay, unsure: title.isEmpty ? ["title"] : [])
+    if !e.allDay, !e.zoneName.isEmpty, icsZone(e.zoneName) == nil { d.unsure.append("when"); d.whenNote = "The invite's time zone (\(e.zoneName)) isn't one Dateline knows, so this is your time zone. Check the time." }
+    let mail = Mail(from: name.isEmpty ? addr : addr.isEmpty ? name : "\(name) <\(addr)>", subject: title.isEmpty ? "Calendar invite" : title, body: notes, date: e.stamp ?? Date())  // dated, so it sorts with new mail
+    return (mail, d)
+}

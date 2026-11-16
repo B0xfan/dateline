@@ -29,7 +29,16 @@ struct AppCommands: Commands {
             Button("Make Event from Email File…") {
                 let o = NSOpenPanel(); o.allowedContentTypes = [UTType(filenameExtension: "eml") ?? .data]; o.allowsMultipleSelection = true
                 guard o.runModal() == .OK else { return }
-                o.urls.forEach(app.emails.importFile); app.openMain?()
+                o.urls.forEach { app.emails.importFile($0) }; app.openMain?()
+            }
+            Button("Open Calendar Invites in Dateline") {  // the Mac's choice for invite files; Calendar can take it back the same way
+                NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpen: UTType("com.apple.ical.ics") ?? UTType(filenameExtension: "ics")!) { err in
+                    DispatchQueue.main.async {
+                        let a = NSAlert(); a.messageText = err == nil ? "Calendar invites now open in Dateline" : "The Mac didn't make Dateline the app for invites"
+                        a.informativeText = err == nil ? "Open an invite from an email and it waits under From email, ready to add." : err!.localizedDescription
+                        a.runModal()
+                    }
+                }
             }
         }
         CommandGroup(after: .textEditing) {

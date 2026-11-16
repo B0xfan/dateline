@@ -227,6 +227,10 @@ enum SelfTest {
 
         let eml = readMail(Data("From: Maya <maya@example.com>\nSubject: =?utf-8?Q?Cena_s=C3=A1bado?=\nContent-Type: text/plain\n\nDinner at Pangas Saturday at 7".utf8))
         check(eml.fromName == "Maya" && eml.subject == "Cena sábado" && eml.body.hasPrefix("Dinner"), "an email file is read as on the Mac")
+        let inv = inviteFind("BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nDTSTART:20261120T150000Z\r\nDTEND:20261120T163000Z\r\nORGANIZER;CN=Ana Ruiz:mailto:ana@example.com\r\nSUMMARY:Project kickoff\r\nLOCATION:Room 4\r\nURL:https://meet.google.com/abc-defg-hij\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+        check(inv?.0.fromName == "Ana Ruiz" && inv?.1.title == "Project kickoff" && inv?.1.place == "Room 4" && inv?.1.notes == "https://meet.google.com/abc-defg-hij"
+              && inv.map { $0.1.end.timeIntervalSince($0.1.start) } == 5400 && inv?.1.allDay == false, "an invite file is read into the event sheet")
+        check(inviteFind("BEGIN:VCALENDAR\nMETHOD:CANCEL\nBEGIN:VEVENT\nDTSTART:20261120T150000Z\nSUMMARY:x\nEND:VEVENT\nEND:VCALENDAR") == nil, "a cancelled invite is not offered")
 
         check(!License.shared.enter("DLK-K000001.not-a-real-key") && License.shared.status == .bought(serial: 0), "a wrong key is refused and changes nothing")
         check(!store.trialOver, "the sample calendars never lock, whatever the trial")

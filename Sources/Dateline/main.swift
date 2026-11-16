@@ -52,6 +52,13 @@ final class Delegate: NSObject, NSApplicationDelegate {
     // Phase 8: the daily update check, only for the real app (never --sample).
     func applicationDidFinishLaunching(_ n: Notification) { if !CommandLine.arguments.contains("--sample") { Updater.shared.start() } }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    // An invite file opened with Dateline (double-click, Open With, a mail app's attachment). Held until the window is up when it started the app.
+    @MainActor static var openFiles: (([URL]) -> Void)? { didSet { if let f = openFiles, !waiting.isEmpty { f(waiting); waiting = [] } } }
+    @MainActor static var waiting: [URL] = []
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let ics = urls.filter { $0.isFileURL && $0.pathExtension.lowercased() == "ics" }
+        MainActor.assumeIsolated { if let f = Self.openFiles { f(ics) } else { Self.waiting += ics } }
+    }
 }
 
 struct DatelineApp: App {
@@ -63,6 +70,11 @@ struct DatelineApp: App {
                 .frame(minWidth: 980, minHeight: 600)
                 .onAppear {
                     Look.apply(); app.startKeys()
+                    Delegate.openFiles = { urls in  // each invite joins the From email list; a single one opens for review
+                        let ids = urls.compactMap(app.emails.importFile)
+                        app.openMain?()
+                        if ids.count == 1 { app.panels.reviewing = ids[0] }
+                    }
                     DispatchQueue.main.async { if let w = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) { FullScreen.shared.adopt(w) } }  // the window is attached a moment after it appears
                 }
         }

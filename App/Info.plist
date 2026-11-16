@@ -12,6 +12,12 @@
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>CFBundleDocumentTypes</key><array><dict>
+        <key>CFBundleTypeName</key><string>Calendar Invite</string>
+        <key>CFBundleTypeRole</key><string>Viewer</string>
+        <key>LSHandlerRank</key><string>Alternate</string>
+        <key>LSItemContentTypes</key><array><string>com.apple.ical.ics</string></array>
+    </dict></array>
     <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
     <key>NSCalendarsFullAccessUsageDescription</key><string>Dateline shows and edits the calendars already set up on this Mac. Nothing leaves your Mac.</string>
     <key>NSRemindersFullAccessUsageDescription</key><string>Dateline shows your Apple Reminders on the calendar and saves your changes back to Reminders. Nothing leaves your Mac.</string>

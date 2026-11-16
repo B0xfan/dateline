@@ -15,6 +15,16 @@
 				<string>public.email-message</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Calendar Invite</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.apple.ical.ics</string>
+			</array>
+		</dict>
 	</array>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<false/>
