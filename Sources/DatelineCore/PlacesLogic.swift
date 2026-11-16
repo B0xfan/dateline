@@ -270,5 +270,16 @@ public final class PlaceSearch: NSObject, ObservableObject, MKLocalSearchComplet
         let c = m.placemark.coordinate
         return (town.isEmpty || name.contains(town) ? name : name + ", " + town, Geo(lat: c.latitude, lon: c.longitude))
     }
+
+    // A place typed with no pick: Apple Maps' best match near where you are, so it still gets a spot on the map.
+    public static func find(_ text: String) async -> Geo? {
+        let q = text.trimmingCharacters(in: .whitespaces)
+        guard q.count >= 2 else { return nil }
+        let r = MKLocalSearch.Request()
+        r.naturalLanguageQuery = q
+        if let g = Here.shared.spot { r.region = MKCoordinateRegion(center: g.coord, latitudinalMeters: 50_000, longitudinalMeters: 50_000) }
+        guard let c = try? await MKLocalSearch(request: r).start().mapItems.first?.placemark.coordinate else { return nil }
+        return Geo(lat: c.latitude, lon: c.longitude)
+    }
 }
 

@@ -64,8 +64,9 @@ enum Demo {
         case "details", "details2":
             let title = s == "details" ? "Dentist" : "Marco at the condo"
             if let it = app.store.between(today, addDays(today, 7)).first(where: { $0.title == title }) { app.open(it) }
-        case "edit", "edit-invite":
-            let want = s == "edit" ? "Dentist" : "Holiday: no school"
+        case "edit", "edit-invite", "edit-place":
+            let want = s == "edit-invite" ? "Holiday: no school" : "Dentist"
+            if s == "edit-place" { app.demoPlace = "Hotel Capitan Suizo" }
             if let it = app.store.between(today, addDays(today, 7)).first(where: { $0.title == want }) { app.demoEdit = true; app.open(it) }
         case "drag", "resize", "undo-toast", "tap-new":
             let day = addDays(cal.startOfDay(for: today), 2)  // the dentist, Wednesday 8:30

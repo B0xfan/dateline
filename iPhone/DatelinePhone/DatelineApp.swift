@@ -127,6 +127,7 @@ final class PhoneState: ObservableObject {
     var demoWidgets = false
     var demoScroll = false  // pictures only: the list scrolls halfway down, as a finger would
     var demoEdit = false  // pictures only: open the event's edit sheet
+    var demoPlace: String?  // pictures only: a place typed into the edit sheet, so its Apple Maps suggestions show
     var demoDrag: DragLive?  // pictures only: an event held mid-drag
     var demoHold = false  // pictures only: the Undo banner stays up
     @Published var addStart: Date?  // a tap on an empty time: the add sheet starts there

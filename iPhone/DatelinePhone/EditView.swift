@@ -36,6 +36,8 @@ struct EditSheet: View {
     @State private var item: Item
     @State private var newTag = ""
     @State private var problem: String?
+    @State private var saving = false
+    @StateObject private var search = PlaceSearch()
 
     init(_ it: Item) { original = it; _item = State(initialValue: it) }
 
@@ -67,7 +69,25 @@ struct EditSheet: View {
                 }
                 Section("Place") {
                     if locked { Text(item.place.isEmpty ? "No place" : item.place).foregroundStyle(item.place.isEmpty ? T.text2 : T.text) }
-                    else { TextField("Place", text: $item.place) }
+                    else {
+                        // Apple Maps suggestions as you type, as on the Mac; a typed place with no pick is looked up on Done.
+                        TextField("Place or address", text: Binding(get: { item.place }, set: { v in
+                            guard v != item.place else { return }
+                            item.place = v; item.geo = nil
+                            search.query(v)
+                        })).textContentType(.fullStreetAddress)
+                        ForEach(search.results, id: \.self) { s in
+                            Button {
+                                saving = true  // Done waits for the pick
+                                Task { if let (name, g) = await search.pick(s) { item.place = name; item.geo = g }; saving = false }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(s.title).foregroundStyle(T.text)
+                                    if !s.subtitle.isEmpty { Text(s.subtitle).font(.footnote).foregroundStyle(T.text2) }
+                                }
+                            }
+                        }
+                    }
                 }
                 if item.geo != nil, !item.allDay { travel }
                 videoCall
@@ -78,9 +98,11 @@ struct EditSheet: View {
             }
             .navigationTitle("Edit event").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Done", action: save).fontWeight(.semibold) }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { saving = true; Task { await save(); saving = false } }.fontWeight(.semibold).disabled(saving) }
             }
+            .interactiveDismissDisabled(saving)
+            .onAppear { if let q = app.demoPlace { app.demoPlace = nil; item.place = q; item.geo = nil; search.query(q) } }
             .alert(problem ?? "", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) { Button("OK") {} }
         }
     }
@@ -164,12 +186,12 @@ struct EditSheet: View {
     }
 
     /// The Mac's commit(): a read-only calendar takes only the extras; an ended trial changes nothing.
-    private func save() {
+    private func save() async {
         addTag()
         var n = item
         n.title = item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? original.title : item.title.trimmingCharacters(in: .whitespacesAndNewlines)
         n.place = item.place.trimmingCharacters(in: .whitespaces)
-        if n.place != original.place { n.geo = nil }  // a typed place has no spot on the map until it is looked up
+        if n.place.isEmpty { n.geo = nil } else if n.geo == nil, n.place != original.place { n.geo = await PlaceSearch.find(n.place) }  // typed, not picked: look it up
         if n != original {
             if let f = app.change(n, from: original, "Edited") {
                 if store.trialOver { app.unlockNext = true } else { problem = f.message; return }

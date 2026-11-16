@@ -112,7 +112,7 @@ struct TravelBlock: View {
 
 // Apple Maps suggestions as you type a place, near where you are.
 @MainActor
-// The Place field in the event details: type, then pick from the Apple Maps list. Plain text with no pick saves without a map.
+// The Place field in the event details: type, then pick from the Apple Maps list. Plain text with no pick is looked up on Apple Maps once saved (AppState.save).
 struct PlaceField: View {
     @Binding var item: Item
     var field: FocusState<String?>.Binding

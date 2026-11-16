@@ -299,9 +299,22 @@ final class AppState: ObservableObject {
     }
 
     func save(_ new: Item) {
-        guard let old = store.items.first(where: { $0.id == new.id }), old != new else { return }
+        guard let old = store.items.first(where: { $0.id == new.id }) else { return }
+        var new = new
+        if new.geo == nil, new.place == old.place { new.geo = old.geo }  // the panel's copy predates the lookup below; same place keeps its spot
+        guard old != new else { return }
         if let f = store.update(new) { error = f.message; return }
         undoStack.append { [weak self] in self?.store.update(old) }
+        if new.geo == nil, new.place != old.place, !new.place.trimmingCharacters(in: .whitespaces).isEmpty { locate(new) }
+    }
+
+    // A place typed with no pick gets its spot from Apple Maps after it saves; skipped if the place was changed or picked meanwhile.
+    private func locate(_ it: Item) {
+        Task {
+            guard let g = await PlaceSearch.find(it.place), var now = store.items.first(where: { $0.id == it.id }), now.place == it.place, now.geo == nil else { return }
+            now.geo = g
+            if let f = store.update(now) { error = f.message }
+        }
     }
 
     func delete(_ it: Item) {
