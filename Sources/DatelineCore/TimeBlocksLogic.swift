@@ -40,38 +40,61 @@ private func blocksRange(_ f: (lines: [String], end: Int)) -> Range<Int>? {
     return i..<next
 }
 
-// Every block in the note; nil when the note or any entry can't be read for sure, so Dateline never writes over what it doesn't understand.
-public func blocksRead(_ text: String) -> [TimeBlock]? {
-    guard let f = a4Front(text) else { return nil }
-    guard let r = blocksRange(f) else { return [] }
+// The list's entries, each with its own lines. An entry that can't be read for sure has no block: it stays as written and isn't drawn (as in LifeWorld).
+// nil when the list itself can't be read (a list on one line, a line outside any entry), so the note is never written.
+private struct BlockList { var range: Range<Int>; var entries: [(at: Range<Int>, block: TimeBlock?)] }
+
+private func blockList(_ f: (lines: [String], end: Int)) -> BlockList? {
+    guard let r = blocksRange(f) else { return BlockList(range: f.end..<f.end, entries: []) }
     let own = f.lines[r.lowerBound].dropFirst("blocks:".count).trimmingCharacters(in: .whitespaces)
-    if own == "[]" { return r.count == 1 ? [] : nil }
-    guard own.isEmpty else { return nil }  // a list on one line: not what either app writes
-    var entries: [[String: String]] = []
-    for line in f.lines[(r.lowerBound + 1)..<r.upperBound] where !line.trimmingCharacters(in: .whitespaces).isEmpty {
-        var l = line.trimmingCharacters(in: .whitespaces)
-        if l.hasPrefix("- ") { entries.append([:]); l = String(l.dropFirst(2)) } else if entries.isEmpty { return nil }
-        guard let c = l.firstIndex(of: ":"), let value = yamlValue(l[l.index(after: c)...]) else { return nil }
-        entries[entries.count - 1][String(l[..<c])] = value
+    if own == "[]" { return r.count == 1 ? BlockList(range: r, entries: []) : nil }
+    guard own.isEmpty else { return nil }
+    var starts: [Int] = []
+    for i in (r.lowerBound + 1)..<r.upperBound {
+        let l = f.lines[i].trimmingCharacters(in: .whitespaces)
+        if l.hasPrefix("- ") || l == "-" { starts.append(i) } else if starts.isEmpty && !l.isEmpty { return nil }
     }
-    var out: [TimeBlock] = []
-    for e in entries {
-        guard let id = e["id"], !id.isEmpty, let date = e["date"], date.count == 10, a4ParseDay(date) != nil, let time = e["time"].flatMap(blockTime),
-              let m = e["minutes"].flatMap({ Int($0) }), m > 0, Set(e.keys).isSubset(of: ["id", "date", "time", "minutes", "title"]) else { return nil }
-        out.append(TimeBlock(id: id, date: date, time: time, minutes: m, title: e["title"] ?? ""))
-    }
-    return out
+    return BlockList(range: r, entries: starts.indices.map { k in
+        let at = starts[k]..<(k + 1 < starts.count ? starts[k + 1] : r.upperBound)
+        return (at, blockEntry(f.lines[at]))
+    })
 }
 
-// The note with its `blocks` list replaced and every other line as it was. Every string is double quoted, which both apps read.
-public func blocksWrite(_ text: String, _ blocks: [TimeBlock]) -> String? {
-    guard var f = a4Front(text) else { return nil }
-    func q(_ s: String) -> String { (try? JSONEncoder().encode(s)).map { String(decoding: $0, as: UTF8.self) } ?? "\"\"" }
-    let lines = blocks.isEmpty ? ["blocks: []"] : ["blocks:"] + blocks.flatMap { b in
-        ["  - id: \(q(b.id))", "    date: \(q(b.date))", "    time: \(q(b.time))", "    minutes: \(b.minutes)", "    title: \(q(b.title))"]
+// One entry, values quoted or not (Obsidian writes date and time bare, an all-digit id quoted). A blank title is Free time when drawn.
+private func blockEntry(_ lines: ArraySlice<String>) -> TimeBlock? {
+    var e: [String: String] = [:]
+    for (n, line) in lines.enumerated() {
+        var l = line.trimmingCharacters(in: .whitespaces)
+        if n == 0 { l = String(l.dropFirst(2)) }  // the "- "
+        if l.isEmpty { continue }
+        guard let c = l.firstIndex(of: ":"), let v = yamlValue(l[l.index(after: c)...]) else { return nil }
+        let k = String(l[..<c])
+        guard e[k] == nil else { return nil }
+        e[k] = v
     }
-    let r = blocksRange(f) ?? f.end..<f.end
-    f.lines.replaceSubrange(r, with: lines)
+    guard let id = e["id"], !id.isEmpty, let date = e["date"], date.count == 10, a4ParseDay(date) != nil, let time = e["time"].flatMap(blockTime),
+          let m = e["minutes"].flatMap({ Int($0) }), m >= 15, Set(e.keys).isSubset(of: ["id", "date", "time", "minutes", "title"]) else { return nil }
+    return TimeBlock(id: id, date: date, time: time, minutes: m, title: e["title"] ?? "")
+}
+
+// Every block that can be read; nil when the list can't be.
+public func blocksRead(_ text: String) -> [TimeBlock]? {
+    guard let f = a4Front(text), let list = blockList(f) else { return nil }
+    return list.entries.compactMap(\.block)
+}
+
+// The note with one entry, found by id, changed (`b` set), added, or removed (`b` nil); every other line as it was.
+// nil when the list can't be read, or there is nothing to remove. Strings are double quoted, which both apps read.
+public func blocksWrite(_ text: String, id: String, _ b: TimeBlock?) -> String? {
+    guard var f = a4Front(text), let list = blockList(f) else { return nil }
+    func q(_ s: String) -> String { (try? JSONEncoder().encode(s)).map { String(decoding: $0, as: UTF8.self) } ?? "\"\"" }
+    let mine = b.map { b in ["  - id: \(q(b.id))", "    date: \(q(b.date))", "    time: \(q(b.time))", "    minutes: \(b.minutes)", "    title: \(q(b.title))"] } ?? []
+    var body: [String] = [], found = false
+    for e in list.entries {
+        if !found, e.block?.id == id { found = true; body += mine } else { body += f.lines[e.at] }
+    }
+    if !found { guard b != nil else { return nil }; body += mine }
+    f.lines.replaceSubrange(list.range, with: body.isEmpty ? ["blocks: []"] : ["blocks:"] + body)
     return f.lines.joined(separator: "\n")
 }
 
@@ -124,10 +147,10 @@ extension Store {
         }
         guard let file = blocksFile(a4Folder), let text = try? String(contentsOfFile: file, encoding: .utf8) else { return Failure("The Planner's Time Blocks note isn't there any more.") }
         guard let now = blocksRead(text) else { return Failure("The Planner's Time Blocks note has something Dateline can't read, so it was left alone. Change it in Obsidian.") }
-        guard let next = apply(now) else { reloadA4(); return Failure("That time block is gone.") }
-        guard let edited = blocksWrite(text, next) else { return Failure("The Planner's Time Blocks note couldn't be read.") }
+        if it == nil, !now.contains(where: { $0.id == id }) { reloadA4(); return Failure("That time block is gone.") }
+        guard let edited = blocksWrite(text, id: id, it.map { blockFrom($0, id: id) }) else { return Failure("The Planner's Time Blocks note couldn't be read.") }
         do { try edited.write(toFile: file, atomically: true, encoding: .utf8) } catch { return Failure(error.localizedDescription) }
-        timeBlocks = next; refetch()  // shows at once; the next read confirms it
+        timeBlocks = blocksRead(edited) ?? now; refetch()  // shows at once; the next read confirms it
         return nil
     }
 }
