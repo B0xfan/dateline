@@ -347,6 +347,7 @@ func selftest() -> Int32 {
     MainActor.assumeIsolated { syncSelftest(expect) }
     licenseSelftest(expect)
     subSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
+    inviteSelftest(expect)
     emailSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     accountsSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     print(fails == 0 ? "selftest: all passed" : "selftest: \(fails) failed")

@@ -202,21 +202,37 @@ final class PhoneState: ObservableObject {
         guard !readingEmail else { problem = "Dateline is still reading the last email. Try again in a moment."; return }  // one at a time, as on the Mac
         readingEmail = true; defer { readingEmail = false }
         say("Reading the email…"); defer { if toast?.text == "Reading the email…" { toast = nil } }  // cleared on every way out, failures too
-        // Off the main thread: a big email's file and its parts take a moment. A copy iOS made for Dateline (its Inbox folder) is removed once read.
-        let read = await Task.detached { () -> (Int, Mail?) in
+        let read = await Self.openedFile(url)
+        guard let m = await Task.detached(operation: { read.1.map(readMail) }).value else { problem = read.0 >= 30_000_000 ? "This email is too big to read (over 30 MB)." : "Dateline couldn't open that email file."; return }
+        let d = await readEvent(m, now: today)
+        guard d.problem.isEmpty, let s = d.start else { problem = d.problem.isEmpty ? "Dateline couldn't find a date in that email." : d.problem; return }
+        let f = EmailFind(from: m.fromName.isEmpty ? m.subject : m.fromName, quote: d.quotes.first ?? m.subject,
+                          parsed: Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes), unsure: d.unsure, whenNote: d.whenNote)
+        show(f)
+    }
+
+    /// An invite file (.ics) opened with Dateline: no AI, the invite already says what, when and where (the Mac reads it the same way).
+    func readInviteFile(_ url: URL) async {
+        let read = await Self.openedFile(url)
+        guard let text = read.1.map({ String(decoding: $0, as: UTF8.self) }) else { problem = "Dateline couldn't open that invite."; return }
+        guard let inv = inviteFind(text) else { problem = "This invite has no event to add. It may be a cancellation."; return }
+        show(EmailFind(from: inv.0.fromName.isEmpty ? "the invite" : inv.0.fromName, quote: inv.0.subject, parsed: inv.1, invite: true))
+    }
+
+    /// Off the main thread: a big file takes a moment. A copy iOS made for Dateline (its Inbox folder) is removed once read.
+    nonisolated static func openedFile(_ url: URL) async -> (Int, Data?) {
+        await Task.detached { () -> (Int, Data?) in
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             let data = size < 30_000_000 ? try? Data(contentsOf: url) : nil
             let inbox = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Inbox").standardizedFileURL.path + "/"
             if url.standardizedFileURL.path.hasPrefix(inbox) { try? FileManager.default.removeItem(at: url) }  // only Dateline's own copy, never the user's file
-            return (size, data.map(readMail))
+            return (size, data)
         }.value
-        guard let m = read.1 else { problem = read.0 >= 30_000_000 ? "This email is too big to read (over 30 MB)." : "Dateline couldn't open that email file."; return }
-        let d = await readEvent(m, now: today)
-        guard d.problem.isEmpty, let s = d.start else { problem = d.problem.isEmpty ? "Dateline couldn't find a date in that email." : d.problem; return }
-        let f = EmailFind(from: m.fromName.isEmpty ? m.subject : m.fromName, quote: d.quotes.first ?? m.subject,
-                          parsed: Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes), unsure: d.unsure, whenNote: d.whenNote)
+    }
+
+    private func show(_ f: EmailFind) {
         emails.insert(f, at: 0)
         // Opens over the calendar; an add or search sheet closes first. If another sheet is up, the envelope at the top keeps it.
         adding = nil; searching = false
@@ -324,4 +340,12 @@ struct EmailFind: Identifiable {
     var from: String, quote: String
     var parsed: Parsed, emoji = "", alert = ""
     var unsure: [String] = [], whenNote = ""  // what the email reader guessed, shown in orange
+    var invite = false  // from an invite file, not read by the AI
+}
+
+/// An invite's text as the email sheet's sender and event. Pure, so the phone check covers it.
+func inviteFind(_ text: String) -> (Mail, Parsed)? {
+    guard let r = readInvite(text), let s = r.1.start else { return nil }
+    let d = r.1
+    return (r.0, Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes))
 }

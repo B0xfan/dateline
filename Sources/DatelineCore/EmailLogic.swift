@@ -259,3 +259,19 @@ public func steering(_ m: Mail) -> Bool {
     return off
 }
 
+
+// A calendar invite file (.ics, the attachment on an emailed invite) read as an email and a finished draft.
+// No AI: the invite already says what, when and where. nil when it holds no event that can be added (a cancellation).
+// shortcut: the first event only, and a repeating invite is added as its first time; read the repeat rule if repeating invites show up.
+public func readInvite(_ text: String) -> (Mail, Draft)? {
+    guard !text.uppercased().contains("METHOD:CANCEL"), let e = parseICS(text).first(where: { !$0.cancelled && $0.recurrenceID == nil }) else { return nil }
+    let lines = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\n ", with: "").replacingOccurrences(of: "\n\t", with: "").split(separator: "\n")
+    let org = lines.lazy.compactMap { icsLine(String($0)) }.first { $0.0 == "ORGANIZER" }
+    let name = org?.1["CN"] ?? "", addr = org.map { $0.2.replacingOccurrences(of: "mailto:", with: "", options: .caseInsensitive) } ?? ""
+    var notes = e.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !e.url.isEmpty, !notes.contains(e.url) { notes += (notes.isEmpty ? "" : "\n\n") + e.url }  // the meeting link, kept where Dateline finds video links
+    let title = plain(e.title)
+    let d = Draft(title: title, place: plain(e.place), notes: notes, start: e.start, end: e.end, allDay: e.allDay, unsure: title.isEmpty ? ["title"] : [])
+    let mail = Mail(from: name.isEmpty ? addr : addr.isEmpty ? name : "\(name) <\(addr)>", subject: title.isEmpty ? "Calendar invite" : title, body: notes)
+    return (mail, d)
+}

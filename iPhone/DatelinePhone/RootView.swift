@@ -34,7 +34,11 @@ struct RootView: View {
         .fileImporter(isPresented: $app.pickingEmail, allowedContentTypes: [.emailMessage]) { r in
             if case .success(let url) = r { Task { await app.readEmail(url) } }
         }
-        .onOpenURL { url in if url.isFileURL { app.tab = .calendar; Task { await app.readEmail(url) } } }  // an .eml shared or opened in Dateline
+        .onOpenURL { url in  // an .eml or an invite (.ics) shared or opened in Dateline
+            guard url.isFileURL else { return }
+            app.tab = .calendar
+            Task { if url.pathExtension.lowercased() == "ics" { await app.readInviteFile(url) } else { await app.readEmail(url) } }
+        }
         .alert(app.problem ?? "", isPresented: Binding(get: { app.problem != nil }, set: { if !$0 { app.problem = nil } })) { Button("OK") {} }
         .onReceive(clock) { now in
             guard !app.sample else { return }  // the pictures keep the mockup's 9:41
