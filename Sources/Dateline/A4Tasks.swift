@@ -144,7 +144,7 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
     // A task's length is its timeEstimate (LifeWorld's Planner).
     expect(read("due: 2026-11-03T11:00\ntimeEstimate: 45")?.a4?.length == 45 && appt.a4?.length == 30 && read("timeEstimate: 0")?.a4?.minutes == nil, "a4: a task's length is its timeEstimate, half an hour when it has none")
     var longer = appt; longer.a4?.minutes = 90
-    expect(a4Changes(old: appt, new: longer, text: "", now: now).map { "\($0.0)=\($0.1 ?? "-")" } == ["timeEstimate=90"], "a4: stretching writes only the timeEstimate")
+    expect(a4Changes(old: appt, new: longer, text: "", now: now).map { "\($0.0)=\($0.1 ?? "-")" } == ["timeEstimate=90", "dateModified=\(a4Stamp(now))"], "a4: stretching writes only the timeEstimate (and the change stamp)")
     func evLen(_ m: Int) -> Item { var e = ev(dueAt); e.end = dueAt.addingTimeInterval(Double(m * 60)); return e }
     var lenLink = link; lenLink.minutes = 30
     let t45 = { var x = vetTask; x.a4?.minutes = 45; return x }()
