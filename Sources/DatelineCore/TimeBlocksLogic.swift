@@ -14,11 +14,23 @@ public func isBlocks(_ calendarID: String) -> Bool { calendarID == blocksCalenda
 // The note next to the tasks folder's vault: <vault>/02 Planner/Time Blocks.md.
 public func blocksFile(_ tasksFolder: String) -> String? { a4Vault(tasksFolder + "/x").map { $0 + "/02 Planner/Time Blocks.md" } }
 
-private func yamlValue(_ raw: some StringProtocol) -> String {
+// nil for anything not read for sure (a comment, an escape YAML has and JSON doesn't), so the note is left alone.
+private func yamlValue(_ raw: some StringProtocol) -> String? {
     let v = raw.trimmingCharacters(in: .whitespaces)
-    if v.hasPrefix("\""), let s = try? JSONDecoder().decode(String.self, from: Data(v.utf8)) { return s }  // YAML's double quotes escape as JSON does
-    if v.count >= 2, v.hasPrefix("'"), v.hasSuffix("'") { return String(v.dropFirst().dropLast()).replacingOccurrences(of: "''", with: "'") }
-    return v
+    if v.hasPrefix("\"") { return try? JSONDecoder().decode(String.self, from: Data(v.utf8)) }  // YAML's double quotes escape as JSON does
+    if v.hasPrefix("'") {
+        let inner = v.dropFirst().dropLast()
+        return v.count >= 2 && v.hasSuffix("'") && !inner.replacingOccurrences(of: "''", with: "").contains("'") ? inner.replacingOccurrences(of: "''", with: "'") : nil
+    }
+    return v.contains(" #") || v.hasPrefix("#") || v.hasPrefix("\"") ? nil : v
+}
+
+// "7:00" or "07:00" as "07:00"; nil for anything else.
+private func blockTime(_ s: String) -> String? {
+    let p = s.split(separator: ":", omittingEmptySubsequences: false)
+    guard p.count == 2, (1...2).contains(p[0].count), p[1].count == 2, p.allSatisfy({ $0.allSatisfy(\.isASCII) && $0.allSatisfy(\.isNumber) }),
+          let h = Int(p[0]), let m = Int(p[1]), h < 24, m < 60 else { return nil }
+    return String(format: "%02d:%02d", h, m)
 }
 
 // Where the `blocks` list sits in the note's properties: its own line up to the next property. nil when there is none.
@@ -39,12 +51,12 @@ public func blocksRead(_ text: String) -> [TimeBlock]? {
     for line in f.lines[(r.lowerBound + 1)..<r.upperBound] where !line.trimmingCharacters(in: .whitespaces).isEmpty {
         var l = line.trimmingCharacters(in: .whitespaces)
         if l.hasPrefix("- ") { entries.append([:]); l = String(l.dropFirst(2)) } else if entries.isEmpty { return nil }
-        guard let c = l.firstIndex(of: ":") else { return nil }
-        entries[entries.count - 1][String(l[..<c])] = yamlValue(l[l.index(after: c)...])
+        guard let c = l.firstIndex(of: ":"), let value = yamlValue(l[l.index(after: c)...]) else { return nil }
+        entries[entries.count - 1][String(l[..<c])] = value
     }
     var out: [TimeBlock] = []
     for e in entries {
-        guard let id = e["id"], !id.isEmpty, let date = e["date"], a4ParseDay(date) != nil, let time = e["time"], a4Minutes(date + "T" + time) != nil,
+        guard let id = e["id"], !id.isEmpty, let date = e["date"], date.count == 10, a4ParseDay(date) != nil, let time = e["time"].flatMap(blockTime),
               let m = e["minutes"].flatMap({ Int($0) }), m > 0, Set(e.keys).isSubset(of: ["id", "date", "time", "minutes", "title"]) else { return nil }
         out.append(TimeBlock(id: id, date: date, time: time, minutes: m, title: e["title"] ?? ""))
     }
@@ -75,9 +87,15 @@ public func blockFrom(_ it: Item, id: String) -> TimeBlock {
     return TimeBlock(id: id, date: a4Day(it.start), time: String(format: "%02d:%02d", c.hour!, c.minute!), minutes: max(15, Int(it.end.timeIntervalSince(it.start) / 60)), title: it.title)
 }
 
-public func blockID() -> String { String((0..<6).map { _ in "abcdefghijklmnopqrstuvwxyz0123456789".randomElement()! }) }
+public func blockID(taken: [String]) -> String {
+    while true {
+        let id = String((0..<6).map { _ in "abcdefghijklmnopqrstuvwxyz0123456789".randomElement()! })
+        if !taken.contains(id) { return id }
+    }
+}
 
 extension Store {
+    public var blocksInfos: [CalInfo] { calendars.contains { isBlocks($0.id) } ? [blocksInfo] : [] }  // kept when the calendars are read again
     public var blocksInfo: CalInfo { CalInfo(id: blocksCalendar, title: "Time blocks", account: a4Account, color: .gray, writable: true) }
 
     public func blockEvents(from a: Date, to b: Date) -> [Item] { timeBlocks.compactMap(blockItem).filter { $0.end > a && $0.start < b } }

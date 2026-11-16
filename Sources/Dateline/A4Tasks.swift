@@ -160,6 +160,9 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
     expect(rewritten.flatMap(blocksRead) == bl && rewritten?.contains("tags:\n  - planner\n---\n\nKept by the Planner.\n") == true && rewritten?.hasPrefix("---\ntype: note\ncategory: time-blocks\n") == true, "blocks: a write keeps every other line")
     expect(blocksRead("---\nblocks: []\n---\n") == [] && blocksRead("---\ntype: note\n---\n") == [] && blocksWrite("---\ntype: note\n---\n", []).flatMap(blocksRead) == [], "blocks: none, and an empty list")
     expect(blocksRead("---\nblocks:\n  - id: a\n    date: 2026-11-17\n    time: 12:30\n    minutes: 60\n    colour: red\n---\n") == nil && blocksRead("---\nblocks: [{id: a}]\n---\n") == nil && blocksRead("---\nblocks:\n  - id: a\n    date: tomorrow\n    time: 12:30\n    minutes: 60\n---\n") == nil, "blocks: a note Dateline can't read for sure is never written")
+    expect(blocksRead("---\nblocks:\n  - id: a\n    date: 2026-11-17\n    time: 7:00\n    minutes: 60\n    title: Lunch\n---\n")?.first?.time == "07:00" && blocksRead("---\nblocks:\n  - id: a\n    date: 2026-11-17\n    time: 12:30pm\n    minutes: 60\n---\n") == nil, "blocks: 7:00 reads as 07:00, 12:30pm doesn't read")
+    expect(blocksRead("---\nblocks:\n  - id: a\n    date: 2026-11-17\n    time: \"12:30\"\n    minutes: 60\n    title: \"Lunch\" # with Ana\n---\n") == nil && blocksRead("---\nblocks:\n  - id: a\n    date: 2026-11-17\n    time: \"12:30\"\n    minutes: 60\n    title: 'Ana''s lunch'\n---\n")?.first?.title == "Ana's lunch", "blocks: a comment after a value isn't read; '' is a quote")
+    expect(blockID(taken: []).count == 6, "blocks: a new id")
     let lunch = blockItem(bl![0])
     expect(lunch?.start == at(17, 12, 30) && lunch?.end == at(17, 13, 30) && lunch?.calendarID == blocksCalendar && lunch?.id == "block:ab12cd", "blocks: a block is an event at its time")
     var stretched = lunch!; stretched.start = at(17, 13, 0); stretched.end = at(17, 13, 5)
@@ -171,6 +174,11 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
         var moved = made; moved.start = at(19, 16, 0); moved.end = at(19, 17, 30)
         expect(bs.timeBlocks.count == before + 1 && bs.update(moved) == nil && bs.timeBlocks.last?.time == "16:00" && bs.timeBlocks.last?.minutes == 90, "blocks: a block is made and moved")
         expect(bs.delete(moved) == nil && bs.timeBlocks.count == before, "blocks: a block is removed")
+        if case .success = bs.add(Parsed(start: at(19, 15, 0), end: at(19, 16, 0), repeats: Repeat(unit: "w", n: 1)), calendarID: blocksCalendar) { expect(false, "blocks: a repeating block is refused") }
+        if case .success(let untitled) = bs.add(Parsed(start: at(20, 9, 0), end: at(20, 10, 0)), calendarID: blocksCalendar) { expect(untitled.title == "Free time", "blocks: an untitled block is Free time") } else { expect(false, "blocks: an untitled block is made") }
+        let s = Store.sampleWithA4(); s.sets = [CalSet(name: "W", calendars: s.calendars.filter { !isBlocks($0.id) }.prefix(1).map(\.id))]
+        s.use(s.sets[0])
+        expect(!s.hidden.contains(blocksCalendar) && s.activeSet?.name == "W", "blocks: a calendar set leaves the Planner's blocks alone")
     }
     MainActor.assumeIsolated {
         // The calendar follows the project, and an unmarked task goes nowhere.

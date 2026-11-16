@@ -187,10 +187,10 @@ struct DayColumn: View {
 
     // An A4 task's bottom edge, in 15-minute steps; 15 minutes is the shortest.
     func stretchHandle(_ t: ToDo) -> some View {
-        Color.clear.frame(height: 8).contentShape(Rectangle())
+        Color.clear.frame(height: 6).contentShape(Rectangle())
             .onHover { ($0 ? NSCursor.resizeUpDown : NSCursor.arrow).set() }
             .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .global)
-                .onChanged { v in let step = hourH / 4; taskStretch = (t.id, (v.translation.height / step).rounded() * step) }
+                .onChanged { v in let step = hourH / 4; taskStretch = (t.id, max(CGFloat(15 - (t.a4?.length ?? 30)) / 60 * hourH, (v.translation.height / step).rounded() * step)) }  // the preview stops at 15 minutes, as the save does
                 .onEnded { v in
                     taskStretch = nil
                     let m = max(15, (t.a4?.length ?? 30) + DragMath.minutes(dy: v.translation.height, hourH: hourH))

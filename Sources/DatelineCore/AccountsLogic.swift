@@ -612,7 +612,7 @@ extension Store {
     }
 
     public func accountsChanged() {
-        if canRead { reloadCalendars() } else { calendars = accInfos + subInfos; refetch() }
+        if canRead { reloadCalendars() } else { calendars = accInfos + subInfos + blocksInfos; refetch() }
     }
 
     private func googleToken(_ a: Account) async throws -> String {

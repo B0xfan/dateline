@@ -215,11 +215,11 @@ public final class Store: ObservableObject {
         if sets.isEmpty { syncRemoved("sets") }
     }
 
-    public var activeSet: CalSet? { DatelineCore.activeSet(sets, calendars: calendars.map(\.id), hidden: hidden) }
+    public var activeSet: CalSet? { DatelineCore.activeSet(sets, calendars: calendars.map(\.id).filter { !isBlocks($0) }, hidden: hidden) }
 
     // Shows only that set's calendars; nil = all calendars.
     public func use(_ s: CalSet?) {
-        hidden = s.map { Set(calendars.map(\.id)).subtracting($0.calendars) } ?? []
+        hidden = s.map { Set(calendars.map(\.id).filter { !isBlocks($0) }).subtracting($0.calendars) } ?? []  // the Planner's blocks have their own switch
         if s == nil { hiddenLists = [] } else if let l = s?.lists, !lists.isEmpty { hiddenLists = Set(lists.filter { $0.account != a4Account }.map(\.id)).subtracting(l) }  // A4 has its own switch in Settings; a set never hides its projects
     }
 
@@ -287,7 +287,7 @@ public final class Store: ObservableObject {
 
     private var reopened = false
     public func reloadCalendars() {
-        calendars = source.calendars() + accInfos + subInfos
+        calendars = source.calendars() + accInfos + subInfos + blocksInfos
         if !reopened {
             reopened = true
             if let id = UserDefaults.standard.string(forKey: "lastSet"), let s = sets.first(where: { $0.id == id }), activeSet?.id != id { use(s) }
@@ -389,7 +389,9 @@ public final class Store: ObservableObject {
                       allDay: p.allDay, place: p.place, notes: p.notes, showAs: p.showAs, geo: p.geo)
         let repeats = p.repeats.map { (unit: $0.unit, n: $0.n) }
         if isBlocks(calID) {
-            let id = blockID()
+            if p.repeats != nil { return .failure(Failure("Time blocks don't repeat. Add each one in the Planner or here.")) }
+            var it = it; it.title = p.title.isEmpty ? "Free time" : p.title
+            let id = blockID(taken: timeBlocks.map(\.id))
             if let f = saveBlock(id: id, it) { return .failure(f) }
             return .success(blockItem(blockFrom(it, id: id)) ?? it)
         }
@@ -411,7 +413,8 @@ public final class Store: ObservableObject {
         if let old = before, sameInCalendar(old, it) { setExtras(it); fetch(); return nil }
         if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be changed.") }
         if isBlocks(it.calendarID) || before.map({ isBlocks($0.calendarID) }) == true {
-            guard before.map({ $0.calendarID == it.calendarID }) ?? true else {  // a block off screen has no `before`; its id says it is one fetch(); return Failure("Time blocks stay in the Planner's own calendar.") }
+            // A block off screen has no `before`; its calendar says it is one.
+            guard before.map({ $0.calendarID == it.calendarID }) ?? true else { fetch(); return Failure("Time blocks stay in the Planner's own calendar.") }
             if let f = saveBlock(id: String(it.id.dropFirst("block:".count)), it) { fetch(); return f }
             setExtras(it); return nil
         }
