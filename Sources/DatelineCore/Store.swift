@@ -154,6 +154,7 @@ public final class Store: ObservableObject {
     @Published public var a4Links: [String: A4Link] = [:]  // by the note's path
     public var a4Syncing = false
     public var a4LastError: String?
+    @Published public var timeBlocks: [TimeBlock] = []  // LifeWorld's free time blocks (TimeBlocksLogic.swift)
 
     // Phase 7: subscribed and ready-made calendars (Subscribed.swift).
     @Published public var subs: [Sub] = [] { didSet { save(subs, "subscriptions") } }
@@ -324,14 +325,14 @@ public final class Store: ObservableObject {
     public func between(_ a: Date, _ b: Date) -> [Item] {
         let own = canRead ? source.events(from: a, to: b) : []
         followIDs(own)  // before decorating, so an event whose id changed shows its extras at once
-        return ((own.map(decorated) + subEvents(from: a, to: b) + accEvents(from: a, to: b))).sorted { $0.start < $1.start }
+        return ((own.map(decorated) + subEvents(from: a, to: b) + accEvents(from: a, to: b) + blockEvents(from: a, to: b).map(decorated))).sorted { $0.start < $1.start }
     }
 
     // The same, read off the main thread (the Mac's event search reads two years).
     public func betweenInBackground(_ a: Date, _ b: Date) async -> [Item] {
         let own = canRead ? await source.eventsInBackground(from: a, to: b) : []
         followIDs(own)
-        return ((own.map(decorated) + subEvents(from: a, to: b) + accEvents(from: a, to: b))).sorted { $0.start < $1.start }
+        return ((own.map(decorated) + subEvents(from: a, to: b) + accEvents(from: a, to: b) + blockEvents(from: a, to: b).map(decorated))).sorted { $0.start < $1.start }
     }
 
     // The last year's events, one per title, newest first (quick add's "From your past events").
@@ -387,6 +388,11 @@ public final class Store: ObservableObject {
         let it = Item(id: "", calendarID: calID, title: p.title.isEmpty ? "New event" : p.title, start: p.start, end: p.end,
                       allDay: p.allDay, place: p.place, notes: p.notes, showAs: p.showAs, geo: p.geo)
         let repeats = p.repeats.map { (unit: $0.unit, n: $0.n) }
+        if isBlocks(calID) {
+            let id = blockID()
+            if let f = saveBlock(id: id, it) { return .failure(f) }
+            return .success(blockItem(blockFrom(it, id: id)) ?? it)
+        }
         if isAcc(calID) { return accAdd(it, alertMinutes: p.alertMinutes, repeats: repeats) }
         let saved = source.add(it, alertMinutes: p.alertMinutes, repeats: repeats)
         if case .success = saved { fetch() }
@@ -404,6 +410,11 @@ public final class Store: ObservableObject {
         // Only Dateline's extras changed (also on read-only calendars and invites): nothing goes to the calendar.
         if let old = before, sameInCalendar(old, it) { setExtras(it); fetch(); return nil }
         if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be changed.") }
+        if isBlocks(it.calendarID) || before.map({ isBlocks($0.calendarID) }) == true {
+            guard before.map({ $0.calendarID == it.calendarID }) ?? true else {  // a block off screen has no `before`; its id says it is one fetch(); return Failure("Time blocks stay in the Planner's own calendar.") }
+            if let f = saveBlock(id: String(it.id.dropFirst("block:".count)), it) { fetch(); return f }
+            setExtras(it); return nil
+        }
         if isAcc(it.calendarID) || before.map({ isAcc($0.calendarID) }) == true {
             if let f = accUpdate(it, old: before) { fetch(); return f }
             setExtras(it); fetch(); return nil
@@ -427,6 +438,7 @@ public final class Store: ObservableObject {
     public func delete(_ it: Item, series: Bool = false) -> Failure? {
         if trialOver { return Failure(License.endedMessage) }
         if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be deleted. Remove the whole calendar from the sidebar instead.") }
+        if isBlocks(it.calendarID) { return saveBlock(id: String(it.id.dropFirst("block:".count)), nil) }
         if isAcc(it.calendarID) {
             let oneTime = !accRepeats(it)
             if let f = accDelete(it, series: series) { return f }

@@ -13,10 +13,12 @@ public struct A4Task: Equatable {
     public var repeating = false
     public var sphere = ""  // "work" or "personal", from the task's project note; it picks the calendar
     public var ring = false  // a time just given in Dateline rings at that time, as a first time does in A4; an undo never sets this, so it can't wake a silenced task
+    public var minutes: Int? = nil  // TaskNotes' timeEstimate: how long its block is (LifeWorld's Planner); none reads as 30
+    public var length: Int { minutes ?? 30 }
     public static let statuses = [("open", "Open"), ("in-progress", "In progress"), ("blocked", "Blocked"), ("done", "Done")]
     public static let priorities = ["low", "normal", "high"]
     public static let finished = ["done", "closed"]
-    public init(status: String = "open", priority: String = "normal", file: String = "", repeating: Bool = false, sphere: String = "", ring: Bool = false) { self.status = status; self.priority = priority; self.file = file; self.repeating = repeating; self.sphere = sphere; self.ring = ring }
+    public init(status: String = "open", priority: String = "normal", file: String = "", repeating: Bool = false, sphere: String = "", ring: Bool = false, minutes: Int? = nil) { self.status = status; self.priority = priority; self.file = file; self.repeating = repeating; self.sphere = sphere; self.ring = ring; self.minutes = minutes }
 }
 
 public let a4Color = Color(red: 0.49, green: 0.36, blue: 0.82)
@@ -140,7 +142,7 @@ public func a4Read(_ text: String, file: String, now: Date) -> ToDo? {
     let body = a4Body(f)
     let priority = a4Value(f, "priority")
     return ToDo(id: "a4:" + file, listID: "a4:" + project, title: title.isEmpty ? String(name.dropLast(3)) : title, due: when, timed: when != nil && minutes != nil, done: done || (repeating && a4List(f, "complete_instances").contains(String(raw.prefix(10)))), notes: String(body.prefix(2000)),
-                a4: A4Task(status: status.isEmpty ? "open" : status, priority: priority.isEmpty ? "normal" : priority, file: file, repeating: repeating))
+                a4: A4Task(status: status.isEmpty ? "open" : status, priority: priority.isEmpty ? "normal" : priority, file: file, repeating: repeating, minutes: Int(a4Value(f, "timeEstimate")).flatMap { $0 > 0 ? $0 : nil }))
 }
 
 // Each project note's side of life, by its name in lower case, as Obsidian's links ignore case.
@@ -199,6 +201,7 @@ public func a4Changes(old: ToDo, new: ToDo, text: String, now: Date) -> [(String
         }
     }
     if o.priority != n.priority { set.append(("priority", n.priority)) }
+    if o.minutes != n.minutes { set.append(("timeEstimate", n.minutes.map(String.init))) }  // a stretched block: the length only (an undo to none removes it)
     if o.status != n.status {
         set.append(("status", n.status))
         if !n.repeating { set.append(("completedDate", A4Task.finished.contains(n.status) ? a4Day(now) : nil)) }
@@ -221,13 +224,14 @@ public struct A4Link: Codable, Equatable {
     public var away = false  // its note has left the folder; if it comes back, so does the link
     public var pushed: Date? = nil  // where Dateline last sent the event, so a task changed again before they agree still counts as the task moving
     public var zone = TimeZone.current.identifier  // a note's time has no zone: away from this one, task and event would seem to differ, so they wait
+    public var minutes: Int? = nil  // the length task and event last agreed on; nil on a link from before lengths
     public init(event: String, calendar: String, start: Date, title: String, misses: Int = 0, dismissed: Bool = false, finished: Bool = false, away: Bool = false, pushed: Date? = nil, zone: String = TimeZone.current.identifier) { self.event = event; self.calendar = calendar; self.start = start; self.title = title; self.misses = misses; self.dismissed = dismissed; self.finished = finished; self.away = away; self.pushed = pushed; self.zone = zone }
 }
 
 public enum A4Step: Equatable {
     case create(ToDo, calendar: String)
-    case moveEvent(Item, to: Date, title: String)
-    case moveTask(ToDo, to: Date)
+    case moveEvent(Item, to: Date, title: String, minutes: Int? = nil)
+    case moveTask(ToDo, to: Date, minutes: Int? = nil)
     case dropEvent(Item)
 }
 
@@ -288,11 +292,16 @@ public func a4Plan(tasks: [ToDo], links: [String: A4Link], events: [Item], calen
         if t.title == e.title { l.title = e.title }
         let taskMoved = t.due != e.start && (t.due != l.start || e.start == l.pushed), retitled = t.title != e.title && t.title != l.title
         if taskMoved { l.pushed = t.due }
+        // The length, the same way: a note with no timeEstimate has no say, so an old one-hour event stays one hour.
+        let evLen = Int(e.end.timeIntervalSince(e.start) / 60), want = t.a4?.minutes
+        if want == evLen || l.minutes == nil { l.minutes = evLen }
+        let taskStretched = !e.allDay && want != nil && want != evLen && want != l.minutes
+        let eventStretched = !e.allDay && !taskStretched && evLen != l.minutes && evLen > 0
         links[file] = l
-        if taskMoved || retitled {
-            steps.append(.moveEvent(e, to: taskMoved ? t.due! : e.start, title: retitled ? t.title : e.title))
-        } else if t.due != e.start && !e.allDay {
-            steps.append(.moveTask(t, to: e.start))
+        if taskMoved || retitled || taskStretched {
+            steps.append(.moveEvent(e, to: taskMoved ? t.due! : e.start, title: retitled ? t.title : e.title, minutes: taskStretched ? want : nil))
+        } else if !e.allDay && (t.due != e.start || eventStretched) {
+            steps.append(.moveTask(t, to: e.start, minutes: eventStretched ? evLen : nil))
         }
     }
     var fresh: [A4Step] = []
@@ -344,7 +353,7 @@ extension Store {
         for step in plan.steps {
             switch step {
             case let .create(t, calendar):
-                var p = Parsed(start: t.due!, end: t.due!.addingTimeInterval(3600))
+                var p = Parsed(start: t.due!, end: t.due!.addingTimeInterval(Double(t.a4!.length * 60)))
                 // No alert of its own: A4's reminders job rings for the task.
                 p.title = t.title; p.notes = (try? String(contentsOfFile: t.a4!.file, encoding: .utf8)).flatMap(a4Front).map(a4Body) ?? t.notes
                 switch add(p, calendarID: calendar) {
@@ -352,12 +361,12 @@ extension Store {
                 case .success(let e): links[t.a4!.file] = A4Link(event: e.id, calendar: e.calendarID, start: t.due!, title: t.title)
                 case .failure(let f): failure = f
                 }
-            case let .moveEvent(e, to, title):
-                var n = e; n.start = to; n.end = to.addingTimeInterval(e.end.timeIntervalSince(e.start)); n.title = title
+            case let .moveEvent(e, to, title, minutes):
+                var n = e; n.start = to; n.end = to.addingTimeInterval(minutes.map { Double($0 * 60) } ?? e.end.timeIntervalSince(e.start)); n.title = title
                 if let f = update(n) { failure = f }
-            case let .moveTask(t, to):
-                var n = t; n.due = to
-                if let f = updateA4(n, old: t) { failure = f } else { links[t.a4!.file]?.start = to }  // the note is written, so they agree now
+            case let .moveTask(t, to, minutes):
+                var n = t; n.due = to; if let minutes { n.a4?.minutes = minutes }
+                if let f = updateA4(n, old: t) { failure = f } else { links[t.a4!.file]?.start = to; if let minutes { links[t.a4!.file]?.minutes = minutes } }  // the note is written, so they agree now
             case .dropEvent(let e):
                 if let f = delete(e) { failure = f }
             }
@@ -427,7 +436,9 @@ extension Store {
         let n = a4Fetch, on = a4On, folder = a4Folder, sides = a4Calendar != nil || a4WorkCalendar != nil
         Task.detached(priority: .utility) {
             let found = on ? a4Scan(folder, now: Date(), sides: sides) : []
-            await MainActor.run { if n == self.a4Fetch, self.a4Busy == 0 { self.showA4(found); if !found.isEmpty { self.a4Sync() } } }
+            // The Planner's free time blocks: an unreadable note shows none and is never written (saveBlock reads it again).
+            let blocks = on ? blocksFile(folder).flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }.map { blocksRead($0) ?? [] } : nil
+            await MainActor.run { if n == self.a4Fetch, self.a4Busy == 0 { self.showA4(found); self.showBlocks(blocks); if !found.isEmpty { self.a4Sync() } } }
         }
     }
 

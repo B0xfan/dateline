@@ -141,6 +141,37 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
     expect(sides == ["a.md": "work", "b.md": "personal", "c.md": "", "d.md": "", "e.md": ""], "a4 link: a task takes its project's side of life")
     expect(a4Project("[[a/b/Home.md|H]]") == "Home" && a4Project("Plain") == "Plain", "a4: project names")
     expect(a4Stamp(now).hasPrefix("2026-10-31T09:00:00.000") && a4Stamp(now).count == 29, "a4: A4's time stamp")
+    // A task's length is its timeEstimate (LifeWorld's Planner).
+    expect(read("due: 2026-11-03T11:00\ntimeEstimate: 45")?.a4?.length == 45 && appt.a4?.length == 30 && read("timeEstimate: 0")?.a4?.minutes == nil, "a4: a task's length is its timeEstimate, half an hour when it has none")
+    var longer = appt; longer.a4?.minutes = 90
+    expect(a4Changes(old: appt, new: longer, text: "", now: now).map { "\($0.0)=\($0.1 ?? "-")" } == ["timeEstimate=90"], "a4: stretching writes only the timeEstimate")
+    func evLen(_ m: Int) -> Item { var e = ev(dueAt); e.end = dueAt.addingTimeInterval(Double(m * 60)); return e }
+    var lenLink = link; lenLink.minutes = 30
+    let t45 = { var x = vetTask; x.a4?.minutes = 45; return x }()
+    expect(plan([t45], ["/a": lenLink], [evLen(30)]).steps == [.moveEvent(evLen(30), to: dueAt, title: "Vet", minutes: 45)], "a4 link: a longer task stretches its event")
+    let t30 = { var x = vetTask; x.a4?.minutes = 30; return x }()
+    expect(plan([t30], ["/a": lenLink], [evLen(60)]).steps == [.moveTask(t30, to: dueAt, minutes: 60)], "a4 link: a stretched event sets the task's length")
+    expect(plan([vetTask], ["/a": link], [evLen(60)]).steps.isEmpty, "a4 link: an old one-hour event with no timeEstimate stays as it is")
+    // LifeWorld's free time blocks: one note, both apps write it.
+    let blocksNote = "---\ntype: note\ncategory: time-blocks\nblocks:\n  - id: ab12cd\n    date: '2026-11-17'\n    time: '12:30'\n    minutes: 60\n    title: Lunch\n  - id: \"x9\"\n    date: \"2026-11-18\"\n    time: \"07:00\"\n    minutes: 90\n    title: \"Gym, then coffee\"\ntags:\n  - planner\n---\n\nKept by the Planner.\n"
+    let bl = blocksRead(blocksNote)
+    expect(bl == [TimeBlock(id: "ab12cd", date: "2026-11-17", time: "12:30", minutes: 60, title: "Lunch"), TimeBlock(id: "x9", date: "2026-11-18", time: "07:00", minutes: 90, title: "Gym, then coffee")], "blocks: reads both quote styles")
+    let rewritten = blocksWrite(blocksNote, bl ?? [])
+    expect(rewritten.flatMap(blocksRead) == bl && rewritten?.contains("tags:\n  - planner\n---\n\nKept by the Planner.\n") == true && rewritten?.hasPrefix("---\ntype: note\ncategory: time-blocks\n") == true, "blocks: a write keeps every other line")
+    expect(blocksRead("---\nblocks: []\n---\n") == [] && blocksRead("---\ntype: note\n---\n") == [] && blocksWrite("---\ntype: note\n---\n", []).flatMap(blocksRead) == [], "blocks: none, and an empty list")
+    expect(blocksRead("---\nblocks:\n  - id: a\n    date: 2026-11-17\n    time: 12:30\n    minutes: 60\n    colour: red\n---\n") == nil && blocksRead("---\nblocks: [{id: a}]\n---\n") == nil && blocksRead("---\nblocks:\n  - id: a\n    date: tomorrow\n    time: 12:30\n    minutes: 60\n---\n") == nil, "blocks: a note Dateline can't read for sure is never written")
+    let lunch = blockItem(bl![0])
+    expect(lunch?.start == at(17, 12, 30) && lunch?.end == at(17, 13, 30) && lunch?.calendarID == blocksCalendar && lunch?.id == "block:ab12cd", "blocks: a block is an event at its time")
+    var stretched = lunch!; stretched.start = at(17, 13, 0); stretched.end = at(17, 13, 5)
+    expect(blockFrom(stretched, id: "ab12cd") == TimeBlock(id: "ab12cd", date: "2026-11-17", time: "13:00", minutes: 15, title: "Lunch"), "blocks: a moved block is written back, 15 minutes at least")
+    MainActor.assumeIsolated {
+        // Blocks in the sample: add, move and remove stay in memory.
+        let bs = Store.sampleWithA4(), before = bs.timeBlocks.count
+        guard case .success(let made) = bs.add(Parsed(start: at(19, 15, 0), end: at(19, 16, 0)), calendarID: blocksCalendar) else { expect(false, "blocks: a new block is made"); return }
+        var moved = made; moved.start = at(19, 16, 0); moved.end = at(19, 17, 30)
+        expect(bs.timeBlocks.count == before + 1 && bs.update(moved) == nil && bs.timeBlocks.last?.time == "16:00" && bs.timeBlocks.last?.minutes == 90, "blocks: a block is made and moved")
+        expect(bs.delete(moved) == nil && bs.timeBlocks.count == before, "blocks: a block is removed")
+    }
     MainActor.assumeIsolated {
         // The calendar follows the project, and an unmarked task goes nowhere.
         let routed = Store(sample: true), writable = routed.calendars.filter(\.writable)
@@ -292,7 +323,7 @@ struct A4Settings: View {
                 }
                 calendarPicker("Work tasks go on", work: true, selection: store.a4WorkCalendar).padding(.top, 8)
                 calendarPicker("Personal tasks go on", work: false, selection: store.a4Calendar)
-                Text("Each A4 task with a date and time becomes a real event, an hour long, on the calendar for its project: work or personal. Move the event, even to another calendar, and the task's Due follows; change the task and the event follows. Repeating tasks, and tasks whose project isn't marked work or personal, stay tasks. It happens while Dateline is running.")
+                Text("Each A4 task with a date and time becomes a real event, as long as the task's length in A4 (half an hour when it has none), on the calendar for its project: work or personal. Move the event, even to another calendar, and the task's Due follows; change the task and the event follows. Repeating tasks, and tasks whose project isn't marked work or personal, stay tasks. It happens while Dateline is running.")
                     .font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
                 Text(FileManager.default.fileExists(atPath: store.a4Folder) || store.access == .sample
                      ? "Found \(count) tasks that aren't done. Tasks with a Due property show on the calendar; the rest sit under No date, by project."
@@ -323,6 +354,11 @@ extension Store {
         t("a4-reading", "Answer buyer questions", 1)
         t("a4-launch", "Bring the GitHub page up to date", 3)
         t("a4-home", "Vet appointment", 1, hour: 11)
+        if let i = todos.firstIndex(where: { $0.id == "a4-Vet appointment" }) { todos[i].a4?.minutes = 45 }
+        // LifeWorld's free time blocks.
+        calendars.append(blocksInfo)
+        timeBlocks = [TimeBlock(id: "lunch1", date: a4Day(addDays(mon, 1)), time: "12:30", minutes: 60, title: "Lunch"), TimeBlock(id: "gym1", date: a4Day(addDays(mon, 2)), time: "07:00", minutes: 90, title: "Gym")]
+        refetch()
         for s in ["Sign the app", "Check the code is safe to share"] { t("a4-launch", s, nil) }
         for s in ["Fix the gate latch", "Sort the garage", "Renew the car papers"] { t("a4-home", s, nil) }
     }

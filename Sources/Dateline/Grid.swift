@@ -106,13 +106,16 @@ struct DayColumn: View {
     @ObservedObject private var here = Here.shared
     let day: Date, days: [Date], items: [Item]
     @State private var drag: (id: String, dy: CGFloat, dx: CGFloat, stretch: Bool)?
+    @State private var taskStretch: (id: String, dy: CGFloat)?
 
     var body: some View {
         GeometryReader { g in
             let w = g.size.width
             let timed = app.calendarTodos.filter { t in t.timed && !isOverdue(t, now: app.now) && !store.a4OnCalendar(t) && t.due.map { cal.isDate($0, inSameDayAs: day) } == true }
             let perPoint = 3600 / Double(hourH)  // seconds of day per point of height
-            let lane = lanes(items + timed.map { taskSpan($0, at: $0.due!, length: Double(max(20, hourH / 2 - 2)) * perPoint) }, minLength: 18 * perPoint)
+            // An A4 task is as long as its timeEstimate (LifeWorld's Planner); a reminder keeps its half-hour chip.
+            let tall = { (t: ToDo) -> CGFloat in t.a4.map { CGFloat($0.length) / 60 * hourH } ?? max(20, hourH / 2 - 2) }
+            let lane = lanes(items + timed.map { taskSpan($0, at: $0.due!, length: Double(tall($0)) * perPoint) }, minLength: 18 * perPoint)
             ZStack(alignment: .topLeading) {
                 OffHours(day: day)
                 if WorkWeek.sun, let g = here.spot { SunHours(day: day, at: g, labels: day == days.first && w >= 70) }
@@ -160,8 +163,12 @@ struct DayColumn: View {
                 // Reminders with a time on this day (not overdue: those sit in today's Tasks row).
                 ForEach(timed) { t in
                     let (l, n) = lane["task:" + t.id] ?? (0, 1), colW = (w - 4) / CGFloat(max(n, 1))
+                    let dy = taskStretch?.id == t.id ? taskStretch!.dy : 0
                     TaskBlock(app: app, store: store, task: t)
-                        .frame(width: colW - 2, height: max(20, hourH / 2 - 2))
+                        .frame(width: colW - 2, height: max(20, tall(t) + dy - 2))
+                        .overlay(alignment: .bottom) {
+                            if t.a4 != nil, !t.done { stretchHandle(t) }  // stretching writes the note's timeEstimate only
+                        }
                         .offset(x: 2 + CGFloat(l) * colW, y: CGFloat(t.due!.timeIntervalSince(day) / 3600) * hourH + 1)
                         .zIndex(2)
                 }
@@ -176,6 +183,20 @@ struct DayColumn: View {
             app.drop(taskID: String(id.dropFirst(5)), at: cal.date(byAdding: .minute, value: min(95, max(0, Int(loc.y / hourH * 4))) * 15, to: day)!)
             return true
         }
+    }
+
+    // An A4 task's bottom edge, in 15-minute steps; 15 minutes is the shortest.
+    func stretchHandle(_ t: ToDo) -> some View {
+        Color.clear.frame(height: 8).contentShape(Rectangle())
+            .onHover { ($0 ? NSCursor.resizeUpDown : NSCursor.arrow).set() }
+            .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .global)
+                .onChanged { v in let step = hourH / 4; taskStretch = (t.id, (v.translation.height / step).rounded() * step) }
+                .onEnded { v in
+                    taskStretch = nil
+                    let m = max(15, (t.a4?.length ?? 30) + DragMath.minutes(dy: v.translation.height, hourH: hourH))
+                    var n = t; n.a4?.minutes = m
+                    if m != t.a4?.length { app.saveTask(n) }
+                })
     }
 
     func frame(_ it: Item) -> (y: CGFloat, h: CGFloat) {
