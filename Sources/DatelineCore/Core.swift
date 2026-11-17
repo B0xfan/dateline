@@ -107,8 +107,9 @@ private func shortCode(_ w: String, _ prefix: String) -> (Int, Character)? {
 }
 
 // Reads a sentence like "Dinner with Ana Friday 7pm at Casa Luna /Personal -a15m". `now` is the moment the box is typed in.
+// `shownDay` is the day on screen: a sentence that names no day lands there instead of today (James 2026-11-17).
 // Short codes are taken out first, wherever they are; the rest is read as below.
-public func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60) -> Parsed {
+public func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60, shownDay: Date? = nil) -> Parsed {
     var code: String? = nil, alert: Int? = nil, rep: Repeat? = nil
     let rest = text.split(separator: " ").filter { word in
         let w = word.lowercased()
@@ -117,13 +118,13 @@ public func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60) -
         if let (n, u) = shortCode(w, "-r"), n > 0, "dwmy".contains(u) { rep = Repeat(unit: u, n: n); return false }
         return true
     }
-    var p = parsePlain(rest.joined(separator: " "), now: now, defaultMinutes: defaultMinutes)
+    var p = parsePlain(rest.joined(separator: " "), now: now, defaultMinutes: defaultMinutes, shownDay: shownDay)
     p.calendarCode = code; p.alertMinutes = alert; p.repeats = rep
     return p
 }
 
 // Words not taken as a date, time or mark make the title; after "at <place>" they make the place.
-private func parsePlain(_ text: String, now: Date, defaultMinutes: Int) -> Parsed {
+private func parsePlain(_ text: String, now: Date, defaultMinutes: Int, shownDay: Date?) -> Parsed {
     // "9:30 AM" or "9 p.m." typed as two words joins into one time word, so the AM never stays in the title.
     var words: [String] = []
     for w in text.split(separator: " ").map(String.init) {
@@ -198,7 +199,9 @@ private func parsePlain(_ text: String, now: Date, defaultMinutes: Int) -> Parse
     if let placeFrom { p.place = join((placeFrom + 1)..<words.count) }
     p.showAs = showAs
     p.dateGiven = day != nil || startMin != nil
-    let base = day ?? today
+    // A typed day wins; else the day on screen, unless that is today (so a past time still rolls to tomorrow).
+    let shown = shownDay.map { cal.startOfDay(for: $0) }.flatMap { $0 == today ? nil : $0 }
+    let base = day ?? shown ?? today
     if allDay || startMin == nil {
         p.allDay = true
         p.start = base; p.end = addDays(base, 1)
@@ -206,7 +209,7 @@ private func parsePlain(_ text: String, now: Date, defaultMinutes: Int) -> Parse
     }
     var start = cal.date(byAdding: .minute, value: startMin!, to: base)!
     // A time already past today, with no day written, means tomorrow.
-    if day == nil && start < now { start = addDays(start, 1) }
+    if day == nil && shown == nil && start < now { start = addDays(start, 1) }
     p.start = start
     p.lengthGiven = endMin != nil || duration != nil
     let len = endMin.map { $0 > startMin! ? $0 - startMin! : $0 + 1440 - startMin! } ?? duration ?? defaultMinutes

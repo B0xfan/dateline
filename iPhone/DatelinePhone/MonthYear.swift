@@ -13,11 +13,10 @@ func weekDayNames() -> [String] {
 struct MonthView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
-    @State private var picked: Date?
 
     var body: some View {
         let grid = monthGrid(app.anchor), month = cal.component(.month, from: app.anchor)
-        let sel = picked ?? (cal.isDate(app.today, equalTo: app.anchor, toGranularity: .month) ? cal.startOfDay(for: app.today) : cal.startOfDay(for: app.anchor))
+        let sel = app.shownDay ?? cal.startOfDay(for: app.anchor)
         let list = store.shown(on: sel)
         VStack(alignment: .leading, spacing: 0) {  // the month stays put; only the day's list scrolls (John 2026-11-07)
             VStack(alignment: .leading, spacing: 0) {  // the calendar on white; the day's card below on grey
@@ -68,14 +67,13 @@ struct MonthView: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(T.grouped)
-        .onChange(of: app.anchor) { picked = nil }
     }
 
     private func cell(_ d: Date, inMonth: Bool, picked sel: Date) -> some View {
         let today = cal.isDate(d, inSameDayAs: app.today), on = cal.isDate(d, inSameDayAs: sel)
         var seen = Set<String>()
         let dots = store.shown(on: d).filter { it in seen.insert(it.color.map { n in "c\(n)" } ?? it.calendarID).inserted }.prefix(3).map { store.color($0) }
-        return Button { picked = d } label: {
+        return Button { app.monthPick = d } label: {
             VStack(spacing: 2) {  // compact like Fantastical (John 2026-11-08): 34 pt weeks instead of 56
                 Text(dateText(d, "d")).font(.subheadline.weight(today ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(today ? .white : on ? T.tint : inMonth ? T.text : T.text2.opacity(0.6))

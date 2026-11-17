@@ -100,10 +100,11 @@ final class PhoneState: ObservableObject {
     let store: Store
     let sample: Bool  // sample calendars: tests and pictures
     @Published var today: Date
-    @Published var mode: Mode = .list { didSet { listDay = nil; reload(); turnRule(); if !sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") } } }  // the list is the main screen (approved mockup, John 2026-11-05)
+    @Published var mode: Mode = .list { didSet { listDay = nil; monthPick = nil; reload(); turnRule(); if !sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") } } }  // the list is the main screen (approved mockup, John 2026-11-05)
     // Settings > Week: the view Dateline opens on; "" = where you left it (John 2026-11-06).
     static var openOn: String { get { UserDefaults.standard.string(forKey: "openOn") ?? "" } set { UserDefaults.standard.set(newValue, forKey: "openOn") } }
-    @Published var anchor: Date { didSet { listDay = nil; reload() } }
+    @Published var anchor: Date { didSet { listDay = nil; monthPick = nil; reload() } }
+    @Published var monthPick: Date?  // the day tapped in the month view
     @Published var listDay: Date?  // the day at the top of the list as it scrolls; the month title and week strip follow it (John 2026-11-06)
     @Published var tab: Tab = .calendar { didSet { turnRule() } }
     @Published var sideways = false { didSet { if sideways != oldValue { reload() } } }  // the phone is turned (only Week allows it)
@@ -131,6 +132,15 @@ final class PhoneState: ObservableObject {
     var demoDrag: DragLive?  // pictures only: an event held mid-drag
     var demoHold = false  // pictures only: the Undo banner stays up
     @Published var addStart: Date?  // a tap on an empty time: the add sheet starts there
+    /// The day the screen is on, where a new event with no typed day lands (James 2026-11-17): the list's top day, the day or week view's anchor day, the month's tapped day.
+    var shownDay: Date? {
+        switch mode {
+        case .list: return listDay ?? anchor
+        case .day, .week: return anchor
+        case .month: return monthPick ?? (cal.isDate(today, equalTo: anchor, toGranularity: .month) ? cal.startOfDay(for: today) : cal.startOfDay(for: anchor))
+        default: return nil
+        }
+    }
     @Published var toast: Toast?  // the Undo banner
     @Published var dragUntil = Date.distantPast  // the day-to-day swipe stays quiet while an event is held and for a moment after
     let undo = UndoStack()

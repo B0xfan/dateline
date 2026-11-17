@@ -212,7 +212,8 @@ final class AppState: ObservableObject {
 
     // MARK: changes, each one undoable with Command Z
 
-    var preview: Parsed { parseSentence(addText, now: Date()) }
+    // In Day view a sentence with no day lands on the day shown, as on the phone's + (James 2026-11-17).
+    var preview: Parsed { parseSentence(addText, now: Date(), shownDay: mode == .day ? anchor : nil) }
     var addCalendar: CalInfo? { calendar(for: preview, pick: nil).0 }
 
     var quickPreview: Parsed { let p = parseSentence(quick.text, now: Date()); return quick.pick.map { applying($0, to: p) } ?? p }

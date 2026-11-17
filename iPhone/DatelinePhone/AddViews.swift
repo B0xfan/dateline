@@ -65,7 +65,7 @@ struct AddSheet: View {
 
     /// The sentence as read, but a tapped time on the calendar is the start when the sentence gives none.
     private func read() -> Parsed {
-        var p = parseSentence(text, now: app.today)
+        var p = parseSentence(text, now: app.today, shownDay: app.addStart ?? app.shownDay)
         if let s = app.addStart, !p.dateGiven {
             p.end = s.addingTimeInterval(p.lengthGiven ? p.end.timeIntervalSince(p.start) : 3600); p.start = s; p.allDay = false
         }
