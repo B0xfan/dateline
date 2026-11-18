@@ -36,7 +36,7 @@ struct DatelineApp: App {
                 // the pictures and checks never touch the real icon or ask; on leaving too, in case midnight passed with Dateline open
                 if !app.sample, phase == .active { Task { await DateBadge.update(ask: true) } }
                 if !app.sample, phase == .background { Task { await DateBadge.setToday() } }  // only the number: no re-plan while iOS may suspend us mid-way
-                if phase == .active { app.store.refreshSubs() }  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
+                if phase == .active { app.store.refreshSubs(); app.planTravel() }  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
             }
     }
 }
@@ -51,10 +51,10 @@ struct DatelineApp: App {
     // shortcut: 30 midnights ahead (iOS holds 64 waiting); a phone that doesn't open Dateline for a month keeps the last number.
     static let ahead = 30
     private static var turn = 0  // the newest update wins: an older one still running stops at its next step
-    /// iOS has badges off for Dateline (false while it hasn't asked yet).
-    static func isBlocked() async -> Bool {
+    /// iOS has badges (or with `\.alertSetting`, the leave alerts' banners) off for Dateline (false while it hasn't asked yet).
+    static func isBlocked(_ k: KeyPath<UNNotificationSettings, UNNotificationSetting> = \.badgeSetting) async -> Bool {
         let s = await UNUserNotificationCenter.current().notificationSettings()
-        return s.authorizationStatus != .notDetermined && (s.authorizationStatus == .denied || s.badgeSetting != .enabled)
+        return s.authorizationStatus != .notDetermined && (s.authorizationStatus == .denied || s[keyPath: k] != .enabled)
     }
     /// Today's number only, for leaving the app: the waiting midnights stay as they are.
     static func setToday() async {
@@ -70,7 +70,8 @@ struct DatelineApp: App {
         let s = await c.notificationSettings()
         if s.authorizationStatus == .notDetermined {
             guard ask else { return true }
-            guard (try? await c.requestAuthorization(options: [.badge])) == true else { return false }
+            // one ask for everything: iOS never asks twice, so the leave alerts' banner and sound are asked for here too
+            guard (try? await c.requestAuthorization(options: [.badge, .alert, .sound])) == true else { return false }
         } else if s.authorizationStatus == .denied || s.badgeSetting != .enabled { return false }
         guard turn == me, on else { return true }
         let today = cal.startOfDay(for: Date())
@@ -118,8 +119,8 @@ final class PhoneState: ObservableObject {
     @Published var look = 0  // bumped when a Look choice changes here or arrives from the Mac, so the screens redraw in it
     var unlockNext = false  // an add refused by the ended trial: the unlock screen opens once the add sheet has closed
     @Published var problem: String?
-    // shortcut: only the sample fills this; the phone does not run the shared drive planner (Trips) yet, which also schedules the leave alerts (a later step).
-    @Published var drive: [String: Int] = [:]  // minutes of driving before an event with a place
+    @Published var drive: [String: Int] = [:]  // minutes of driving before an event with a place (planTravel; the sample's are made up)
+    private let trips = Trips()
     @Published var emails: [EmailFind] = []  // events found in emails opened in Dateline
     @Published var pickingEmail = false  // the Files picker for an email file
     private var readingEmail = false
@@ -268,8 +269,16 @@ final class PhoneState: ObservableObject {
         if case .success(let it) = r {
             undo.push { [weak self] in self?.store.delete(it, series: true) }  // like the Mac: a repeating one goes whole
             say("Added \(it.shownTitle)")
+            if p.repeats == nil { Task { if let f = await store.findSpot(it) { problem = f.message } } }  // a typed place gets its map spot, as on the Mac; never a new series (it would split)
         }
         return r
+    }
+
+    /// Drive times for the next 7 days' events with a place, from Apple Maps, and their leave alerts (the Mac's planTravel, same shared planner).
+    func planTravel() {
+        guard store.access == .granted else { return }  // the pictures keep their made-up 25 minutes
+        let all = store.soon.filter { !store.hidden.contains($0.calendarID) }
+        Task { if await trips.run(tripList(all, now: Date()), all: all, store: store, done: { m in if self.drive != m { self.drive = m } }) { planTravel() } }
     }
 
     /// A saved change to an event (drag, stretch, edit): Undo puts `old` back.

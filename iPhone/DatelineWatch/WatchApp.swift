@@ -69,14 +69,14 @@ final class WatchState: ObservableObject {
     }
 
     /// Back on the wrist, and every 5 minutes while open: reminders, location and drive times are read again.
-    /// The watch plans its own leave alerts; the phone does not plan any yet (PhoneState.drive), so there is one alert per event.
+    /// Drive times only: the phone plans the leave alerts and iOS shows them here, so there is one alert per event.
     func wake() {
         guard !sample else { return }
         now = Date(); lastWake = now
         load(); store.reloadReminders()
         Here.shared.refresh()
-        let soon = store.between(now, now.addingTimeInterval(86400)).filter { $0.geo != nil && !$0.allDay && !$0.noTravel && $0.start > now }.sorted { $0.start < $1.start }
-        Task { _ = await trips.run(soon, all: soon, store: store) { m in
+        let soon = tripList(store.between(now, now.addingTimeInterval(86400)), now: now)
+        Task { _ = await trips.run(soon, all: soon, store: store, alerts: false) { m in
             guard self.drive != m else { return }
             let before = self.drive; self.drive = m; Shared.save(drive: m)
             // only the Next piece shows a leave time; ask again only when the one shown moved (the reload budget is small)

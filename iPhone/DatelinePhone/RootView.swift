@@ -27,6 +27,7 @@ struct RootView: View {
         .background(T.bg)
         .preferredColorScheme(Look.appearance == "Light" ? .light : Look.appearance == "Dark" ? .dark : nil)  // app.look changing redraws this
         .onReceive(NotificationCenter.default.publisher(for: Look.synced)) { _ in app.lookChanged() }  // a Look choice arrived from the Mac
+        .onChange(of: store.soon) { app.planTravel() }  // drive times follow the coming events, as on the Mac
         .sheet(isPresented: Binding(get: { app.adding != nil }, set: { if !$0 { app.adding = nil } }), onDismiss: { app.sheetClosed() }) { AddSheet(start: app.adding ?? "") }
         .sheet(isPresented: $app.searching) { SearchSheet() }
         .sheet(item: $app.email, onDismiss: { app.sheetClosed() }) { EmailSheet(find: $0) }
@@ -44,10 +45,12 @@ struct RootView: View {
             guard !app.sample else { return }  // the pictures keep the mockup's 9:41
             app.today = now
             License.shared.tick(now)
+            if Int(now.timeIntervalSince1970) % 300 < 30 { Here.shared.refresh(); app.planTravel() }  // every 5 minutes, as on the Mac (this clock ticks every 30 s)
         }
         .task {
             guard !app.sample else { return }
-            Here.shared.start()  // sunrise and weather for where the phone is; never in a test
+            Here.shared.start()  // sunrise, weather and drive times for where the phone is; never in a test
+            LeaveAlerts.shared.install()  // the leave alert's Directions and In 5 min buttons
             await License.shared.storeReady()
             if License.shared.trialNotStarted { app.showUnlock = true }  // first open: the trial's terms before it starts (App Review 3.1.1)
         }

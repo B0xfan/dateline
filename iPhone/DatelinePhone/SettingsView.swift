@@ -249,7 +249,9 @@ struct LookPage: View {
 
 struct WeekPage: View {
     @EnvironmentObject var app: PhoneState
+    @Environment(\.scenePhase) private var phase
     @State private var tick = 0
+    @State private var leaveOff = false  // iOS has banners off for Dateline
     var body: some View {
         let _ = tick
         let order = (0..<7).map { (WorkWeek.firstWeekday - 1 + $0) % 7 + 1 }
@@ -288,9 +290,13 @@ struct WeekPage: View {
                 Toggle("Show sunrise, sunset and the moon", isOn: Binding(get: { WorkWeek.sun }, set: { WorkWeek.sun = $0; changed() }))
             }
             Section {
-                Toggle("Alert me when it's time to leave", isOn: Binding(get: { WorkWeek.leave }, set: { WorkWeek.leave = $0; changed() }))
+                Toggle("Alert me when it's time to leave", isOn: Binding(get: { WorkWeek.leave }, set: { WorkWeek.leave = $0; changed(); app.planTravel() }))
                 Button { app.tab = .places } label: { line(nil, .clear, "Places and drive times", "") }.buttonStyle(.plain)
-            } header: { Text("Leave alerts") } footer: { Text("Uses the phone's location for the drive time, the same places as the Mac.") }
+                if leaveOff && WorkWeek.leave { Button("Open notification settings…") { openURL(UIApplication.openNotificationSettingsURLString) } }
+            } header: { Text("Leave alerts") } footer: {
+                Text(leaveOff && WorkWeek.leave ? "Notifications are off for Dateline, so leave alerts can't show. Turn on Alerts in notification settings." : "Uses the phone's location for the drive time, the same places as the Mac.")
+            }
+            .task(id: phase) { if !app.sample, phase == .active { leaveOff = await DateBadge.isBlocked(\.alertSetting) } }  // again on coming back from iOS Settings
         }
         .navigationTitle("Week")
     }

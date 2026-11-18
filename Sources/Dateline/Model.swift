@@ -248,6 +248,7 @@ final class AppState: ObservableObject {
         case .failure(let f): error = f.message; return nil
         case .success(let it):
             undoStack.append { [weak self] in self?.store.delete(it, series: true) }
+            if p.repeats == nil { locate(it) }  // a spot saved on a new series would split off its first one
             anchor = cal.startOfDay(for: it.start)
             reload()
             selectedID = store.items.first { $0.title == it.title && $0.start == it.start }?.id ?? it.id
@@ -306,17 +307,11 @@ final class AppState: ObservableObject {
         guard old != new else { return }
         if let f = store.update(new) { error = f.message; return }
         undoStack.append { [weak self] in self?.store.update(old) }
-        if new.geo == nil, new.place != old.place, !new.place.trimmingCharacters(in: .whitespaces).isEmpty { locate(new) }
+        if new.place != old.place { locate(new) }
     }
 
-    // A place typed with no pick gets its spot from Apple Maps after it saves; skipped if the place was changed or picked meanwhile.
-    private func locate(_ it: Item) {
-        Task {
-            guard let g = await PlaceSearch.find(it.place), var now = store.items.first(where: { $0.id == it.id }), now.place == it.place, now.geo == nil else { return }
-            now.geo = g
-            if let f = store.update(now) { error = f.message }
-        }
-    }
+    // A typed place gets its spot from Apple Maps after it saves (the shared Store.findSpot).
+    private func locate(_ it: Item) { Task { if let f = await store.findSpot(it) { error = f.message } } }
 
     func delete(_ it: Item) {
         if let f = store.delete(it) { error = f.message; return }

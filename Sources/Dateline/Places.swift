@@ -87,7 +87,7 @@ extension AppState {
     func planTravel() {
         let now = sampleToday ?? Date()
         let all = store.soon.filter { !store.hidden.contains($0.calendarID) }
-        let list = all.filter { $0.geo != nil && !$0.allDay && !$0.noTravel && $0.start > now && $0.start < now.addingTimeInterval(7 * 86400) }.sorted { $0.start < $1.start }
+        let list = tripList(all, now: now)
         if store.access == .sample { drive = Dictionary(uniqueKeysWithValues: list.map { ($0.id, 25) }); return }  // the mockup's 25 min, no Apple Maps
         guard store.access == .granted else { return }
         Task { if await trips.run(list, all: all, store: store, done: { m in if self.drive != m { self.drive = m } }) { planTravel() } }
