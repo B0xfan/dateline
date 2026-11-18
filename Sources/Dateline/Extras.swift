@@ -22,7 +22,8 @@ struct EmojiRow: View {
             .popover(isPresented: $open, arrowEdge: .bottom) {
                 EmojiPicker(recent: store.recentEmoji) { e in item.emoji = e; store.usedEmoji(e); open = false; commit() }
             }
-            if !item.emoji.isEmpty, !(item.emoji == "🎂" && store.calendar(item.calendarID)?.writable != true) { Button("Remove")  // a read-only calendar's cake is the Birthdays marker; it can be swapped, not removed { item.emoji = ""; commit() }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.text3) }
+            // A read-only calendar's cake is the Birthdays marker: it can be swapped, not removed.
+            if !item.emoji.isEmpty, !(item.emoji == "🎂" && store.calendar(item.calendarID)?.writable != true) { Button("Remove") { item.emoji = ""; commit() }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.text3) }
             if let a = added, a.id == item.id, same.allSatisfy({ $0.emoji == item.emoji }) {  // gone once Undo has run
                 Text("Added to \(a.count). Edit > Undo takes it back.").font(.ui(12)).foregroundStyle(Palette.text3)
             } else if !item.emoji.isEmpty, same.count > 1, same.contains(where: { $0.emoji != item.emoji }) {
