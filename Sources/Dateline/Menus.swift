@@ -60,6 +60,7 @@ struct AppCommands: Commands {
             }.disabled(app.panels.editingSet != nil)  // the set editor is showing what would change behind it
             Divider()
             Button("Today") { app.openMain?(); app.goToday() }.keyboardShortcut("t")
+            Button("Go to Date…") { app.openMain?(); app.panels.jumping = true }.keyboardShortcut("t", modifiers: [.shift, .command])
             Button("Previous") { app.openMain?(); app.step(-1) }.keyboardShortcut(.leftArrow, modifiers: [.option, .command])
             Button("Next") { app.openMain?(); app.step(1) }.keyboardShortcut(.rightArrow, modifiers: [.option, .command])
             Divider()

@@ -48,8 +48,14 @@ struct CalHeader: View {
             HStack(spacing: 0) {  // side by side, so a long title at large text never runs under the buttons
                 Button("Today") { app.goToday() }
                     .font(.body.weight(.semibold)).foregroundStyle(T.tint).padding(.horizontal, 8).frame(minHeight: 44).fixedSize()
-                Text(title).font(.headline).foregroundStyle(T.text).lineLimit(1).minimumScaleFactor(0.7)
-                    .frame(maxWidth: .infinity).layoutPriority(1).accessibilityAddTraits(.isHeader)
+                Button { jumping = true } label: {  // tap the title to go to a date (approved mockup 2026-11-17)
+                    HStack(spacing: 5) {
+                        Text(title).font(.headline).foregroundStyle(T.text).lineLimit(1).minimumScaleFactor(0.7)
+                        Image(systemName: "chevron.down").font(.caption2.weight(.bold)).foregroundStyle(T.tint)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                }
+                .layoutPriority(1).accessibilityAddTraits(.isHeader).accessibilityHint("Go to a date")
                 if !app.emails.isEmpty {
                     Button { app.email = app.emails.first } label: {
                         Image(systemName: "envelope").frame(width: 44, height: 44)
@@ -85,7 +91,10 @@ struct CalHeader: View {
         }
         .background(T.bg)
         .overlay(alignment: .bottom) { Rectangle().fill(T.line).frame(height: 0.5) }
+        .sheet(isPresented: $jumping) { GoToDate(day: app.anchor) { app.anchor = cal.startOfDay(for: $0) } }
     }
+
+    @State private var jumping = false
 
     private var title: String {
         let a = app.anchor, last = app.days.last!
@@ -605,7 +614,7 @@ struct HourGrid: View {
                     .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in app.say("This calendar is read only.") }, including: writable ? .none : .all)
                     .accessibilityAction(named: "Move 15 minutes later") { if writable { _ = app.change(DragMath.move(it, minutes: 15), from: it, "Moved") } }
                     .accessibilityAction(named: "Move 15 minutes earlier") { if writable { _ = app.change(DragMath.move(it, minutes: -15), from: it, "Moved") } }
-                    .overlay(alignment: top < 44 ? .bottom : .top) { if l != nil { HoldPill(it: shown).offset(y: top < 44 ? 30 : -30) } }
+                    .overlay(alignment: top < 44 ? .bottom : .top) { if l != nil { HoldPill(it: shown, stretch: l?.stretch == true).offset(y: top < 44 ? 30 : -30) } }
                     .offset(x: CGFloat(pos.0) * w + 2 + CGFloat(cols) * g.size.width, y: top + (l.map { $0.stretch ? 0 : CGFloat($0.minutes) / 60 * hourH } ?? 0))
                     .zIndex(l != nil ? 2 : 0)
             }
@@ -696,9 +705,9 @@ struct DragLive: Equatable {
 
 /// The time it would have, above a held event.
 struct HoldPill: View {
-    let it: Item
+    let it: Item, stretch: Bool
     var body: some View {
-        Text("\(dateText(it.start, "EEE")) \(timeText(it.start, short: true)) to \(timeText(it.end, short: true))")
+        Text("\(dateText(it.start, "EEE")) \(timeText(it.start, short: true)) to \(timeText(it.end, short: true))" + (stretch ? " · " + DragMath.length(it) : ""))
             .font(.caption.weight(.semibold)).foregroundStyle(.white).lineLimit(1).fixedSize()
             .padding(.horizontal, 10).padding(.vertical, 4).background(T.tint, in: Capsule())
     }
@@ -795,5 +804,25 @@ struct OffHours: View {
             }
         }
         .allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+/// Go to date: Apple's month picker; Go jumps the view in use to the picked day.
+struct GoToDate: View {
+    @State var day: Date
+    let go: (Date) -> Void
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            DatePicker("Date", selection: $day, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden()
+                .tint(T.tint).padding(.horizontal, 16)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .navigationTitle("Go to date").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) { Button("Go") { go(day); dismiss() }.bold() }
+                }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

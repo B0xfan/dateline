@@ -33,7 +33,7 @@
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Dateline shows, adds and changes the events in your calendars.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>Dateline reads the home and work address on your own contact card, only when you pick Home or Work for a place reminder.</string>
+	<string>Dateline reads your contacts' names and birth dates to show ages on the Birthdays calendar, and the home and work address on your own card when you pick Home or Work for a place reminder.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Dateline uses where you are for the sunrise, the weather and drive times.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>

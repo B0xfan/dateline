@@ -149,6 +149,15 @@ struct DayColumn: View {
                                 .onHover { ($0 ? NSCursor.resizeUpDown : NSCursor.arrow).set() }  // set, not push/pop: a redraw mid-hover cannot leave it stuck
                                 .gesture(dragGesture(it, colWidth: w, stretch: true))
                         }
+                        .overlay(alignment: .bottomTrailing) {
+                            if let d, d.stretch {  // the new end and length under the edge being pulled; gone on letting go
+                                let n = DragMath.stretch(it, minutes: DragMath.minutes(dy: d.dy, hourH: hourH))
+                                Text(timeText(n.end) + " · " + DragMath.length(n)).font(.ui(12)).foregroundStyle(.white)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.85)))
+                                    .fixedSize().offset(x: -6, y: 26).allowsHitTesting(false)
+                            }
+                        }
                         .offset(x: 2 + CGFloat(l) * colW + (d?.stretch == false ? d!.dx : 0), y: f.y + 1 + (d?.stretch == false ? d!.dy : 0))
                         .zIndex(d != nil ? 2 : 1)
                 }
@@ -580,7 +589,7 @@ struct DetailPanel: View {
         app.save(item)
     }
 
-    // Alerts (approved mockup 2026-11-10): two can be added (more set elsewhere stay), saved on the event so they also ring on the phone and in Apple Calendar.
+    // Alerts (approved mockups 2026-11-10, 2026-11-17): up to five can be added (more set elsewhere stay), saved on the event so they also ring on the phone and in Apple Calendar.
     var alertRows: some View {
         let mins = alertMinutes(item)
         let google = store.accCal(item.calendarID)?.0.kind == "google"  // Google takes only alerts before the start
@@ -602,7 +611,7 @@ struct DetailPanel: View {
                         .buttonStyle(.plain).foregroundStyle(Palette.text3).accessibilityLabel("Remove alert")
                 }
             }
-            if mins.isEmpty { row("Alert") { add } } else if mins.count < 2 { add.padding(.leading, 72).padding(.top, 6) }
+            if mins.isEmpty { row("Alert") { add } } else if mins.count < maxAlerts { add.padding(.leading, 72).padding(.top, 6) }
         }
         .popover(isPresented: $customOpen, arrowEdge: .leading) {
             HStack(spacing: 8) {

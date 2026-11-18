@@ -5,6 +5,9 @@ import Foundation
 import EventKit
 import SwiftUI
 import CoreLocation
+#if !os(watchOS)
+import Contacts
+#endif
 @MainActor
 
 public protocol CalendarSource: AnyObject {
@@ -51,7 +54,16 @@ public final class AppleCalendar: CalendarSource {
     public static var hasEventAccess: Bool { EKEventStore.authorizationStatus(for: .event) == .fullAccess }
 
     public func askForEvents(_ done: @escaping @MainActor (Bool) -> Void) {
-        ek.requestFullAccessToEvents { ok, _ in Task { @MainActor in done(ok) } }
+        ek.requestFullAccessToEvents { ok, _ in Task { @MainActor in
+            #if !os(watchOS)
+            // Birthdays (approved mockup 2026-11-17): Contacts is asked once, only when Apple's Birthdays calendar is there; the ages need it.
+            if ok, CNContactStore.authorizationStatus(for: .contacts) == .notDetermined, self.ek.calendars(for: .event).contains(where: { $0.type == .birthday }) {
+                CNContactStore().requestAccess(for: .contacts) { _, _ in Task { @MainActor in done(ok) } }
+                return
+            }
+            #endif
+            done(ok)
+        } }
     }
     public func askForReminders(_ done: @escaping @MainActor (Bool) -> Void) {
         ek.requestFullAccessToReminders { ok, _ in Task { @MainActor in done(ok) } }
@@ -121,7 +133,35 @@ public final class AppleCalendar: CalendarSource {
 
     private nonisolated static func shown(_ a: EKAlarm, in e: EKEvent) -> Bool { a.proximity == .none && isShownAlarm(a) && !(e.hasRecurrenceRules && a.absoluteDate != nil) }
 
+    #if !os(watchOS)
+    // Name and birth date per contact, read once per run: Apple's Birthdays calendar only gives the contact's id.
+    private nonisolated static let people = NSLock()
+    private nonisolated(unsafe) static var born: [String: (name: String, date: DateComponents?)] = [:]
+    private nonisolated static func person(_ id: String) -> (name: String, date: DateComponents?)? {
+        let st = CNContactStore.authorizationStatus(for: .contacts)  // the iPhone's "some contacts" answer still reads those
+        guard st != .notDetermined, st != .denied, st != .restricted else { return nil }
+        people.lock(); defer { people.unlock() }
+        if let p = born[id] { return p }
+        let keys = [CNContactGivenNameKey, CNContactFamilyNameKey, CNContactBirthdayKey] as [CNKeyDescriptor]
+        guard let c = try? CNContactStore().unifiedContact(withIdentifier: id, keysToFetch: keys) else { return nil }
+        let p = ([c.givenName, c.familyName].filter { !$0.isEmpty }.joined(separator: " "), c.birthday)
+        born[id] = p
+        return p
+    }
+    #endif
+
     public nonisolated static func item(_ e: EKEvent) -> Item {
+        var it = plainItem(e)
+        if e.calendar.type == .birthday {
+            it.emoji = "🎂"
+            #if !os(watchOS)
+            if let id = e.birthdayContactIdentifier, let p = person(id), let t = birthdayTitle(name: p.name, born: p.date, on: e.startDate) { it.title = t }
+            #endif
+        }
+        return it
+    }
+
+    private nonisolated static func plainItem(_ e: EKEvent) -> Item {
         let s: ShowAs = e.availability == .free ? .free : e.availability == .tentative ? .maybe : .busy
         // A repeating event's occurrences share one identifier; the start date tells them apart. A one-time event keeps its plain identifier so moving it keeps it selected.
         let occ = e.hasRecurrenceRules ? "|" + String(e.occurrenceDate?.timeIntervalSince1970 ?? 0) : ""

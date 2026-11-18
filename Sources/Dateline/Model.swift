@@ -31,6 +31,7 @@ enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Mont
     @Published var reviewing: String?  // the email open in the review window
     @Published var editingSet: CalSet?  // the set editor is open on this (a new one when it is not in the list yet)
     @Published var confirmDelete: Item?
+    @Published var jumping = false  // Go to Date (Shift Command T)
     @Published var toast: AppState.Toast?
 }
 

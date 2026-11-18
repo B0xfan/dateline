@@ -123,6 +123,19 @@ public func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60, s
     return p
 }
 
+// Birthdays: "Ana Rojas turns 40" when the contact's birth year is saved and this is the birthday (not an anniversary); nil keeps Apple's title.
+public func birthdayTitle(name: String, born: DateComponents?, on day: Date) -> String? {
+    let d = Calendar.current.dateComponents([.year, .month, .day], from: day)
+    guard !name.isEmpty, let b = born, let y = b.year, b.month == d.month, b.day == d.day, let age = d.year.map({ $0 - y }), age > 0 else { return nil }
+    return "\(name) turns \(age)"
+}
+
+// Go to Date (Mac box): "march 19", "next friday", "12/24" -> that day; nil when no day was written.
+public func jumpDay(_ text: String, now: Date) -> Date? {
+    let p = parseSentence(text, now: now)
+    return p.dateGiven && p.title.isEmpty ? Calendar.current.startOfDay(for: p.start) : nil
+}
+
 // Words not taken as a date, time or mark make the title; after "at <place>" they make the place.
 private func parsePlain(_ text: String, now: Date, defaultMinutes: Int, shownDay: Date?) -> Parsed {
     // "9:30 AM" or "9 p.m." typed as two words joins into one time word, so the AM never stays in the title.
@@ -301,6 +314,7 @@ public func alertText(_ m: Int) -> String {
 // The event panel's alert choices, in minutes before the start. All-day events count from their midnight: 900 is the day before at 9 AM, -540 the day itself at 9 AM.
 public let alertChoices = [0, 5, 15, 30, 60, 120, 1440, 2880]
 public let allDayAlertChoices = [-540, 900, 2340, 9540]
+public let maxAlerts = 5  // Mac and iPhone (approved mockup 2026-11-17); Google takes 5 too
 public func alertMinutes(_ it: Item) -> [Int] { it.alerts.map { Int((it.start.timeIntervalSince($0) / 60).rounded()) } }
 public func alertText(_ m: Int, allDay: Bool) -> String {
     guard allDay else { return alertText(m) }

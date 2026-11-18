@@ -37,6 +37,7 @@ struct EditSheet: View {
     @State private var newTag = ""
     @State private var problem: String?
     @State private var saving = false
+    @State private var mins: [Int]?  // the alerts, in minutes before the start, once changed here; applied to the final start on Done
     @State private var added: (emoji: String, before: [Item])?  // what "Add to all" just did, for its Undo
     @StateObject private var search = PlaceSearch()
 
@@ -64,6 +65,7 @@ struct EditSheet: View {
                 }
                 if locked { Section { Text("This calendar is read only. You can still add an emoji, a color, tags and travel.").font(.footnote).foregroundStyle(T.text2) } }
                 when
+                alerts
                 Section("Show as") {
                     Picker("Show as", selection: $item.showAs) { ForEach(ShowAs.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                         .pickerStyle(.segmented).disabled(locked)
@@ -120,6 +122,27 @@ struct EditSheet: View {
             }
         }
     }
+
+    /// Alerts (approved mockup 2026-11-17): the Mac's choices, up to five, swipe left to remove. Saved on the event, so they ring everywhere.
+    @ViewBuilder private var alerts: some View {
+        if !locked {
+            let cur = mins ?? alertMinutes(original)
+            let google = store.accCal(item.calendarID)?.0.kind == "google"  // Google takes only alerts before the start
+            let choices = (item.allDay ? allDayAlertChoices : alertChoices).filter { !(google && $0 < 0) }
+            Section("Alerts") {
+                ForEach(Array(cur.enumerated()), id: \.offset) { i, m in
+                    Picker(i < Self.names.count ? Self.names[i] : "Alert", selection: Binding(get: { m }, set: { v in var a = cur; a[i] = v; mins = a })) {
+                        ForEach(choices.contains(m) ? choices : [m] + choices, id: \.self) { Text(alertText($0, allDay: item.allDay)).tag($0) }
+                    }
+                }
+                .onDelete { mins = cur.enumerated().filter { !$0.contains($0.offset) }.map(\.element) }
+                if cur.count < maxAlerts, let next = ([item.allDay ? 900 : 15] + choices).first(where: { choices.contains($0) && !cur.contains($0) }) {
+                    Button("Add alert") { mins = cur + [next] }
+                }
+            }
+        }
+    }
+    private static let names = ["Alert", "Second alert", "Third alert", "Fourth alert", "Fifth alert"]
 
     @ViewBuilder private var videoCall: some View {
         let call = callLink(item)
@@ -213,6 +236,10 @@ struct EditSheet: View {
         var n = item
         n.title = item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? original.title : item.title.trimmingCharacters(in: .whitespacesAndNewlines)
         n.place = item.place.trimmingCharacters(in: .whitespaces)
+        if let m = mins {  // counted from the final start, so a start changed after the alerts keeps them the same time before
+            var seen = Set<Int>()
+            n.alerts = m.filter { seen.insert($0).inserted }.map { n.start.addingTimeInterval(-Double($0 * 60)) }
+        }
         if n.place.isEmpty { n.geo = nil } else if n.geo == nil, n.place != original.place { n.geo = await PlaceSearch.find(n.place) }  // typed, not picked: look it up
         if let a = added { added = nil; app.undo.push { [weak store] in store?.saveEmoji(a.before) } }  // before the edit's own step, so shakes undo newest first
         if n != original {
