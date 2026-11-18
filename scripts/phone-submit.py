@@ -8,9 +8,11 @@
                                                                                   submits it, then raises the number and pushes (a rerun after a failed push only does the raise)
 Why the raise: Apple closes a number for uploads once it is in review or live, and every push to main uploads.
 Raising the number in the same step as the submit means no later upload can ever carry a closed number.
+iPad pictures: a version with no 13 inch iPad pictures gets them from the newest passing cloud check (scripts/cloud-build.sh),
+through Apple's asset library. Apple copies pictures to the next version, so this normally runs once.
 App Store review only, never TestFlight.
 """
-import os, re, subprocess, sys, time
+import os, re, subprocess, sys, tempfile, time
 import jwt, requests
 
 APP = "6831255878"
@@ -18,6 +20,8 @@ KEY_ID = "S93537G5A5"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PBX = os.path.join(ROOT, "iPhone/Dateline.xcodeproj/project.pbxproj")
 API = "https://api.appstoreconnect.apple.com/v1"
+PAD_GROUP = "IPAD_13_PROFILE"  # Apple's 13 inch iPad screenshot group (appAssetLibraryRefData)
+PAD_SHOTS = ["week", "week-sideways", "day", "month", "tasks", "add", "details", "settings"]  # light pictures, store order
 
 
 def next_version(v):
@@ -43,6 +47,86 @@ def call(method, path, **kw):
     if r.status_code >= 400:
         sys.exit(f"{method} {path} failed ({r.status_code}): {r.text[:800]}")
     return r.json() if r.text else {}
+
+
+def pad_missing(vid):
+    """The version's localizations that have no iPad pictures yet."""
+    return [loc for loc in call("GET", f"/appStoreVersions/{vid}/appStoreVersionLocalizations")["data"]
+            if not call("GET", f"/appStoreVersionLocalizations/{loc['id']}/placements", params={
+                "filter[placementType]": "APP_SCREENSHOT", "filter[placementGroup]": PAD_GROUP, "limit": 1})["data"]]
+
+
+def pad_pictures(dest):
+    """The iPad pictures from the newest passing cloud check, as JPEGs (Apple refuses see-through PNGs), checked for size."""
+    run = subprocess.run(["gh", "run", "list", "--workflow", "build.yml", "--status", "success", "--limit", "1",
+                          "--json", "databaseId", "-q", ".[0].databaseId"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+    if not run:
+        sys.exit("No passing cloud check to take the iPad pictures from. Run scripts/cloud-build.sh first.")
+    if subprocess.run(["gh", "run", "download", run, "--name", "ios-shots", "--dir", dest], cwd=ROOT).returncode:
+        sys.exit(f"Cloud check {run} has no pictures left (they are kept 3 days). Run scripts/cloud-build.sh again.")
+    out = []
+    for s in PAD_SHOTS:
+        png, jpg = f"{dest}/ipad/{s}-light.png", f"{dest}/{s}.jpg"
+        if not os.path.exists(png):
+            sys.exit(f"Cloud check {run} has no iPad picture {s}-light.png.")
+        subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "90", png, "--out", jpg], capture_output=True, check=True)
+        dims = re.findall(r"pixel(?:Width|Height): (\d+)", subprocess.run(["sips", "-g", "pixelWidth", "-g", "pixelHeight", jpg],
+                                                                         capture_output=True, text=True).stdout)
+        if sorted(dims) != ["2064", "2752"]:
+            sys.exit(f"{s}: {'x'.join(dims)} is not a 13 inch iPad picture (2064 x 2752).")
+        out.append(jpg)
+    print(f"iPad pictures: {len(out)} from cloud check {run}")
+    return out
+
+
+def upload_image(lib, path):
+    """Reserve, send and commit one picture in the app's asset library; returns its id."""
+    img = call("POST", "/appAssetLibraryImages", json={"data": {"type": "appAssetLibraryImages",
+        "attributes": {"fileName": os.path.basename(path), "fileSize": os.path.getsize(path),
+                       "category": "APP_SCREENSHOTS_AND_PREVIEWS", "referenceName": "iPad 13 " + os.path.basename(path)},
+        "relationships": {"assetLibrary": {"data": {"type": "appAssetLibraries", "id": lib}}}}})["data"]
+    data = open(path, "rb").read()
+    for op in img["attributes"]["uploadOperations"]:  # Apple's own upload addresses: no sign-in sent
+        r = requests.request(op["method"], op["url"], data=data[op["offset"]:op["offset"] + op["length"]], timeout=300,
+                             headers={h["name"]: h["value"] for h in op.get("requestHeaders") or []})
+        if r.status_code >= 400:
+            sys.exit(f"Sending {path} failed ({r.status_code}): {r.text[:300]}")
+    call("PATCH", f"/appAssetLibraryImages/{img['id']}", json={"data": {"type": "appAssetLibraryImages", "id": img["id"],
+                                                                         "attributes": {"uploaded": True}}})
+    return img["id"]
+
+
+def wait_processed(ids, minutes=10):
+    left = set(ids)
+    for _ in range(minutes * 6):
+        for i in sorted(left):
+            a = call("GET", f"/appAssetLibraryImages/{i}", params={"fields[appAssetLibraryImages]": "state,stateDetails,fileName"})["data"]["attributes"]
+            if a["state"] == "FAILED":
+                sys.exit(f"Apple could not process {a['fileName']}: {a.get('stateDetails')}")
+            if a["state"] in ("PREPARE_FOR_SUBMISSION", "APPROVED"):
+                left.discard(i)
+        if not left:
+            return
+        time.sleep(10)
+    sys.exit(f"Apple was still processing {len(left)} iPad pictures after {minutes} minutes. Run the submit again.")
+
+
+def add_pad_pictures(locs, files):
+    lib = call("GET", f"/apps/{APP}/assetLibrary")["data"]["id"]
+    ids = [upload_image(lib, f) for f in files]
+    wait_processed(ids)
+    # shortcut: a run stopped between placements leaves a part set that the next run won't refill; fix it in App Store Connect.
+    for loc in locs:
+        placed = [call("POST", "/appAssetLibraryPlacements", json={"data": {"type": "appAssetLibraryPlacements",
+            "attributes": {"placementType": "APP_SCREENSHOT", "placementGroup": PAD_GROUP},
+            "relationships": {"image": {"data": {"type": "appAssetLibraryImages", "id": i}},
+                              "appStoreVersionLocalization": {"data": {"type": "appStoreVersionLocalizations", "id": loc["id"]}}}}})["data"]["id"]
+                  for i in ids]
+        call("POST", "/appAssetLibraryPlacementOrderingRequests", json={"data": {"type": "appAssetLibraryPlacementOrderingRequests",
+            "attributes": {"placementGroup": PAD_GROUP},
+            "relationships": {"orderedPlacements": {"data": [{"type": "appAssetLibraryPlacements", "id": p} for p in placed]},
+                              "appStoreVersionLocalization": {"data": {"type": "appStoreVersionLocalizations", "id": loc["id"]}}}}})
+        print(f"iPad pictures placed on {loc['attributes']['locale']}.")
 
 
 def raise_and_push(text, version):
@@ -98,7 +182,11 @@ def main():
     print(f"Ready: version {version}, build {build['attributes']['version']} "
           f"(uploaded {build['attributes']['uploadedDate']}), App Store state now: {state or 'not created'}")
     print(f"After the submit the project moves to {next_version(version)}.")
+    shots = tempfile.mkdtemp(prefix="dateline-ipad-")
+    pad = pad_missing(mine["id"]) if mine else None  # a new version gets Apple's copy of the last one's pictures first
+    files = pad_pictures(shots) if pad != [] else None  # checked in the dry run too, so a missing picture shows before anything is sent
     if not submit:
+        print("iPad pictures: " + ("already on the version." if pad == [] else "would be added."))
         print("Dry run: nothing changed. Add --submit to send it.")
         return
 
@@ -108,6 +196,9 @@ def main():
             "relationships": {"app": {"data": {"type": "apps", "id": APP}}}}})["data"]
     vid = mine["id"]
     call("PATCH", f"/appStoreVersions/{vid}/relationships/build", json={"data": {"type": "builds", "id": build["id"]}})
+    pad = pad_missing(vid)
+    if pad:
+        add_pad_pictures(pad, files or pad_pictures(shots))
     for loc in call("GET", f"/appStoreVersions/{vid}/appStoreVersionLocalizations")["data"]:
         call("PATCH", f"/appStoreVersionLocalizations/{loc['id']}", json={"data": {
             "type": "appStoreVersionLocalizations", "id": loc["id"], "attributes": {"whatsNew": notes}}})

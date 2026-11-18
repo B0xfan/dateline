@@ -51,11 +51,6 @@ enum Demo {
         case "list": app.mode = .list
         case "list-scrolled": app.mode = .list; app.demoScroll = true
         case "day": app.mode = .day
-        case "week-landscape":  // iPad: the script can't turn the simulator, so the app turns itself once its window is up
-            app.mode = .week
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                for case let w as UIWindowScene in UIApplication.shared.connectedScenes { w.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) }
-            }
         case "week-sideways":  // the simulator can't be turned from the script: the app turns itself once its window is up
             app.mode = .week
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
@@ -151,6 +146,8 @@ enum SelfTest {
         check(app.days == (0..<3).map { addDays(mon, $0) }, "iPad: the 3 day week shows three days from today")
         app.weekDays = 7; app.wide = false; app.anchor = at
         check(app.days.count == 3, "back at phone width the week shows three days again")
+        app.mode = .list; app.wide = true; app.wide = false
+        check(app.mode == .list, "iPad: after full width, phone width goes back to the list")
         app.mode = .day; app.step(-1)
         check(app.anchor == addDays(mon, 2), "a swipe moves the day view by one day")
         app.goToday()

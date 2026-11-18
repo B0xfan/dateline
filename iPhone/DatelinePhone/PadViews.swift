@@ -23,7 +23,10 @@ struct PadRoot: View {
                     }
                 }
             }
-            .onChange(of: portrait, initial: true) { app.portrait = portrait; app.column = !portrait }  // turning the iPad resets the column to its default
+            .onChange(of: portrait, initial: true) {  // turning the iPad resets the column to its default; a Split View round trip keeps your choice
+                if app.portrait != portrait { app.column = !portrait }
+                app.portrait = portrait
+            }
         }
     }
 }
@@ -58,6 +61,8 @@ struct PadTopBar: View {
             HStack(spacing: 6) {
                 if onCal {
                     EmailButton().background(T.bg2, in: Circle())
+                    Button { app.searching = true } label: { Image(systemName: "magnifyingglass").frame(width: 44, height: 44).background(T.bg2, in: Circle()) }
+                        .accessibilityLabel("Search")
                     if !app.portrait { Button("Today") { app.goToday() }.font(.body.weight(.semibold)).padding(.horizontal, 18).frame(minHeight: 44).background(T.bg2, in: Capsule()) }
                     Button { app.adding = "" } label: { Image(systemName: "plus").foregroundStyle(.white).frame(width: 44, height: 44).background(T.tint, in: Circle()) }
                         .accessibilityLabel("Add an event or task")
@@ -86,23 +91,19 @@ struct PadCalHeader: View {
                 }
                 .contentShape(Rectangle())
             }
-            .accessibilityAddTraits(.isHeader).accessibilityHint("Go to a date")
+            .layoutPriority(1).accessibilityAddTraits(.isHeader).accessibilityHint("Go to a date")
             HStack(spacing: 0) {
-                Button { app.step(-1) } label: { Image(systemName: "chevron.left").frame(width: 36, height: 44) }.accessibilityLabel("Back")
-                Button { app.step(1) } label: { Image(systemName: "chevron.right").frame(width: 36, height: 44) }.accessibilityLabel("On")
+                Button { app.step(-1) } label: { Image(systemName: "chevron.left").frame(width: 36, height: 44) }.accessibilityLabel("Previous")
+                Button { app.step(1) } label: { Image(systemName: "chevron.right").frame(width: 36, height: 44) }.accessibilityLabel("Next")
             }
             .font(.title3).foregroundStyle(T.tint)
             if app.portrait { Button("Today") { app.goToday() }.font(.body.weight(.semibold)).foregroundStyle(T.tint).padding(.horizontal, 8).frame(minHeight: 44) }
             Spacer(minLength: 0)
-            if app.mode == .week {
-                Picker("Days", selection: $app.weekDays) { ForEach([3, 5, 7], id: \.self) { Text("\($0)").tag($0) } }
-                    .pickerStyle(.segmented).fixedSize().accessibilityLabel("Days shown")
+            // Narrow Split View or large text: the 3, 5, 7 picker steps aside so the dates stay readable.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) { if app.mode == .week { daysPicker }; viewPicker }
+                viewPicker
             }
-            // Quarter has no segment (it opens from the month, as on the phone), so none is lit while it shows.
-            Picker("View", selection: $app.mode) {
-                ForEach([PhoneState.Mode.day, .week, .month, .year], id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented).fixedSize()
         }
         .buttonStyle(.plain)
         .padding(.leading, 20).padding(.trailing, 16).frame(minHeight: 56)
@@ -110,6 +111,19 @@ struct PadCalHeader: View {
         .background(T.bg)
         .overlay(alignment: .bottom) { if app.mode != .week { Rectangle().fill(T.line).frame(height: 0.5) } }
         .sheet(isPresented: $jumping) { GoToDate(day: app.anchor) { app.anchor = cal.startOfDay(for: $0) } }
+    }
+
+    private var daysPicker: some View {
+        Picker("Days", selection: $app.weekDays) { ForEach([3, 5, 7], id: \.self) { Text("\($0)").tag($0) } }
+            .pickerStyle(.segmented).fixedSize().accessibilityLabel("Days shown")
+    }
+
+    // Quarter has no segment (it opens from the month, as on the phone), so none is lit while it shows.
+    private var viewPicker: some View {
+        Picker("View", selection: $app.mode) {
+            ForEach([PhoneState.Mode.day, .week, .month, .year], id: \.self) { Text($0.rawValue).tag($0) }
+        }
+        .pickerStyle(.segmented).fixedSize()
     }
 
     /// The Mac's titles: "October 26 to 30, 2026", "Oct 26 to Nov 1, 2026".
@@ -209,7 +223,7 @@ struct CalColumn: View {
             }
             .padding(.horizontal, 10).frame(minHeight: 44).contentShape(Rectangle())
         }
-        .accessibilityLabel(name).accessibilityValue(on ? "Shown" : "Hidden")
+        .accessibilityLabel(name).accessibilityValue(on ? "Shown" : "Hidden").accessibilityAddTraits(.isToggle)
     }
 }
 

@@ -20,7 +20,7 @@ struct CalendarTab: View {
                     case .year: YearView()
                     }
                 }
-                .overlay(alignment: .bottom) { if app.wide { AddBar() } }
+                .safeAreaInset(edge: .bottom) { if app.wide { AddBar() } }
                 // Swipe left or right for the next or last days; under the header only, so the list's week strip pages on its own.
                 .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in
                     let x = v.translation.width

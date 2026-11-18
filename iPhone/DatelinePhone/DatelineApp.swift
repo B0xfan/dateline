@@ -102,7 +102,7 @@ final class PhoneState: ObservableObject {
     let store: Store
     let sample: Bool  // sample calendars: tests and pictures
     @Published var today: Date
-    @Published var mode: Mode = .list { didSet { listDay = nil; monthPick = nil; reload(); turnRule(); if !sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") } } }  // the list is the main screen (approved mockup, John 2026-11-05)
+    @Published var mode: Mode = .list { didSet { listDay = nil; monthPick = nil; reload(); turnRule(); if !sample && !autoMode { UserDefaults.standard.set(mode.rawValue, forKey: "mode") } } }  // the list is the main screen (approved mockup, John 2026-11-05)
     // Settings > Week: the view Dateline opens on; "" = where you left it (John 2026-11-06).
     static var openOn: String { get { UserDefaults.standard.string(forKey: "openOn") ?? "" } set { UserDefaults.standard.set(newValue, forKey: "openOn") } }
     @Published var anchor: Date { didSet { listDay = nil; monthPick = nil; reload() } }
@@ -111,7 +111,17 @@ final class PhoneState: ObservableObject {
     @Published var tab: Tab = .calendar { didSet { turnRule() } }
     @Published var sideways = false { didSet { if sideways != oldValue { reload() } } }  // the phone is turned (only Week allows it)
     // The iPad at full width (approved pictures 2026-11-18): the calendar column, tabs on top, and the Mac's 3, 5 or 7 day week. No list there, so it opens on Week.
-    @Published var wide = false { didSet { guard wide != oldValue else { return }; if wide && mode == .list { mode = .week } else { reload() } } }
+    // The switch to Week is not saved, so Settings > Open on and the phone-width list are kept; narrowing goes back to the list.
+    @Published var wide = false {
+        didSet {
+            guard wide != oldValue else { return }
+            autoMode = true; defer { autoMode = false }
+            if wide && mode == .list { listBeforeWide = true; mode = .week }
+            else if !wide && listBeforeWide { listBeforeWide = false; if mode == .week { mode = .list } else { reload() } }
+            else { reload() }
+        }
+    }
+    private var autoMode = false, listBeforeWide = false
     @Published var weekDays: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() {
         didSet { if !sample { UserDefaults.standard.set(weekDays, forKey: "weekDays") }; reload() }
     }
@@ -158,6 +168,7 @@ final class PhoneState: ObservableObject {
     init(store: Store, today: Date, sample: Bool) {
         self.store = store; self.today = today; self.sample = sample
         anchor = cal.startOfDay(for: today)
+        if sample { weekDays = 7 }  // checks and pictures never follow a saved day count
         if !sample {  // the pictures always start on the list
             mode = Mode(rawValue: Self.openOn) ?? Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .list
             turnRule()
