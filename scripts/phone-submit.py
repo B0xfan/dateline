@@ -1,0 +1,131 @@
+# /// script
+# dependencies = ["pyjwt[crypto]", "requests"]
+# ///
+"""Sends the iPhone app's current version to App Store review, then raises the project's version number.
+
+    uv run scripts/phone-submit.py "What is new, one line per change"            dry run: checks only, changes nothing
+    uv run scripts/phone-submit.py "What is new, one line per change" --submit   creates the version, attaches the build,
+                                                                                  submits it, then raises the number and pushes (a rerun after a failed push only does the raise)
+Why the raise: Apple closes a number for uploads once it is in review or live, and every push to main uploads.
+Raising the number in the same step as the submit means no later upload can ever carry a closed number.
+App Store review only, never TestFlight.
+"""
+import os, re, subprocess, sys, time
+import jwt, requests
+
+APP = "6831255878"
+KEY_ID = "S93537G5A5"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PBX = os.path.join(ROOT, "iPhone/Dateline.xcodeproj/project.pbxproj")
+API = "https://api.appstoreconnect.apple.com/v1"
+
+
+def next_version(v):
+    major, minor = v.split(".")[:2]
+    return f"{major}.{int(minor) + 1}"
+
+
+def issuer():
+    if os.environ.get("ASC_ISSUER_ID"):
+        return os.environ["ASC_ISSUER_ID"]
+    for line in open(os.path.expanduser("~/Projects/A4/.env")):
+        if line.startswith("ASC_ISSUER_ID="):
+            return line.split("=", 1)[1].strip().strip('"')
+    sys.exit("ASC_ISSUER_ID not found in the environment or A4/.env")
+
+
+def call(method, path, **kw):
+    key = open(os.path.expanduser(f"~/.appstoreconnect/private_keys/AuthKey_{KEY_ID}.p8")).read()
+    now = int(time.time())
+    tok = jwt.encode({"iss": issuer(), "iat": now, "exp": now + 600, "aud": "appstoreconnect-v1"}, key,
+                     algorithm="ES256", headers={"kid": KEY_ID})
+    r = requests.request(method, API + path, headers={"Authorization": "Bearer " + tok}, timeout=60, **kw)
+    if r.status_code >= 400:
+        sys.exit(f"{method} {path} failed ({r.status_code}): {r.text[:800]}")
+    return r.json() if r.text else {}
+
+
+def raise_and_push(text, version):
+    nxt = next_version(version)
+    open(PBX, "w").write(text.replace(f"MARKETING_VERSION = {version};", f"MARKETING_VERSION = {nxt};"))
+    git = ["git", "-C", ROOT]
+    subprocess.run(git + ["commit", "-qm", f"iPhone {nxt}: {version} is in App Store review, so uploads move to the next number",
+                          "iPhone/Dateline.xcodeproj/project.pbxproj"], check=True)
+    subprocess.run(git + ["pull", "-q", "--rebase", "origin", "main"], check=True)
+    subprocess.run(git + ["push", "-q", "origin", "HEAD:main"], check=True)
+    print(f"Project raised to {nxt} and pushed.")
+
+
+def main():
+    assert next_version("1.7") == "1.8" and next_version("1.9") == "1.10" and next_version("2.0.1") == "2.1"
+    if len(sys.argv) < 2 or not sys.argv[1].strip():
+        sys.exit(__doc__)
+    notes, submit = sys.argv[1].strip(), "--submit" in sys.argv[2:]
+
+    if submit:  # a raise committed by an earlier run whose push failed goes out first
+        git = ["git", "-C", ROOT]
+        subprocess.run(git + ["pull", "-q", "--rebase", "origin", "main"], check=True)
+        subprocess.run(git + ["push", "-q", "origin", "HEAD:main"], check=True)
+    text = open(PBX).read()
+    found = set(re.findall(r"MARKETING_VERSION = ([0-9.]+);", text))
+    if len(found) != 1:
+        sys.exit(f"The project's targets disagree on the version: {sorted(found)}")
+    version = found.pop()
+
+    # A version already in review or on sale is closed: submitting it again would fail.
+    def versions(**f):
+        return call("GET", f"/apps/{APP}/appStoreVersions", params={"filter[platform]": "IOS", "limit": 200,
+                    "fields[appStoreVersions]": "versionString,appStoreState", **f})["data"]
+    mine = next(iter(versions(**{"filter[versionString]": version})), None)
+    state = mine["attributes"]["appStoreState"] if mine else None
+    if state and state not in ("PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "METADATA_REJECTED"):
+        # A rerun after a failed push lands here: finish the raise instead of stopping.
+        print(f"Version {version} is already {state}.")
+        if submit:
+            raise_and_push(text, version)
+        return
+    pending = [v["attributes"]["versionString"] for v in
+               versions(**{"filter[appStoreState]": "WAITING_FOR_REVIEW,IN_REVIEW,PENDING_DEVELOPER_RELEASE"})]
+    if pending:
+        sys.exit(f"Version {', '.join(pending)} is still with Apple. Apple allows one version in review at a time.")
+
+    builds = call("GET", "/builds", params={"filter[app]": APP, "filter[preReleaseVersion.version]": version,
+                                           "filter[processingState]": "VALID", "sort": "-uploadedDate", "limit": 1,
+                                           "fields[builds]": "version,uploadedDate"})["data"]
+    if not builds:
+        sys.exit(f"No finished upload of {version} yet. Wait for the cloud build to reach Apple.")
+    build = builds[0]
+    print(f"Ready: version {version}, build {build['attributes']['version']} "
+          f"(uploaded {build['attributes']['uploadedDate']}), App Store state now: {state or 'not created'}")
+    print(f"After the submit the project moves to {next_version(version)}.")
+    if not submit:
+        print("Dry run: nothing changed. Add --submit to send it.")
+        return
+
+    if not mine:
+        mine = call("POST", "/appStoreVersions", json={"data": {"type": "appStoreVersions",
+            "attributes": {"platform": "IOS", "versionString": version},
+            "relationships": {"app": {"data": {"type": "apps", "id": APP}}}}})["data"]
+    vid = mine["id"]
+    call("PATCH", f"/appStoreVersions/{vid}/relationships/build", json={"data": {"type": "builds", "id": build["id"]}})
+    for loc in call("GET", f"/appStoreVersions/{vid}/appStoreVersionLocalizations")["data"]:
+        call("PATCH", f"/appStoreVersionLocalizations/{loc['id']}", json={"data": {
+            "type": "appStoreVersionLocalizations", "id": loc["id"], "attributes": {"whatsNew": notes}}})
+    # Apple keeps one open submission per platform; a run that stopped partway left one, so reuse it.
+    open_subs = call("GET", "/reviewSubmissions", params={"filter[app]": APP, "filter[platform]": "IOS",
+                     "filter[state]": "READY_FOR_REVIEW", "include": "items", "limit": 1})
+    sub = next(iter(open_subs["data"]), None) or call("POST", "/reviewSubmissions", json={"data": {
+        "type": "reviewSubmissions", "attributes": {"platform": "IOS"},
+        "relationships": {"app": {"data": {"type": "apps", "id": APP}}}}})["data"]
+    if not sub.get("relationships", {}).get("items", {}).get("data"):
+        call("POST", "/reviewSubmissionItems", json={"data": {"type": "reviewSubmissionItems", "relationships": {
+            "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": sub["id"]}},
+            "appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}}}})
+    call("PATCH", f"/reviewSubmissions/{sub['id']}", json={"data": {"type": "reviewSubmissions", "id": sub["id"],
+        "attributes": {"submitted": True}}})
+    print(f"Submitted {version} for App Store review.")
+
+    raise_and_push(text, version)
+
+if __name__ == "__main__":
+    main()
