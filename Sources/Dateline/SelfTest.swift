@@ -314,6 +314,17 @@ func selftest() -> Int32 {
         s.show(from: addDays(day, -30), to: addDays(day, 30))
         let onDays = s.items.filter { $0.start >= addDays(day, -30) && $0.end > $0.start && !s.hidden.contains($0.calendarID) }
         expect(!onDays.isEmpty && onDays.allSatisfy { it in s.shown(on: it.start).contains { $0.id == it.id } }, "a day asked for by a date that isn't midnight still finds its events")
+        // John 2026-11-17: one emoji to every event with the same name, and Undo puts each one's own back.
+        if let lunch = s.items.first(where: { $0.title == "Lunch with Sam" }) {
+            var odd = lunch; odd.title = "  LUNCH with   sam "
+            let same = s.sameName(as: odd)
+            expect(same.count == 2 && same.allSatisfy { $0.calendarID == lunch.calendarID }, "same name ignores capitals and spaces, and stays on the calendar")
+            expect(s.sameName(as: s.items.first { $0.title == "Lunch with the team" }!).count == 1, "a different name or calendar doesn't match")
+            s.saveExtras(same.map { var x = $0; x.emoji = "🥗"; return x })
+            expect(s.sameName(as: lunch).allSatisfy { $0.emoji == "🥗" }, "the emoji reaches every matching event")
+            s.saveExtras(same)
+            expect(s.sameName(as: lunch).map(\.emoji) == same.map(\.emoji), "undo puts their own emoji back")
+        } else { expect(false, "the sample has Lunch with Sam") }
     }
     let grouped = itemsByDay(spans, from: dayA, to: addDays(dayC, 1))
     expect([dayA, dayB, dayC].allSatisfy { d in grouped[d]?.map(\.id) ?? [] == spans.filter { $0.start < addDays(d, 1) && $0.end > d }.map(\.id) } && grouped.count == 3, "events grouped by day land on the days the old scan found")

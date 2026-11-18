@@ -5,11 +5,14 @@ import DatelineCore
 
 // The emoji row: the button opens the picker under it.
 struct EmojiRow: View {
+    @ObservedObject var app: AppState
     @ObservedObject var store: Store
     @Binding var item: Item
     let commit: () -> Void
     @State private var open = false
+    @State private var added: (id: String, before: [Item])?  // the events "Add to all" just changed, for its Undo
     var body: some View {
+        let same = store.sameName(as: item)
         HStack(spacing: 8) {
             Button { open = true } label: {
                 Text(item.emoji.isEmpty ? "Add" : item.emoji).font(.ui(item.emoji.isEmpty ? 12 : 15)).foregroundStyle(Palette.text2)
@@ -20,6 +23,14 @@ struct EmojiRow: View {
                 EmojiPicker(recent: store.recentEmoji) { e in item.emoji = e; store.usedEmoji(e); open = false; commit() }
             }
             if !item.emoji.isEmpty { Button("Remove") { item.emoji = ""; commit() }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.text3) }
+            if let a = added, a.id == item.id {
+                Text("Added to \(a.before.count)").font(.ui(12)).foregroundStyle(Palette.text3)
+                Button("Undo") { if let f = store.saveExtras(a.before) { app.error = f.message }; added = nil }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.accent)
+            } else if !item.emoji.isEmpty, same.count > 1, same.contains(where: { $0.emoji != item.emoji }) {
+                Button("Add to all \(same.count) like this") { if app.emojiToAll(same, item.emoji) { added = (item.id, same) } }
+                    .buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.accent)
+                    .help("Gives this emoji to every loaded event on this calendar with the same name")
+            }
         }
     }
 }

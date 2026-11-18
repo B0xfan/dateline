@@ -443,7 +443,7 @@ struct DetailPanel: View {
                     }.menuStyle(.borderlessButton).fixedSize().disabled(locked)
                 }.padding(.top, 12)
                 // Phase 3: kept by Dateline on this Mac, so they work on invites and read-only calendars too.
-                row("Emoji") { EmojiRow(store: store, item: $item, commit: commit) }
+                row("Emoji") { EmojiRow(app: app, store: store, item: $item, commit: commit) }
                 row("Color") { ColorRow(store: store, item: $item, commit: commit) }
                 HStack(alignment: .top, spacing: 8) {
                     Text("Tags").foregroundStyle(Palette.text3).frame(width: 64, alignment: .leading).padding(.top, 4)

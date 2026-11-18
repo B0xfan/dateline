@@ -37,6 +37,7 @@ struct EditSheet: View {
     @State private var newTag = ""
     @State private var problem: String?
     @State private var saving = false
+    @State private var added: [Item]?  // the events "Add to all" just changed, for its Undo
     @StateObject private var search = PlaceSearch()
 
     init(_ it: Item) { original = it; _item = State(initialValue: it) }
@@ -155,6 +156,7 @@ struct EditSheet: View {
         Section {
             TextField("Emoji", text: Binding(get: { item.emoji }, set: { item.emoji = String($0.filter(\.isEmoji).prefix(1)) }))
                 .accessibilityLabel("Emoji")
+            emojiToAll
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 4)], spacing: 4) {
                 swatch(nil, store.calendar(item.calendarID)?.color ?? .gray, "Calendar color")
                 ForEach(Palette.tags.indices, id: \.self) { swatch($0, Palette.tags[$0], "Color \($0 + 1)") }
@@ -168,6 +170,24 @@ struct EditSheet: View {
             TextField("New tag", text: $newTag).submitLabel(.done).onSubmit(addTag)
         } header: { Text("Emoji, color and tags") } footer: {
             Text("Dateline keeps these. They also work on invites. They don't show in Apple Calendar.")
+        }
+    }
+
+    // Approved picture (John 2026-11-17): the emoji to every loaded event with the same name on this calendar, with Undo.
+    @ViewBuilder private var emojiToAll: some View {
+        let same = store.sameName(as: original)
+        if let back = added {
+            HStack {
+                Text("Added \(item.emoji) to \(back.count) events").foregroundStyle(T.text2)
+                Spacer()
+                Button("Undo") { if let f = store.saveExtras(back) { problem = f.message }; added = nil }.buttonStyle(.borderless)
+            }
+        } else if !item.emoji.isEmpty, same.count > 1, same.contains(where: { $0.emoji != item.emoji }) {
+            Button("Add \(item.emoji) to all \(same.count) \u{201C}\(original.title)\u{201D} events") {
+                if let f = store.saveExtras(same.map { var x = $0; x.emoji = item.emoji; return x }) { problem = f.message; return }
+                added = same
+                UIAccessibility.post(notification: .announcement, argument: "Added \(item.emoji) to \(same.count) events")
+            }
         }
     }
 

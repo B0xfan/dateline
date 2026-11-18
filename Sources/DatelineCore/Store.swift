@@ -230,6 +230,25 @@ public final class Store: ObservableObject {
 
     public func usedEmoji(_ e: String) { recentEmoji = Array(([e] + recentEmoji.filter { $0 != e }).prefix(16)) }
 
+    // "Add this emoji to all" (approved picture, John 2026-11-17): the loaded events, past and coming, on the same calendar with
+    // the same name (capitals and extra spaces ignored), `it` included; one per series, since a series shares its extras.
+    public func sameName(as it: Item) -> [Item] {
+        func name(_ s: String) -> String { s.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ") }
+        let n = name(it.title)
+        guard !n.isEmpty else { return [] }
+        var seen = Set<String>()
+        return (items + soon).filter { $0.calendarID == it.calendarID && name($0.title) == n && seen.insert(key($0.id)).inserted }
+    }
+
+    // Saves only Dateline's extras of many events at once (the emoji to all matching events, and its undo).
+    @discardableResult
+    public func saveExtras(_ list: [Item]) -> Failure? {
+        if trialOver { return Failure(License.endedMessage) }
+        list.forEach(setExtras)
+        fetch()
+        return nil
+    }
+
     // A repeating event's occurrences share their extras.
     func key(_ id: String) -> String { String(resolve(id).split(separator: "|").first ?? "") }
 

@@ -310,6 +310,13 @@ final class AppState: ObservableObject {
         if new.place != old.place { locate(new) }
     }
 
+    // The emoji to every event with the same name (approved picture); Edit > Undo puts back each one's own emoji.
+    func emojiToAll(_ same: [Item], _ e: String) -> Bool {
+        if let f = store.saveExtras(same.map { var x = $0; x.emoji = e; return x }) { error = f.message; return false }
+        undoStack.append { [weak self] in self?.store.saveExtras(same) }
+        return true
+    }
+
     // A typed place gets its spot from Apple Maps after it saves (the shared Store.findSpot).
     private func locate(_ it: Item) { Task { if let f = await store.findSpot(it) { error = f.message } } }
 
