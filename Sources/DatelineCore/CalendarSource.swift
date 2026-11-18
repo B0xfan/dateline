@@ -136,16 +136,15 @@ public final class AppleCalendar: CalendarSource {
     #if !os(watchOS)
     // Name and birth date per contact, read once per run: Apple's Birthdays calendar only gives the contact's id.
     private nonisolated static let people = NSLock()
-    private nonisolated(unsafe) static var born: [String: (name: String, date: DateComponents?)] = [:]
+    private nonisolated(unsafe) static var born: [String: (name: String, date: DateComponents?)?] = [:]  // nil kept too: a contact not shared is not looked up again
     private nonisolated static func person(_ id: String) -> (name: String, date: DateComponents?)? {
         let st = CNContactStore.authorizationStatus(for: .contacts)  // the iPhone's "some contacts" answer still reads those
         guard st != .notDetermined, st != .denied, st != .restricted else { return nil }
         people.lock(); defer { people.unlock() }
         if let p = born[id] { return p }
         let keys = [CNContactGivenNameKey, CNContactFamilyNameKey, CNContactBirthdayKey] as [CNKeyDescriptor]
-        guard let c = try? CNContactStore().unifiedContact(withIdentifier: id, keysToFetch: keys) else { return nil }
-        let p = ([c.givenName, c.familyName].filter { !$0.isEmpty }.joined(separator: " "), c.birthday)
-        born[id] = p
+        let p = (try? CNContactStore().unifiedContact(withIdentifier: id, keysToFetch: keys)).map { c in ([c.givenName, c.familyName].filter { !$0.isEmpty }.joined(separator: " "), c.birthday) }
+        born[id] = .some(p)
         return p
     }
     #endif
