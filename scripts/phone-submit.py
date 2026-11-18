@@ -12,7 +12,7 @@ iPad pictures: a version with no 13 inch iPad pictures gets them from the newest
 through Apple's asset library. Apple copies pictures to the next version, so this normally runs once.
 App Store review only, never TestFlight.
 """
-import os, re, subprocess, sys, tempfile, time
+import atexit, os, re, shutil, subprocess, sys, tempfile, time
 import jwt, requests
 
 APP = "6831255878"
@@ -49,19 +49,24 @@ def call(method, path, **kw):
     return r.json() if r.text else {}
 
 
+def pad_placed(loc):
+    return call("GET", f"/appStoreVersionLocalizations/{loc['id']}/placements", params={
+        "filter[placementType]": "APP_SCREENSHOT", "filter[placementGroup]": PAD_GROUP, "limit": 50})["data"]
+
+
 def pad_missing(vid):
-    """The version's localizations that have no iPad pictures yet."""
+    """The version's localizations without a full set of iPad pictures (a stopped run can leave part of one)."""
     return [loc for loc in call("GET", f"/appStoreVersions/{vid}/appStoreVersionLocalizations")["data"]
-            if not call("GET", f"/appStoreVersionLocalizations/{loc['id']}/placements", params={
-                "filter[placementType]": "APP_SCREENSHOT", "filter[placementGroup]": PAD_GROUP, "limit": 1})["data"]]
+            if len(pad_placed(loc)) != len(PAD_SHOTS)]
 
 
 def pad_pictures(dest):
-    """The iPad pictures from the newest passing cloud check, as JPEGs (Apple refuses see-through PNGs), checked for size."""
-    run = subprocess.run(["gh", "run", "list", "--workflow", "build.yml", "--status", "success", "--limit", "1",
+    """The iPad pictures from a passing cloud check of this exact commit, as JPEGs (Apple refuses see-through PNGs), checked for size."""
+    head = subprocess.run(["git", "-C", ROOT, "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    run = subprocess.run(["gh", "run", "list", "--workflow", "build.yml", "--status", "success", "--commit", head, "--limit", "1",
                           "--json", "databaseId", "-q", ".[0].databaseId"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
     if not run:
-        sys.exit("No passing cloud check to take the iPad pictures from. Run scripts/cloud-build.sh first.")
+        sys.exit(f"No passing cloud check of {head[:7]} to take the iPad pictures from. Run scripts/cloud-build.sh first.")
     if subprocess.run(["gh", "run", "download", run, "--name", "ios-shots", "--dir", dest], cwd=ROOT).returncode:
         sys.exit(f"Cloud check {run} has no pictures left (they are kept 3 days). Run scripts/cloud-build.sh again.")
     out = []
@@ -115,8 +120,10 @@ def add_pad_pictures(locs, files):
     lib = call("GET", f"/apps/{APP}/assetLibrary")["data"]["id"]
     ids = [upload_image(lib, f) for f in files]
     wait_processed(ids)
-    # shortcut: a run stopped between placements leaves a part set that the next run won't refill; fix it in App Store Connect.
+    # shortcut: a rerun uploads the 8 pictures again, leaving the earlier copies unused in the library; harmless clutter.
     for loc in locs:
+        for old in pad_placed(loc):  # a part set from a stopped run is replaced whole
+            call("DELETE", f"/appAssetLibraryPlacements/{old['id']}")
         placed = [call("POST", "/appAssetLibraryPlacements", json={"data": {"type": "appAssetLibraryPlacements",
             "attributes": {"placementType": "APP_SCREENSHOT", "placementGroup": PAD_GROUP},
             "relationships": {"image": {"data": {"type": "appAssetLibraryImages", "id": i}},
@@ -183,6 +190,7 @@ def main():
           f"(uploaded {build['attributes']['uploadedDate']}), App Store state now: {state or 'not created'}")
     print(f"After the submit the project moves to {next_version(version)}.")
     shots = tempfile.mkdtemp(prefix="dateline-ipad-")
+    atexit.register(shutil.rmtree, shots, True)
     pad = pad_missing(mine["id"]) if mine else None  # a new version gets Apple's copy of the last one's pictures first
     files = pad_pictures(shots) if pad != [] else None  # checked in the dry run too, so a missing picture shows before anything is sent
     if not submit:
