@@ -130,19 +130,26 @@ struct EditSheet: View {
             let google = store.accCal(item.calendarID)?.0.kind == "google"  // Google takes only alerts before the start
             let choices = (item.allDay ? allDayAlertChoices : alertChoices).filter { !(google && $0 < 0) }
             Section("Alerts") {
-                ForEach(Array(cur.enumerated()), id: \.offset) { i, m in
-                    Picker(i < Self.names.count ? Self.names[i] : "Alert", selection: Binding(get: { m }, set: { v in var a = cur; a[i] = v; mins = a })) {
-                        ForEach(choices.contains(m) ? choices : [m] + choices, id: \.self) { Text(alertText($0, allDay: item.allDay)).tag($0) }
-                    }
-                }
-                .onDelete { mins = cur.enumerated().filter { !$0.contains($0.offset) }.map(\.element) }
-                if cur.count < maxAlerts, let next = ([item.allDay ? 900 : 15] + choices).first(where: { choices.contains($0) && !cur.contains($0) }) {
+                ForEach(Array(cur.enumerated()), id: \.offset) { i, m in alertPicker(i, m, cur, choices) }
+                .onDelete { (gone: IndexSet) in mins = cur.enumerated().filter { !gone.contains($0.offset) }.map(\.element) }
+                if cur.count < maxAlerts, let next = nextAlert(cur, choices) {
                     Button("Add alert") { mins = cur + [next] }
                 }
             }
         }
     }
     private static let names = ["Alert", "Second alert", "Third alert", "Fourth alert", "Fifth alert"]
+    private func nextAlert(_ cur: [Int], _ choices: [Int]) -> Int? {
+        let first: Int = item.allDay ? 900 : 15
+        return ([first] + choices).first { (m: Int) in choices.contains(m) && !cur.contains(m) }
+    }
+    private func alertPicker(_ i: Int, _ m: Int, _ cur: [Int], _ choices: [Int]) -> some View {
+        let set = Binding<Int>(get: { m }, set: { v in var a = cur; a[i] = v; mins = a })
+        let list: [Int] = choices.contains(m) ? choices : [m] + choices
+        return Picker(i < Self.names.count ? Self.names[i] : "Alert", selection: set) {
+            ForEach(list, id: \.self) { (v: Int) in Text(alertText(v, allDay: item.allDay)).tag(v) }
+        }
+    }
 
     @ViewBuilder private var videoCall: some View {
         let call = callLink(item)
