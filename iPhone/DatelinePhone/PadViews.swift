@@ -6,28 +6,43 @@ import DatelineCore
 struct PadRoot: View {
     @EnvironmentObject var app: PhoneState
     var body: some View {
-        GeometryReader { g in
-            let portrait = g.size.height > g.size.width
-            HStack(spacing: 0) {
-                if app.column && app.tab == .calendar {
-                    CalColumn().frame(width: 290).transition(.move(edge: .leading))
-                    Rectangle().fill(T.line).frame(width: 1).ignoresSafeArea()
-                }
-                VStack(spacing: 0) {
-                    PadTopBar()
-                    switch app.tab {
-                    case .calendar: CalendarTab()
-                    case .tasks: TasksView()
-                    case .places: PlacesView()
-                    case .settings: SettingsView()
-                    }
+        HStack(spacing: 0) {
+            if app.column && app.tab == .calendar {
+                CalColumn().frame(width: 290).transition(.move(edge: .leading))
+                Rectangle().fill(T.line).frame(width: 1).ignoresSafeArea()
+            }
+            VStack(spacing: 0) {
+                PadTopBar()
+                switch app.tab {
+                case .calendar: CalendarTab()
+                case .tasks: TasksView()
+                case .places: PlacesView()
+                case .settings: SettingsView()
                 }
             }
-            .onChange(of: portrait, initial: true) {  // turning the iPad resets the column to its default; a Split View round trip keeps your choice
+        }
+        // Measured without the keyboard, which would otherwise make an upright iPad look sideways.
+        .background(GeometryReader { g in
+            let portrait = g.size.height > g.size.width
+            Color.clear.onChange(of: portrait, initial: true) {  // turning the iPad resets the column to its default; a Split View round trip keeps your choice
                 if app.portrait != portrait { app.column = !portrait }
                 app.portrait = portrait
             }
-        }
+        }.ignoresSafeArea(.keyboard))
+        .modifier(SidewaysPicture(on: app.demoSideways))
+    }
+}
+
+/// Pictures only: the simulator can't turn an iPad from the script, so the sideways layout is drawn turned a quarter and the script turns the picture back.
+private struct SidewaysPicture: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        if on {
+            GeometryReader { g in
+                content.frame(width: g.size.height, height: g.size.width).rotationEffect(.degrees(90)).position(x: g.size.width / 2, y: g.size.height / 2)
+            }
+            .ignoresSafeArea().statusBarHidden()
+        } else { content }
     }
 }
 

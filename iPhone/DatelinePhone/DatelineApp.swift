@@ -149,6 +149,7 @@ final class PhoneState: ObservableObject {
     var demoEdit = false  // pictures only: open the event's edit sheet
     var demoPlace: String?  // pictures only: a place typed into the edit sheet, so its Apple Maps suggestions show
     var demoDrag: DragLive?  // pictures only: an event held mid-drag
+    var demoSideways = false  // pictures only: the iPad's sideways layout, drawn turned (the simulator can't turn an iPad)
     var demoHold = false  // pictures only: the Undo banner stays up
     @Published var addStart: Date?  // a tap on an empty time: the add sheet starts there
     /// The day the screen is on, where a new event with no typed day lands (James 2026-11-17): the list's top day, the day or week view's anchor day, the month's tapped day.

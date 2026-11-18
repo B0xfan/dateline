@@ -53,6 +53,7 @@ enum Demo {
         case "day": app.mode = .day
         case "week-sideways":  // the simulator can't be turned from the script: the app turns itself once its window is up
             app.mode = .week
+            if PhoneDelegate.pad { app.demoSideways = true; break }  // an iPad won't turn itself either: drawn turned instead
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 for case let w as UIWindowScene in UIApplication.shared.connectedScenes { w.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) }
             }
