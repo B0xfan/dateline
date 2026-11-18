@@ -23,7 +23,7 @@ struct EmojiRow: View {
                 EmojiPicker(recent: store.recentEmoji) { e in item.emoji = e; store.usedEmoji(e); open = false; commit() }
             }
             if !item.emoji.isEmpty { Button("Remove") { item.emoji = ""; commit() }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.text3) }
-            if let a = added, a.id == item.id {
+            if let a = added, a.id == item.id, same.allSatisfy({ $0.emoji == item.emoji }) {  // gone once Undo has run
                 Text("Added to \(a.count). Edit > Undo takes it back.").font(.ui(12)).foregroundStyle(Palette.text3)
             } else if !item.emoji.isEmpty, same.count > 1, same.contains(where: { $0.emoji != item.emoji }) {
                 Button("Add to all \(same.count) like this") { if app.emojiToAll(same, item.emoji) { added = (item.id, same.count) } }

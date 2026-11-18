@@ -214,6 +214,7 @@ struct EditSheet: View {
         n.title = item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? original.title : item.title.trimmingCharacters(in: .whitespacesAndNewlines)
         n.place = item.place.trimmingCharacters(in: .whitespaces)
         if n.place.isEmpty { n.geo = nil } else if n.geo == nil, n.place != original.place { n.geo = await PlaceSearch.find(n.place) }  // typed, not picked: look it up
+        if let a = added { added = nil; app.undo.push { [weak store] in store?.saveEmoji(a.before) } }  // before the edit's own step, so shakes undo newest first
         if n != original {
             if let f = app.change(n, from: original, "Edited") {
                 if store.trialOver { app.unlockNext = true } else { problem = f.message; return }

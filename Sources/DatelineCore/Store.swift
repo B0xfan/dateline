@@ -244,7 +244,8 @@ public final class Store: ObservableObject {
     @discardableResult
     public func saveEmoji(_ list: [Item]) -> Failure? {
         if trialOver { return Failure(License.endedMessage) }
-        list.forEach { var x = decorated(calendarPart($0)); x.emoji = $0.emoji; setExtras(x) }
+        let loaded = items + soon  // each event as it is now (notes, tags, formatting), not the copy in `list`
+        list.forEach { old in var x = loaded.first { $0.id == old.id } ?? old; x.emoji = old.emoji; setExtras(x) }
         fetch()
         return nil
     }

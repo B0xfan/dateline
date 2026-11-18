@@ -322,9 +322,10 @@ func selftest() -> Int32 {
             expect(s.sameName(as: s.items.first { $0.title == "Lunch with the team" }!).count == 1, "a different name or calendar doesn't match")
             s.saveEmoji(same.map { var x = $0; x.emoji = "🥗"; return x })
             expect(s.sameName(as: lunch).allSatisfy { $0.emoji == "🥗" }, "the emoji reaches every matching event")
-            var tagged = s.sameName(as: lunch)[0]; tagged.tags = ["Later"]; s.update(tagged)  // a change made after "Add to all"
+            var tagged = s.sameName(as: lunch)[0]; tagged.tags = ["Later"]; tagged.rich = Data("{\\rtf1 Later}".utf8); s.update(tagged)  // changes made after "Add to all"
             s.saveEmoji(same)
-            expect(s.sameName(as: lunch).first { $0.id == tagged.id }?.tags == ["Later"], "undo leaves later tags alone")
+            let after = s.sameName(as: lunch).first { $0.id == tagged.id }
+            expect(after?.tags == ["Later"] && after?.rich == tagged.rich, "undo leaves later tags and formatted notes alone")
             expect(s.sameName(as: lunch).map(\.emoji) == same.map(\.emoji), "undo puts their own emoji back")
         } else { expect(false, "the sample has Lunch with Sam") }
     }
