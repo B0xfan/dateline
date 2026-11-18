@@ -11,7 +11,7 @@ jobs:
   # The iPhone app on the sample calendars: built for the simulator (Debug, so the checks and pictures are in), its checks, and a light and dark picture of each screen.
   ios-app:
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 60  # the iPhone and iPad pictures take about 45 minutes
     steps:
       - uses: actions/checkout@v4
       # Xcode 26 (John's Mac has 27, which also works): the default Xcode 16 here cannot read the Icon Composer app icon.
