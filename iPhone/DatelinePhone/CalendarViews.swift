@@ -20,6 +20,7 @@ struct CalendarTab: View {
                     case .year: YearView()
                     }
                 }
+                .overlay(alignment: .bottom) { if app.wide { AddBar() } }
                 // Swipe left or right for the next or last days; under the header only, so the list's week strip pages on its own.
                 .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in
                     let x = v.translation.width
@@ -44,6 +45,10 @@ struct CalHeader: View {
     @EnvironmentObject var store: Store
 
     var body: some View {
+        if app.wide { PadCalHeader() } else { phone }
+    }
+
+    private var phone: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {  // side by side, so a long title at large text never runs under the buttons
                 Button("Today") { app.goToday() }
@@ -56,16 +61,7 @@ struct CalHeader: View {
                     .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                 }
                 .layoutPriority(1).accessibilityAddTraits(.isHeader).accessibilityHint("Go to a date")
-                if !app.emails.isEmpty {
-                    Button { app.email = app.emails.first } label: {
-                        Image(systemName: "envelope").frame(width: 44, height: 44)
-                            .overlay(alignment: .topTrailing) {
-                                Text("\(app.emails.count)").font(.caption2.bold()).foregroundStyle(.white)
-                                    .frame(minWidth: 16, minHeight: 16).background(T.tint, in: Capsule()).offset(x: -3, y: 5)
-                            }
-                    }
-                    .accessibilityLabel("From email, \(app.emails.count) new")
-                }
+                EmailButton()
                 Button { app.searching = true } label: { Image(systemName: "magnifyingglass").frame(width: 44, height: 44) }
                     .accessibilityLabel("Search")
                 Button { app.adding = "" } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
@@ -105,6 +101,23 @@ struct CalHeader: View {
         case .month: return dateText(a, "MMMM yyyy")
         case .quarter: let q = quarterStart(a); return dateText(q, "MMM") + " to " + dateText(cal.date(byAdding: .month, value: 2, to: q)!, "MMM yyyy")
         case .year: return dateText(a, "yyyy")
+        }
+    }
+}
+
+/// The envelope with how many events were found in emails; opens the first. Hidden when there are none.
+struct EmailButton: View {
+    @EnvironmentObject var app: PhoneState
+    var body: some View {
+        if !app.emails.isEmpty {
+            Button { app.email = app.emails.first } label: {
+                Image(systemName: "envelope").frame(width: 44, height: 44)
+                    .overlay(alignment: .topTrailing) {
+                        Text("\(app.emails.count)").font(.caption2.bold()).foregroundStyle(.white)
+                            .frame(minWidth: 16, minHeight: 16).background(T.tint, in: Capsule()).offset(x: -3, y: 5)
+                    }
+            }
+            .accessibilityLabel("From email, \(app.emails.count) new")
         }
     }
 }
@@ -410,6 +423,7 @@ struct AllDayChip: View {
 struct WeekView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
+    @ObservedObject private var weather = WeatherStore.shared  // the iPad's day headers show the forecast
     @ScaledMetric(relativeTo: .caption2) private var gutterRaw: CGFloat = 44
     private var gutter: CGFloat { min(gutterRaw, 80) }  // grows with the phone's text size, capped so three days still fit
 
@@ -421,9 +435,19 @@ struct WeekView: View {
                 ForEach(days, id: \.self) { d in
                     let today = cal.isDate(d, inSameDayAs: app.today)
                     VStack(spacing: 2) {
-                        Text(dateText(d, "EEE")).font(.caption).foregroundStyle(T.text2)
-                        Text(dateText(d, "d")).font(.headline).frame(width: 30, height: 30)
-                            .foregroundStyle(today ? .white : T.text).background(today ? T.accent : .clear, in: Circle())
+                        if app.wide {  // iPad (approved pictures 2026-11-18): "Mon 26", then "31° · 5:32"
+                            HStack(spacing: 4) {
+                                Text(dateText(d, "EEE")).foregroundStyle(T.text2)
+                                Text(dateText(d, "d")).font(.headline).frame(minWidth: 28, minHeight: 28)
+                                    .foregroundStyle(today ? .white : T.text).background(today ? T.accent : .clear, in: Circle())
+                            }
+                            let wx = [app.wx(d).map { degrees($0.hi) }, app.sun(d).map { dateText($0.set, "h:mm") }].compactMap { $0 }
+                            if !wx.isEmpty { Text(wx.joined(separator: " · ")).font(.caption).foregroundStyle(T.text2).lineLimit(1).minimumScaleFactor(0.8) }
+                        } else {
+                            Text(dateText(d, "EEE")).font(.caption).foregroundStyle(T.text2)
+                            Text(dateText(d, "d")).font(.headline).frame(width: 30, height: 30)
+                                .foregroundStyle(today ? .white : T.text).background(today ? T.accent : .clear, in: Circle())
+                        }
                     }
                     .frame(maxWidth: .infinity)
                 }

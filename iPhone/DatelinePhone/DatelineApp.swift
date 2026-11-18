@@ -4,10 +4,11 @@ import UIKit
 import UserNotifications
 import DatelineCore
 
-/// The app stays upright, except Week, which turns sideways to show the whole week (John 2026-11-06).
+/// The phone stays upright, except Week, which turns sideways to show the whole week (John 2026-11-06). The iPad turns every way.
 final class PhoneDelegate: NSObject, UIApplicationDelegate {
     static var turns = false
-    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask { Self.turns ? .allButUpsideDown : .portrait }
+    static let pad = UIDevice.current.userInterfaceIdiom == .pad
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask { Self.pad ? .all : Self.turns ? .allButUpsideDown : .portrait }
 }
 
 @main
@@ -109,6 +110,13 @@ final class PhoneState: ObservableObject {
     @Published var listDay: Date?  // the day at the top of the list as it scrolls; the month title and week strip follow it (John 2026-11-06)
     @Published var tab: Tab = .calendar { didSet { turnRule() } }
     @Published var sideways = false { didSet { if sideways != oldValue { reload() } } }  // the phone is turned (only Week allows it)
+    // The iPad at full width (approved pictures 2026-11-18): the calendar column, tabs on top, and the Mac's 3, 5 or 7 day week. No list there, so it opens on Week.
+    @Published var wide = false { didSet { guard wide != oldValue else { return }; if wide && mode == .list { mode = .week } else { reload() } } }
+    @Published var weekDays: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() {
+        didSet { if !sample { UserDefaults.standard.set(weekDays, forKey: "weekDays") }; reload() }
+    }
+    @Published var column = true  // iPad: the calendar column shows (portrait hides it until its button is tapped)
+    @Published var portrait = false  // iPad held upright: Today moves down beside the dates, the set picker up into the top bar
     @Published var path: [String] = []  // event ids open on the calendar tab
     @Published var adding: String?  // the add sheet's starting text; nil = closed
     @Published var email: EmailFind?
@@ -159,12 +167,21 @@ final class PhoneState: ObservableObject {
 
     /// The days the day and week views show: one, three from the anchor (the phone's week), or the whole week when turned sideways.
     var days: [Date] {
+        if mode == .week && wide {  // as on the Mac: from the day you are on; a 5 day week skips days off
+            let work = workDays(1)
+            if weekDays == 5 && !work.isEmpty { return [anchor] + work.dropLast() }
+            return (0..<(weekDays == 3 ? 3 : 7)).map { addDays(anchor, $0) }  // no working days ticked: the 5 day week shows all 7
+        }
         if mode == .week && sideways { let s = startOfWeek(anchor); return (0..<7).map { addDays(s, $0) } }
         return (0..<(mode == .day ? 1 : 3)).map { addDays(anchor, $0) }
     }
 
+    /// The working days in the 7 days after (or, going back, before) the anchor, nearest first (the Mac's workDaysFromAnchor).
+    private func workDays(_ direction: Int) -> [Date] { (1...7).map { addDays(anchor, direction * $0) }.filter(WorkWeek.isWorkDay) }
+
     /// Lets the phone turn only while Week shows; leaving Week turns it back upright.
     private func turnRule() {
+        guard !PhoneDelegate.pad else { return }  // the iPad always turns
         let turns = tab == .calendar && mode == .week
         guard turns != PhoneDelegate.turns else { return }
         PhoneDelegate.turns = turns
@@ -192,6 +209,7 @@ final class PhoneState: ObservableObject {
         switch mode {
         case .list: anchor = addDays(anchor, 7 * n)
         case .day: anchor = addDays(anchor, n)
+        case .week where wide: if weekDays == 5, let next = workDays(n).last { anchor = next } else { anchor = addDays(anchor, n * (weekDays == 3 ? 3 : 7)) }  // a whole page of working days, none skipped
         case .week: anchor = addDays(anchor, (sideways ? 7 : 3) * n)
         case .month: anchor = cal.date(byAdding: .month, value: n, to: anchor)!
         case .quarter: anchor = cal.date(byAdding: .month, value: 3 * n, to: quarterStart(anchor))!

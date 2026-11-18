@@ -51,6 +51,11 @@ enum Demo {
         case "list": app.mode = .list
         case "list-scrolled": app.mode = .list; app.demoScroll = true
         case "day": app.mode = .day
+        case "week-landscape":  // iPad: the script can't turn the simulator, so the app turns itself once its window is up
+            app.mode = .week
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                for case let w as UIWindowScene in UIApplication.shared.connectedScenes { w.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) }
+            }
         case "week-sideways":  // the simulator can't be turned from the script: the app turns itself once its window is up
             app.mode = .week
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
@@ -136,6 +141,16 @@ enum SelfTest {
         let at = app.anchor; app.step(1)
         check(app.anchor == addDays(at, 7), "turned sideways a swipe moves a whole week")
         app.sideways = false; app.anchor = at  // back where the next checks expect it
+        app.wide = true; app.anchor = mon  // the iPad at full width: the Mac's 3, 5 or 7 day week, from the day you are on
+        check(app.mode == .week && app.days == (0..<7).map { addDays(mon, $0) }, "iPad: the week shows seven days from today, as on the Mac")
+        app.step(1); check(app.anchor == addDays(mon, 7), "iPad: a swipe moves the 7 day week by a week")
+        app.anchor = mon; app.weekDays = 5
+        check(app.days == (0..<5).map { addDays(mon, $0) }, "iPad: the 5 day week shows Monday to Friday")
+        app.step(1); check(app.anchor == addDays(mon, 7), "iPad: a swipe moves the 5 day week to the next Monday")
+        app.anchor = mon; app.weekDays = 3
+        check(app.days == (0..<3).map { addDays(mon, $0) }, "iPad: the 3 day week shows three days from today")
+        app.weekDays = 7; app.wide = false; app.anchor = at
+        check(app.days.count == 3, "back at phone width the week shows three days again")
         app.mode = .day; app.step(-1)
         check(app.anchor == addDays(mon, 2), "a swipe moves the day view by one day")
         app.goToday()

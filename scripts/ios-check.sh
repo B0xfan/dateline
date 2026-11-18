@@ -81,5 +81,30 @@ if [ -n "$BIG" ]; then
   done
   xcrun simctl shutdown "$BIG" || true
 else echo "no Pro Max simulator: no App Store pictures"; rc=1; fi
-ls -la "$OUT"; [ -d "$OUT/store" ] && ls -la "$OUT/store"
+# The iPad (approved pictures 2026-11-18): the newest 13 inch iPad Pro, upright and sideways, light and dark. These are also its App Store pictures (2064 x 2752).
+PAD=$(xcrun simctl list devices available -j | python3 -c '
+import json,sys
+d=json.load(sys.stdin)["devices"]
+c=sorted(([int(n) for n in k.split("iOS-")[-1].split("-")],x["name"],x["udid"]) for k,v in d.items() if "iOS" in k for x in v if "iPad Pro" in x["name"] and "13" in x["name"])
+print(c[-1][2] if c else "")')
+if [ -n "$PAD" ]; then
+  mkdir -p "$OUT/ipad"
+  xcrun simctl boot "$PAD" || true; xcrun simctl bootstatus "$PAD" -b
+  xcrun simctl status_bar "$PAD" override --time 9:41 --batteryState charged --batteryLevel 100 || true
+  xcrun simctl install "$PAD" "$APP" || rc=1
+  for mode in light dark; do
+    xcrun simctl ui "$PAD" appearance $mode
+    for s in week week-landscape day month tasks settings add details; do
+      [ $mode = dark ] && case $s in week|week-landscape) ;; *) continue;; esac
+      xcrun simctl terminate "$PAD" $BID >/dev/null 2>&1 || true
+      xcrun simctl launch "$PAD" $BID --sample -demo $s >/dev/null || rc=1
+      sleep 6
+      xcrun simctl io "$PAD" screenshot "$OUT/ipad/$s-$mode.png" >/dev/null 2>&1 || rc=1
+    done
+  done
+  w=$(sips -g pixelWidth "$OUT/ipad/week-light.png" 2>/dev/null | awk '/pixelWidth/{print $2}')
+  [ "$w" = 2064 ] || { echo "iPad picture is not 13 inch (2064 wide, got $w)"; rc=1; }
+  xcrun simctl shutdown "$PAD" || true
+else echo "no 13 inch iPad Pro simulator: no iPad pictures"; rc=1; fi
+ls -la "$OUT"; [ -d "$OUT/store" ] && ls -la "$OUT/store"; [ -d "$OUT/ipad" ] && ls -la "$OUT/ipad"
 exit $rc

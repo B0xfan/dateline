@@ -7,6 +7,7 @@ import DatelineCore
 struct RootView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
+    @Environment(\.horizontalSizeClass) private var hsc
     private let clock = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -14,13 +15,20 @@ struct RootView: View {
     }
 
     private var main: some View {
-        // The standard iPhone tab bar (2026-11-06 design); adding moved to the + in the calendar's top bar.
-        TabView(selection: $app.tab) {
-            CalendarTab().tabItem { Label("Calendar", systemImage: "calendar") }.tag(PhoneState.Tab.calendar)
-            TasksView().tabItem { Label("Tasks", systemImage: "checkmark.circle") }.tag(PhoneState.Tab.tasks)
-            PlacesView().tabItem { Label("Places", systemImage: "mappin") }.tag(PhoneState.Tab.places)
-            SettingsView().tabItem { Label("Settings", systemImage: "gearshape") }.tag(PhoneState.Tab.settings)
+        Group {
+            if app.wide { PadRoot() }  // the iPad at full width (approved pictures 2026-11-18)
+            else {
+                // The standard iPhone tab bar (2026-11-06 design); adding moved to the + in the calendar's top bar.
+                TabView(selection: $app.tab) {
+                    CalendarTab().tabItem { Label("Calendar", systemImage: "calendar") }.tag(PhoneState.Tab.calendar)
+                    TasksView().tabItem { Label("Tasks", systemImage: "checkmark.circle") }.tag(PhoneState.Tab.tasks)
+                    PlacesView().tabItem { Label("Places", systemImage: "mappin") }.tag(PhoneState.Tab.places)
+                    SettingsView().tabItem { Label("Settings", systemImage: "gearshape") }.tag(PhoneState.Tab.settings)
+                }
+            }
         }
+        // A big iPhone turned sideways is wide too, but keeps the phone's screens; an iPad in a narrow Split View gets the phone's.
+        .onChange(of: hsc, initial: true) { app.wide = PhoneDelegate.pad && hsc == .regular }
         .overlay(alignment: .bottom) { if let t = app.toast { UndoBanner(toast: t).padding(.horizontal, 16).padding(.bottom, 92).transition(.move(edge: .bottom).combined(with: .opacity)) } }
         .animation(.easeOut(duration: 0.2), value: app.toast?.id)
         .background(ShakeToUndo { app.undoLast() })

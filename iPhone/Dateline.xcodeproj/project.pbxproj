@@ -22,6 +22,7 @@
 		D100000000000000000000C8 /* DatelineApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000064 /* DatelineApp.swift */; };
 		D100000000000000000000C9 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000065 /* Theme.swift */; };
 		D100000000000000000000CA /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000066 /* RootView.swift */; };
+		D1000000000000000000F002 /* PadViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000000000000F001 /* PadViews.swift */; };
 		D100000000000000000000CB /* CalendarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000067 /* CalendarViews.swift */; };
 		D100000000000000000000CC /* MonthYear.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000068 /* MonthYear.swift */; };
 		D100000000000000000000CD /* DetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000069 /* DetailsView.swift */; };
@@ -52,6 +53,7 @@
 		D10000000000000000000064 /* DatelineApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatelineApp.swift; sourceTree = "<group>"; };
 		D10000000000000000000065 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		D10000000000000000000066 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		D1000000000000000000F001 /* PadViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadViews.swift; sourceTree = "<group>"; };
 		D10000000000000000000067 /* CalendarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarViews.swift; sourceTree = "<group>"; };
 		D10000000000000000000068 /* MonthYear.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthYear.swift; sourceTree = "<group>"; };
 		D10000000000000000000069 /* DetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsView.swift; sourceTree = "<group>"; };
@@ -186,6 +188,7 @@
 				D10000000000000000000064 /* DatelineApp.swift */,
 				D10000000000000000000065 /* Theme.swift */,
 				D10000000000000000000066 /* RootView.swift */,
+				D1000000000000000000F001 /* PadViews.swift */,
 				D10000000000000000000067 /* CalendarViews.swift */,
 				D10000000000000000000068 /* MonthYear.swift */,
 				D10000000000000000000069 /* DetailsView.swift */,
@@ -395,6 +398,7 @@
 				D100000000000000000000C8 /* DatelineApp.swift in Sources */,
 				D100000000000000000000C9 /* Theme.swift in Sources */,
 				D100000000000000000000CA /* RootView.swift in Sources */,
+				D1000000000000000000F002 /* PadViews.swift in Sources */,
 				D100000000000000000000CB /* CalendarViews.swift in Sources */,
 				D100000000000000000000CC /* MonthYear.swift in Sources */,
 				D100000000000000000000CD /* DetailsView.swift in Sources */,
@@ -452,6 +456,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Dateline;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.johnhesch.dateline;
@@ -460,7 +465,7 @@
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -477,6 +482,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Dateline;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.johnhesch.dateline;
@@ -485,7 +491,7 @@
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
