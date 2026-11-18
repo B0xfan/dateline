@@ -43,7 +43,7 @@ OUT=build/release; APP="$OUT/Dateline.app"
 rm -rf "$OUT"; mkdir -p "$OUT"
 ditto build/Dateline.app "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" -c "Set :CFBundleVersion $N" "$APP/Contents/Info.plist"
-# Developer ID signing and Apple's check (notarizing) through Xcode, signed in with the App Store Connect key: the Developer ID certificate is held by Apple, so nothing goes in the keychain.
+# Developer ID signing and Apple's check (notarizing) through Xcode: the Developer ID certificate is held by Apple, so nothing goes in the keychain.
 # First sign locally with hardened runtime and Dateline's permissions (Xcode keeps both when it re-signs), then let Xcode re-sign with Developer ID, embed the
 # all-Macs profile (needed for the Focus permission) and send it to Apple; the checked, stapled app comes back into $APP.
 ID=AB33048703517BE9CB52B2E3781C8B1B00C8A64D
