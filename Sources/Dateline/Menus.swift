@@ -61,6 +61,7 @@ struct AppCommands: Commands {
             Divider()
             Button("Today") { app.openMain?(); app.goToday() }.keyboardShortcut("t")
             Button("Go to Date…") { app.openMain?(); app.panels.jumping = true }.keyboardShortcut("t", modifiers: [.shift, .command])
+                .disabled(app.panels.confirmDelete != nil || app.panels.editingSet != nil || app.panels.subscribing || app.panels.reviewing != nil)  // would open late, after the sheet on screen
             Button("Previous") { app.openMain?(); app.step(-1) }.keyboardShortcut(.leftArrow, modifiers: [.option, .command])
             Button("Next") { app.openMain?(); app.step(1) }.keyboardShortcut(.rightArrow, modifiers: [.option, .command])
             Divider()

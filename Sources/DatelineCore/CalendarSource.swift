@@ -69,7 +69,12 @@ public final class AppleCalendar: CalendarSource {
         ek.requestFullAccessToReminders { ok, _ in Task { @MainActor in done(ok) } }
     }
     public func onChange(_ act: @escaping @MainActor () -> Void) {
-        observer = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: ek, queue: .main) { _ in Task { @MainActor in act() } }
+        observer = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: ek, queue: .main) { _ in Task { @MainActor in
+            #if !os(watchOS)
+            Self.forgetPeople()  // a contact edit changes the Birthdays calendar too, so names and ages are read again
+            #endif
+            act()
+        } }
     }
 
     // The Mac tells display and sound alerts from email and program ones; the iPhone has only the first two.
@@ -137,13 +142,15 @@ public final class AppleCalendar: CalendarSource {
     // Name and birth date per contact, read once per run: Apple's Birthdays calendar only gives the contact's id.
     private nonisolated static let people = NSLock()
     private nonisolated(unsafe) static var born: [String: (name: String, date: DateComponents?)?] = [:]  // nil kept too: a contact not shared is not looked up again
+    private nonisolated(unsafe) static let contacts = CNContactStore()  // used only under the people lock
+    private nonisolated static func forgetPeople() { people.lock(); born = [:]; people.unlock() }
     private nonisolated static func person(_ id: String) -> (name: String, date: DateComponents?)? {
         let st = CNContactStore.authorizationStatus(for: .contacts)  // the iPhone's "some contacts" answer still reads those
         guard st != .notDetermined, st != .denied, st != .restricted else { return nil }
         people.lock(); defer { people.unlock() }
         if let p = born[id] { return p }
         let keys = [CNContactGivenNameKey, CNContactFamilyNameKey, CNContactBirthdayKey] as [CNKeyDescriptor]
-        let p = (try? CNContactStore().unifiedContact(withIdentifier: id, keysToFetch: keys)).map { c in ([c.givenName, c.familyName].filter { !$0.isEmpty }.joined(separator: " "), c.birthday) }
+        let p = (try? contacts.unifiedContact(withIdentifier: id, keysToFetch: keys)).map { c in ([c.givenName, c.familyName].filter { !$0.isEmpty }.joined(separator: " "), c.birthday) }
         born[id] = .some(p)
         return p
     }

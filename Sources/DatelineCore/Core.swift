@@ -125,7 +125,7 @@ public func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60, s
 
 // Birthdays: "Ana Rojas turns 40" when the contact's birth year is saved and this is the birthday (not an anniversary); nil keeps Apple's title.
 public func birthdayTitle(name: String, born: DateComponents?, on day: Date) -> String? {
-    let d = Calendar.current.dateComponents([.year, .month, .day], from: day)
+    let d = cal.dateComponents([.year, .month, .day], from: day)
     guard !name.isEmpty, let b = born, let y = b.year, b.month == d.month, b.day == d.day, let age = d.year.map({ $0 - y }), age > 0 else { return nil }
     return "\(name) turns \(age)"
 }
@@ -133,7 +133,7 @@ public func birthdayTitle(name: String, born: DateComponents?, on day: Date) -> 
 // Go to Date (Mac box): "march 19", "next friday", "12/24" -> that day; nil when no day was written.
 public func jumpDay(_ text: String, now: Date) -> Date? {
     let p = parseSentence(text, now: now)
-    return p.dateGiven && p.title.isEmpty ? Calendar.current.startOfDay(for: p.start) : nil
+    return p.dateGiven && p.title.isEmpty ? cal.startOfDay(for: p.start) : nil
 }
 
 // Words not taken as a date, time or mark make the title; after "at <place>" they make the place.

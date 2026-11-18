@@ -47,7 +47,10 @@ if let i = args.firstIndex(of: "--render"), i + 1 < args.count {
 final class Delegate: NSObject, NSApplicationDelegate {
     // Before launch ends, so a click on a leave alert that started the app is still handled.
     // Only inside the app bundle: the bare built program has no bundle and alerts would stop it.
-    func applicationWillFinishLaunching(_ n: Notification) { if Bundle.main.bundleIdentifier != nil { LeaveAlerts.shared.install() } }
+    func applicationWillFinishLaunching(_ n: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false  // no tabs, so Show Tab Bar never claims Shift Command T (Go to Date)
+        if Bundle.main.bundleIdentifier != nil { LeaveAlerts.shared.install() }
+    }
     // Keeps running with the window closed, so quick add from any app still works; the Dock icon brings the window back.
     // Phase 8: the daily update check, only for the real app (never --sample).
     func applicationDidFinishLaunching(_ n: Notification) { if !CommandLine.arguments.contains("--sample") { Updater.shared.start() } }

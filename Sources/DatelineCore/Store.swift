@@ -256,7 +256,8 @@ public final class Store: ObservableObject {
     public func decorated(_ it: Item) -> Item {
         guard let x = extras[key(it.id)] ?? (it.uid.isEmpty ? nil : extras["~" + syncUID(it.uid)]) else { return it }  // "~": extras that came from the other device before this one knew the event
         var it = it
-        it.emoji = x.emoji; it.color = x.color; it.tags = x.tags
+        if !x.emoji.isEmpty || it.emoji != "🎂" { it.emoji = x.emoji }  // the Birthdays cake stays unless another emoji was picked
+        it.color = x.color; it.tags = x.tags
         it.noTravel = x.noTravel ?? false; it.leave = x.leave; it.from = x.from ?? .here
         if x.plain == it.notes { it.rich = x.rich }
         return it

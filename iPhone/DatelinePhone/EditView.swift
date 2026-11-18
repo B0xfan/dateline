@@ -126,7 +126,7 @@ struct EditSheet: View {
     /// Alerts (approved mockup 2026-11-17): the Mac's choices, up to five, swipe left to remove. Saved on the event, so they ring everywhere.
     @ViewBuilder private var alerts: some View {
         if !locked {
-            let cur = mins ?? alertMinutes(original)
+            let cur = mins ?? alertMinutes(item)
             let google = store.accCal(item.calendarID)?.0.kind == "google"  // Google takes only alerts before the start
             let choices = (item.allDay ? allDayAlertChoices : alertChoices).filter { !(google && $0 < 0) }
             Section("Alerts") {

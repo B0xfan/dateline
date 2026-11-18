@@ -514,7 +514,7 @@
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Dateline shows the events in your calendars on your watch.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Dateline shows your reminders as tasks on your watch.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Dateline uses where you are for drive times and the time to leave.";
-				INFOPLIST_KEY_NSContactsUsageDescription = "Dateline reads your contacts' names and birth dates to show ages on the Birthdays calendar, and the home and work address on your own card for drive times from Home or Work.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Dateline reads the home and work address on your own contact card, only for drive times from Home or Work.";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.johnhesch.dateline;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
 				MARKETING_VERSION = 1.5;
@@ -543,7 +543,7 @@
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Dateline shows the events in your calendars on your watch.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Dateline shows your reminders as tasks on your watch.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Dateline uses where you are for drive times and the time to leave.";
-				INFOPLIST_KEY_NSContactsUsageDescription = "Dateline reads your contacts' names and birth dates to show ages on the Birthdays calendar, and the home and work address on your own card for drive times from Home or Work.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Dateline reads the home and work address on your own contact card, only for drive times from Home or Work.";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.johnhesch.dateline;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
 				MARKETING_VERSION = 1.5;
