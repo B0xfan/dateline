@@ -25,6 +25,12 @@ if [ ! -x "$SIGN_UPDATE" ]; then
   tar -xf "$T/s.tar.xz" -C "$TOOLS" bin; rm -rf "$T"
 fi
 
+# App Store Connect key: Xcode signs in with it, so the release no longer depends on an Xcode account sign-in (that sign-in can drop).
+ASC_KEY=S93537G5A5; ASC_P8="$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY.p8"
+ISS="${ASC_ISSUER_ID:-$( { grep '^ASC_ISSUER_ID=' "$HOME/Projects/A4/.env" 2>/dev/null || true; } | cut -d= -f2- | tr -d '"')}"
+[ -f "$ASC_P8" ] && [ -n "$ISS" ] || { echo "App Store Connect key or issuer missing: $ASC_P8, ASC_ISSUER_ID"; exit 1; }
+AUTH=(-authenticationKeyPath "$ASC_P8" -authenticationKeyID "$ASC_KEY" -authenticationKeyIssuerID "$ISS")
+
 # Next version: one more than the newest release (the first one is 0.1.2; copies installed before updates existed are build 1).
 LAST=$(gh release list --repo "$REPO" --limit 1 --json tagName -q '.[0].tagName')   # a login failure stops the script here; no releases yet gives an empty answer
 N=$(( ${LAST##*.} + 1 )); [ -n "$LAST" ] || N=2
@@ -37,7 +43,7 @@ OUT=build/release; APP="$OUT/Dateline.app"
 rm -rf "$OUT"; mkdir -p "$OUT"
 ditto build/Dateline.app "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" -c "Set :CFBundleVersion $N" "$APP/Contents/Info.plist"
-# Developer ID signing and Apple's check (notarizing) through Xcode's signed-in Apple account: the Developer ID certificate is held by Apple, so nothing goes in the keychain.
+# Developer ID signing and Apple's check (notarizing) through Xcode, signed in with the App Store Connect key: the Developer ID certificate is held by Apple, so nothing goes in the keychain.
 # First sign locally with hardened runtime and Dateline's permissions (Xcode keeps both when it re-signs), then let Xcode re-sign with Developer ID, embed the
 # all-Macs profile (needed for the Focus permission) and send it to Apple; the checked, stapled app comes back into $APP.
 ID=AB33048703517BE9CB52B2E3781C8B1B00C8A64D
@@ -59,11 +65,11 @@ cat > "$OUT/export.plist" <<'EOP'
 <plist version="1.0"><dict><key>method</key><string>developer-id</string><key>signingStyle</key><string>automatic</string>
 <key>teamID</key><string>LJZ32VB25F</string><key>destination</key><string>upload</string></dict></plist>
 EOP
-taskpolicy -b nice -n 19 xcodebuild -exportArchive -archivePath "$AR" -exportOptionsPlist "$OUT/export.plist" -exportPath "$OUT/upload" -allowProvisioningUpdates >"$OUT/export.log" 2>&1 \
+taskpolicy -b nice -n 19 xcodebuild -exportArchive -archivePath "$AR" -exportOptionsPlist "$OUT/export.plist" -exportPath "$OUT/upload" -allowProvisioningUpdates "${AUTH[@]}" >"$OUT/export.log" 2>&1 \
   || { tail -20 "$OUT/export.log"; echo "Sending to Apple's check failed (full log: $OUT/export.log)"; exit 1; }
 echo "Sent to Apple's check; waiting for the answer (usually a few minutes)..."
 for i in {1..60}; do   # up to 30 minutes
-  xcodebuild -exportNotarizedApp -archivePath "$AR" -exportPath "$OUT/notarized" >"$OUT/notarized.log" 2>&1 && break
+  xcodebuild -exportNotarizedApp -archivePath "$AR" -exportPath "$OUT/notarized" "${AUTH[@]}" >"$OUT/notarized.log" 2>&1 && break
   grep -qi "invalid\|rejected" "$OUT/notarized.log" && { cat "$OUT/notarized.log"; echo "Apple's check refused the app"; exit 1; }
   [ $i = 60 ] && { tail -5 "$OUT/notarized.log"; echo "No answer from Apple's check after 30 minutes"; exit 1; }
   sleep 30
@@ -120,9 +126,6 @@ echo "Checked: $ZIP (version $VER, build $N)"
 # Signed with the local Developer ID identity (key + certificate in the login keychain; key file and certificate kept in Application Support/Dateline/devid).
 DEVID="Developer ID Application: John Hesch (LJZ32VB25F)"
 grep -q "$DEVID" <<<"$(security find-identity -v -p codesigning)" || { echo "Developer ID identity missing: $DEVID"; exit 1; }
-ASC_KEY=S93537G5A5; ASC_P8="$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY.p8"
-ISS="${ASC_ISSUER_ID:-$( { grep '^ASC_ISSUER_ID=' "$HOME/Projects/A4/.env" 2>/dev/null || true; } | cut -d= -f2- | tr -d '"')}"
-[ -f "$ASC_P8" ] && [ -n "$ISS" ] || { echo "App Store Connect key or issuer missing: $ASC_P8, ASC_ISSUER_ID"; exit 1; }
 DMG="$OUT/Dateline.dmg"; ST="$OUT/dmg-stage"; rm -rf "$ST" "$DMG"; mkdir -p "$ST"
 ditto "$VAPP" "$ST/Dateline.app"; ln -s /Applications "$ST/Applications"
 hdiutil create -quiet -volname Dateline -srcfolder "$ST" -fs HFS+ -format UDZO "$DMG"; rm -rf "$ST"
