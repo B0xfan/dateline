@@ -312,8 +312,8 @@ final class AppState: ObservableObject {
 
     // The emoji to every event with the same name (approved picture); Edit > Undo puts back each one's own emoji.
     func emojiToAll(_ same: [Item], _ e: String) -> Bool {
-        if let f = store.saveExtras(same.map { var x = $0; x.emoji = e; return x }) { error = f.message; return false }
-        undoStack.append { [weak self] in self?.store.saveExtras(same) }
+        if let f = store.saveEmoji(same.map { var x = $0; x.emoji = e; return x }) { error = f.message; return false }
+        undoStack.append { [weak self] in self?.store.saveEmoji(same) }
         return true
     }
 

@@ -240,11 +240,11 @@ public final class Store: ObservableObject {
         return (items + soon).filter { $0.calendarID == it.calendarID && name($0.title) == n && seen.insert(key($0.id)).inserted }
     }
 
-    // Saves only Dateline's extras of many events at once (the emoji to all matching events, and its undo).
+    // Saves only the emoji of many events at once (the emoji to all matching events, and its undo); their other extras stay as they are now.
     @discardableResult
-    public func saveExtras(_ list: [Item]) -> Failure? {
+    public func saveEmoji(_ list: [Item]) -> Failure? {
         if trialOver { return Failure(License.endedMessage) }
-        list.forEach(setExtras)
+        list.forEach { var x = decorated(calendarPart($0)); x.emoji = $0.emoji; setExtras(x) }
         fetch()
         return nil
     }

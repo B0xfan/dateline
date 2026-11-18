@@ -37,7 +37,7 @@ struct EditSheet: View {
     @State private var newTag = ""
     @State private var problem: String?
     @State private var saving = false
-    @State private var added: [Item]?  // the events "Add to all" just changed, for its Undo
+    @State private var added: (emoji: String, before: [Item])?  // what "Add to all" just did, for its Undo
     @StateObject private var search = PlaceSearch()
 
     init(_ it: Item) { original = it; _item = State(initialValue: it) }
@@ -106,6 +106,8 @@ struct EditSheet: View {
             .onAppear { if let q = app.demoPlace { app.demoPlace = nil; item.place = q; item.geo = nil; search.query(q) } }
             .alert(problem ?? "", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) { Button("OK") {} }
         }
+        // On the whole sheet, not the form (a picker page hides the form): still applied when the sheet closes, shake to undo takes all of them back.
+        .onDisappear { if let a = added { app.undo.push { [weak store] in store?.saveEmoji(a.before) } } }
     }
 
     private var when: some View {
@@ -176,16 +178,16 @@ struct EditSheet: View {
     // Approved picture (John 2026-11-17): the emoji to every loaded event with the same name on this calendar, with Undo.
     @ViewBuilder private var emojiToAll: some View {
         let same = store.sameName(as: original)
-        if let back = added {
+        if let a = added {
             HStack {
-                Text("Added \(item.emoji) to \(back.count) events").foregroundStyle(T.text2)
+                Text("Added \(a.emoji) to \(a.before.count) events").foregroundStyle(T.text2)
                 Spacer()
-                Button("Undo") { if let f = store.saveExtras(back) { problem = f.message }; added = nil }.buttonStyle(.borderless)
+                Button("Undo") { if let f = store.saveEmoji(a.before) { problem = f.message }; added = nil }.buttonStyle(.borderless)
             }
         } else if !item.emoji.isEmpty, same.count > 1, same.contains(where: { $0.emoji != item.emoji }) {
             Button("Add \(item.emoji) to all \(same.count) \u{201C}\(original.title)\u{201D} events") {
-                if let f = store.saveExtras(same.map { var x = $0; x.emoji = item.emoji; return x }) { problem = f.message; return }
-                added = same
+                if let f = store.saveEmoji(same.map { var x = $0; x.emoji = item.emoji; return x }) { problem = f.message; return }
+                added = (item.emoji, same)
                 UIAccessibility.post(notification: .announcement, argument: "Added \(item.emoji) to \(same.count) events")
             }
         }

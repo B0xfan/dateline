@@ -10,7 +10,7 @@ struct EmojiRow: View {
     @Binding var item: Item
     let commit: () -> Void
     @State private var open = false
-    @State private var added: (id: String, before: [Item])?  // the events "Add to all" just changed, for its Undo
+    @State private var added: (id: String, count: Int)?  // "Add to all" just ran on this event
     var body: some View {
         let same = store.sameName(as: item)
         HStack(spacing: 8) {
@@ -24,14 +24,14 @@ struct EmojiRow: View {
             }
             if !item.emoji.isEmpty { Button("Remove") { item.emoji = ""; commit() }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.text3) }
             if let a = added, a.id == item.id {
-                Text("Added to \(a.before.count)").font(.ui(12)).foregroundStyle(Palette.text3)
-                Button("Undo") { if let f = store.saveExtras(a.before) { app.error = f.message }; added = nil }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.accent)
+                Text("Added to \(a.count). Edit > Undo takes it back.").font(.ui(12)).foregroundStyle(Palette.text3)
             } else if !item.emoji.isEmpty, same.count > 1, same.contains(where: { $0.emoji != item.emoji }) {
-                Button("Add to all \(same.count) like this") { if app.emojiToAll(same, item.emoji) { added = (item.id, same) } }
+                Button("Add to all \(same.count) like this") { if app.emojiToAll(same, item.emoji) { added = (item.id, same.count) } }
                     .buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.accent)
                     .help("Gives this emoji to every loaded event on this calendar with the same name")
             }
         }
+        .onChange(of: item.emoji) { _, _ in added = nil }
     }
 }
 

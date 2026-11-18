@@ -318,11 +318,13 @@ func selftest() -> Int32 {
         if let lunch = s.items.first(where: { $0.title == "Lunch with Sam" }) {
             var odd = lunch; odd.title = "  LUNCH with   sam "
             let same = s.sameName(as: odd)
-            expect(same.count == 2 && same.allSatisfy { $0.calendarID == lunch.calendarID }, "same name ignores capitals and spaces, and stays on the calendar")
+            expect(same.count == 2 && same.allSatisfy { $0.calendarID == lunch.calendarID }, "same name ignores capitals and spaces")
             expect(s.sameName(as: s.items.first { $0.title == "Lunch with the team" }!).count == 1, "a different name or calendar doesn't match")
-            s.saveExtras(same.map { var x = $0; x.emoji = "🥗"; return x })
+            s.saveEmoji(same.map { var x = $0; x.emoji = "🥗"; return x })
             expect(s.sameName(as: lunch).allSatisfy { $0.emoji == "🥗" }, "the emoji reaches every matching event")
-            s.saveExtras(same)
+            var tagged = s.sameName(as: lunch)[0]; tagged.tags = ["Later"]; s.update(tagged)  // a change made after "Add to all"
+            s.saveEmoji(same)
+            expect(s.sameName(as: lunch).first { $0.id == tagged.id }?.tags == ["Later"], "undo leaves later tags alone")
             expect(s.sameName(as: lunch).map(\.emoji) == same.map(\.emoji), "undo puts their own emoji back")
         } else { expect(false, "the sample has Lunch with Sam") }
     }
