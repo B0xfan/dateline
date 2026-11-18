@@ -102,7 +102,7 @@ final class PhoneState: ObservableObject {
     let store: Store
     let sample: Bool  // sample calendars: tests and pictures
     @Published var today: Date
-    @Published var mode: Mode = .list { didSet { listDay = nil; monthPick = nil; reload(); turnRule(); if !sample && !autoMode { UserDefaults.standard.set(mode.rawValue, forKey: "mode") } } }  // the list is the main screen (approved mockup, John 2026-11-05)
+    @Published var mode: Mode = .list { didSet { listDay = nil; monthPick = nil; reload(); turnRule(); if !autoMode { listBeforeWide = false; if !sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") } } } }  // the list is the main screen (approved mockup, John 2026-11-05); a view picked by hand stays when the iPad narrows
     // Settings > Week: the view Dateline opens on; "" = where you left it (John 2026-11-06).
     static var openOn: String { get { UserDefaults.standard.string(forKey: "openOn") ?? "" } set { UserDefaults.standard.set(newValue, forKey: "openOn") } }
     @Published var anchor: Date { didSet { listDay = nil; monthPick = nil; reload() } }

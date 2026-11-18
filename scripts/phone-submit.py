@@ -8,7 +8,7 @@
                                                                                   submits it, then raises the number and pushes (a rerun after a failed push only does the raise)
 Why the raise: Apple closes a number for uploads once it is in review or live, and every push to main uploads.
 Raising the number in the same step as the submit means no later upload can ever carry a closed number.
-iPad pictures: a version with no 13 inch iPad pictures gets them from the newest passing cloud check (scripts/cloud-build.sh),
+iPad pictures: a version with no 13 inch iPad pictures gets them from a passing cloud check of this exact commit (scripts/cloud-build.sh),
 through Apple's asset library. Apple copies pictures to the next version, so this normally runs once.
 App Store review only, never TestFlight.
 """
@@ -50,8 +50,9 @@ def call(method, path, **kw):
 
 
 def pad_placed(loc):
-    return call("GET", f"/appStoreVersionLocalizations/{loc['id']}/placements", params={
+    placed = call("GET", f"/appStoreVersionLocalizations/{loc['id']}/placements", params={
         "filter[placementType]": "APP_SCREENSHOT", "filter[placementGroup]": PAD_GROUP, "limit": 50})["data"]
+    return [p for p in placed if p["attributes"]["placementGroup"] == PAD_GROUP]  # never count or delete the iPhone or Watch pictures
 
 
 def pad_missing(vid):
@@ -192,9 +193,9 @@ def main():
     shots = tempfile.mkdtemp(prefix="dateline-ipad-")
     atexit.register(shutil.rmtree, shots, True)
     pad = pad_missing(mine["id"]) if mine else None  # a new version gets Apple's copy of the last one's pictures first
-    files = pad_pictures(shots) if pad != [] else None  # checked in the dry run too, so a missing picture shows before anything is sent
+    files = pad_pictures(shots) if pad else None  # checked in the dry run too, so a missing picture shows before anything is sent
     if not submit:
-        print("iPad pictures: " + ("already on the version." if pad == [] else "would be added."))
+        print("iPad pictures: " + ("would be added." if pad else "already on the version." if mine else "checked once Apple makes the version."))
         print("Dry run: nothing changed. Add --submit to send it.")
         return
 

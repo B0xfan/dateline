@@ -58,7 +58,7 @@ struct PadTopBar: View {
                         Image(systemName: "sidebar.left").frame(width: 44, height: 44).background(T.bg2, in: Circle())
                     }
                     .accessibilityLabel(app.column ? "Hide the calendar column" : "Show the calendar column")
-                    if app.portrait && !app.column { SetMenu() }
+                    if !app.column { SetMenu() }  // the sets live in the column, so they come up here while it is hidden
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -149,6 +149,9 @@ enum SelfTest {
         check(app.days.count == 3, "back at phone width the week shows three days again")
         app.mode = .list; app.wide = true; app.wide = false
         check(app.mode == .list, "iPad: after full width, phone width goes back to the list")
+        app.wide = true; app.mode = .week; app.wide = false
+        check(app.mode == .week, "iPad: a view picked by hand at full width stays at phone width")
+        app.mode = .list
         app.mode = .day; app.step(-1)
         check(app.anchor == addDays(mon, 2), "a swipe moves the day view by one day")
         app.goToday()

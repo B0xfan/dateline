@@ -94,7 +94,7 @@ if [ -n "$PAD" ]; then
   xcrun simctl install "$PAD" "$APP" || rc=1
   for mode in light dark; do
     xcrun simctl ui "$PAD" appearance $mode
-    for s in week day month tasks settings add details week-sideways; do  # sideways last: the app turns itself
+    for s in week day month tasks settings add details week-sideways; do  # sideways last: the phone turns itself, the iPad draws it turned
       [ $mode = dark ] && case $s in week|week-sideways) ;; *) continue;; esac
       xcrun simctl terminate "$PAD" $BID >/dev/null 2>&1 || true
       xcrun simctl launch "$PAD" $BID --sample -demo $s >/dev/null || rc=1
