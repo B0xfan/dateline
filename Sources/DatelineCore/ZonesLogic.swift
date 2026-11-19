@@ -8,6 +8,7 @@ public struct Zone: Codable, Identifiable, Equatable {
     public var tz: String  // "America/New_York"; the Mac moves the clock for summer time
     public var place: String  // "New York, United States"
     public var city: String { place.components(separatedBy: ",").first ?? place }
+    public init(nick: String = "", tz: String, place: String) { self.nick = nick; self.tz = tz; self.place = place }  // public: the iPhone's city search makes these
 }
 
 public enum Zones {

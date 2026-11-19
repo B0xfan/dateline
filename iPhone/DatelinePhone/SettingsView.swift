@@ -366,95 +366,165 @@ struct AlertsPage: View {
     }
 }
 
+// Approved mockup "Time & weather" (John 2026-11-19): the town and Add a city both open one city search.
 struct WeatherPage: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     @State private var tick = 0
-    @State private var city = ""
-    @State private var finding = false
-    @State private var note: String?
-    @State private var town = WeatherPrefs.town
-    @State private var found: [Town] = []
-    @State private var foundFor = ""  // the text the matches are for, so Done never takes a match for older text
-    @State private var townNote: String?
+    @State private var searching: CitySearch.Purpose?
+    @State private var naming: Zone?  // the city whose nickname box is open
+    @State private var nick = ""
     var body: some View {
         let _ = tick
         List {
             Section {
                 Toggle("Show the weather on days and events", isOn: Binding(get: { WeatherPrefs.on }, set: { WeatherPrefs.on = $0; changed() }))
-                Picker("Temperature", selection: Binding(get: { WeatherPrefs.fahrenheit }, set: { WeatherPrefs.fahrenheit = $0; changed(); store.syncNow() })) {
-                    Text("°F").tag(true); Text("°C").tag(false)
-                }.pickerStyle(.segmented)
-                LabeledContent("Town for the days") {
-                    TextField("Where I am", text: $town).multilineTextAlignment(.trailing).submitLabel(.done)
-                        .onSubmit { let t = town.trimmingCharacters(in: .whitespaces); if t.isEmpty { pick(nil) } else if foundFor == t, let m = found.first { pick(m) } }
+                HStack {
+                    Text("Temperature")
+                    Spacer()
+                    Picker("Temperature", selection: Binding(get: { WeatherPrefs.fahrenheit }, set: { WeatherPrefs.fahrenheit = $0; changed(); store.syncNow() })) {
+                        Text("°F").tag(true); Text("°C").tag(false)
+                    }.pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
-                // Matches as you type, from Open-Meteo's free town search (as on the Mac).
-                ForEach(found) { t in Button(t.label) { pick(t) } }
-            } header: { Text("Weather") } footer: { Text((townNote.map { $0 + "\n\n" } ?? "") + "Leave the town empty to use where the \(thisDevice) is. Events with a place show the weather at that place. Weather data by Open-Meteo.com") }
-            .task(id: town) {
-                guard !WeatherStore.sample else { return }  // the pictures never reach the network
-                let t = town.trimmingCharacters(in: .whitespaces)
-                if t.isEmpty || t == WeatherPrefs.town { found = []; townNote = nil; return }  // an emptied box clears the town only on Done, not mid-edit
-                try? await Task.sleep(for: .milliseconds(300))  // wait for a pause in the typing
-                guard !Task.isCancelled else { return }
-                let list = await searchTowns(t)
-                guard !Task.isCancelled else { return }  // the text changed while this search ran
-                found = list; foundFor = t
-                townNote = list.isEmpty ? "No town called \u{201C}\(t)\u{201D} found. Try another spelling." : nil
-            }
-            Section {
-                ForEach(Zones.list) { z in
+                Button { searching = .town } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            // The nickname shows in place of the city; empty shows the city (as on the Mac).
-                            TextField(z.city, text: Binding(get: { z.nick }, set: { v in
-                                if let i = Zones.list.firstIndex(where: { $0.id == z.id }) { Zones.list[i].nick = v }
-                            })).submitLabel(.done).onSubmit(changed).accessibilityLabel("Nickname for \(z.city)")  // the calendar redraws once, on Done or on leaving the page
-                            Text(z.place).font(.footnote).foregroundStyle(T.text2).lineLimit(1)
+                            Text("Weather town").foregroundStyle(T.text)
+                            Text("The weather on each day comes from here").font(.footnote).foregroundStyle(T.text2)
                         }
                         Spacer()
-                        Text(zoneTime(app.today, z.tz)).foregroundStyle(T.text2)
+                        Text(WeatherPrefs.town.isEmpty ? "Where I am" : WeatherPrefs.town).foregroundStyle(T.tint).lineLimit(1)
+                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(T.text2).accessibilityHidden(true)
+                    }
+                }
+            } header: { Text("Weather") } footer: { Text("Events with a place show the weather at that place. Weather data by Open-Meteo.com") }
+            Section {
+                ForEach(Zones.list) { z in
+                    Button { nick = z.nick; naming = z } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(z.nick.isEmpty ? z.city : z.nick).foregroundStyle(T.text)  // the nickname shows in place of the city, as on the Mac
+                                Text(z.nick.isEmpty ? String(z.place.dropFirst(z.city.count + 2)) : z.place)  // "London" over "United Kingdom"; "Mom" over "Chicago, United States"
+                                    .font(.footnote).foregroundStyle(T.text2).lineLimit(1)
+                            }
+                            Spacer()
+                            Text(zoneTime(app.today, z.tz)).foregroundStyle(T.text2)
+                        }
                     }
                 }
                 .onDelete { Zones.list.remove(atOffsets: $0); changed() }
                 .onMove { Zones.list.move(fromOffsets: $0, toOffset: $1); changed() }
                 if Zones.list.count < Zones.most {
-                    HStack {
-                        TextField("Add a city", text: $city).submitLabel(.done).onSubmit(add)
-                        if finding { ProgressView() } else if !city.isEmpty { Button("Add", action: add) }
-                    }
+                    Button { searching = .zone } label: { Label("Add a city", systemImage: "plus.circle.fill").fontWeight(.medium) }
                 }
-            } header: { Text("Time zones") } footer: { Text(note ?? "Tap a city's name to give it a nickname. Swipe left to remove, or tap Edit to reorder. Up to \(Zones.most) places. The Mac's sidebar card choice stays on the Mac.") }
+            } header: { Text("Other time zones") } footer: { Text("Up to \(Zones.most) cities.") }
         }
         .navigationTitle("Time & weather")
         .toolbar { if Zones.list.count > 1 { EditButton() } }
-        .onDisappear(perform: changed)
+        .sheet(item: $searching) { CitySearch(purpose: $0) { changed() } }
+        .alert(naming.map { "Nickname for \($0.city)" } ?? "", isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
+            TextField(naming?.city ?? "", text: $nick)
+            Button("Save") { setNick(nick) }
+            Button("Remove the city", role: .destructive) { if let z = naming { Zones.list.removeAll { $0.id == z.id }; changed() } }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 
     private func changed() { tick += 1; app.reload() }
 
-    /// nil = back to where the phone is.
-    private func pick(_ t: Town?) {
-        WeatherPrefs.town = t?.label ?? ""; WeatherPrefs.townGeo = t?.geo
-        town = WeatherPrefs.town; found = []; townNote = nil
-        changed()
+    private func setNick(_ v: String) {
+        guard let z = naming, let i = Zones.list.firstIndex(where: { $0.id == z.id }) else { return }
+        Zones.list[i].nick = v.trimmingCharacters(in: .whitespaces); changed()
     }
+}
 
-    private func add() {
-        let q = city.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty, !finding else { return }
-        finding = true
-        Task {
-            let z = await findZone(q)
-            finding = false
-            if let z { Zones.list.append(z); city = ""; note = nil; changed() } else { note = "No time zone found for \"\(q)\". Try the city's full name." }
+/// One search for both the weather town and a new time zone city: matches as you type, each with its time now.
+struct CitySearch: View {
+    enum Purpose: String, Identifiable { case town, zone; var id: String { rawValue } }
+    let purpose: Purpose
+    let done: () -> Void
+    @EnvironmentObject var app: PhoneState
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var typing: Bool
+    @State private var text = ""
+    @State private var found: [Town] = []
+    @State private var note: String?
+    @State private var busy = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(T.text2).accessibilityHidden(true)
+                        TextField("City", text: $text).focused($typing).submitLabel(.search).autocorrectionDisabled()
+                            .onSubmit { if let m = found.first { pick(m) } else { Task { await lookUp() } } }
+                        if busy { ProgressView() }
+                    }
+                }
+                if purpose == .town, !WeatherPrefs.town.isEmpty {
+                    Section { Button("Where I am") { WeatherPrefs.town = ""; WeatherPrefs.townGeo = nil; finish() } }
+                }
+                if !found.isEmpty {
+                    Section("Matches") {
+                        ForEach(found) { t in
+                            Button { pick(t) } label: {
+                                HStack {
+                                    let parts = t.label.components(separatedBy: ", ")
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(parts[0]).foregroundStyle(T.text)
+                                        if parts.count > 1 { Text(parts.dropFirst().joined(separator: ", ")).font(.footnote).foregroundStyle(T.text2) }
+                                    }
+                                    Spacer()
+                                    if let tz = t.tz { Text(zoneTime(app.today, tz)).foregroundStyle(T.text2) }
+                                }
+                            }
+                        }
+                    }
+                } else if let note { Section { Text(note).foregroundStyle(T.text2) } }
+            }
+            .navigationTitle(purpose == .town ? "Weather town" : "Add a city")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .onAppear { typing = true }
+            .task(id: text) {
+                let t = text.trimmingCharacters(in: .whitespaces)
+                guard !t.isEmpty, !WeatherStore.sample else { found = []; note = nil; return }  // the pictures never reach the network
+                try? await Task.sleep(for: .milliseconds(300))  // wait for a pause in the typing
+                guard !Task.isCancelled else { return }
+                let list = await searchTowns(t)
+                guard !Task.isCancelled else { return }  // the text changed while this search ran
+                found = purpose == .zone ? list.filter { $0.tz != nil } : list
+                note = found.isEmpty ? "No city called \u{201C}\(t)\u{201D} found. Try another spelling." : nil
+            }
         }
     }
 
-    private func zoneTime(_ d: Date, _ tz: String) -> String {
-        let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none; f.timeZone = TimeZone(identifier: tz); return f.string(from: d)
+    private func pick(_ t: Town) {
+        switch purpose {
+        case .town: WeatherPrefs.town = t.label; WeatherPrefs.townGeo = t.geo
+        case .zone:
+            guard let tz = t.tz, Zones.list.count < Zones.most else { return }
+            let parts = t.label.components(separatedBy: ", ")  // "London, England, United Kingdom" is kept as "London, United Kingdom"
+            Zones.list.append(Zone(tz: tz, place: parts.count > 2 ? [parts[0], parts.last!].joined(separator: ", ") : t.label))
+        }
+        finish()
     }
+
+    /// Return with no match yet: Apple Maps, as before, for a time zone; a weather town needs a pick from the list.
+    private func lookUp() async {
+        let q = text.trimmingCharacters(in: .whitespaces)
+        guard purpose == .zone, !q.isEmpty, !busy else { return }
+        busy = true; defer { busy = false }
+        if let z = await findZone(q), Zones.list.count < Zones.most { Zones.list.append(z); finish() }
+        else { note = "No time zone found for \u{201C}\(q)\u{201D}. Try the city's full name." }
+    }
+
+    private func finish() { done(); dismiss() }
+}
+
+private func zoneTime(_ d: Date, _ tz: String) -> String {
+    let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none; f.timeZone = TimeZone(identifier: tz); return f.string(from: d)
 }
 
 struct UnlockView: View {

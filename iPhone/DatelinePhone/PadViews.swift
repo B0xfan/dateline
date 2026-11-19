@@ -245,19 +245,3 @@ struct CalColumn: View {
 private struct ColumnLabel: ViewModifier {
     func body(content: Content) -> some View { content.font(.caption.weight(.semibold)).tracking(0.5).foregroundStyle(T.text2).padding(.bottom, 4) }
 }
-
-/// The typing strip under the iPad's calendar: return opens the add sheet with what was typed, as on the Mac.
-/// A solid strip with a line above, not a floating box, so the hint never reads as an event (John 2026-11-19).
-struct AddBar: View {
-    @EnvironmentObject var app: PhoneState
-    @State private var text = ""
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "plus.circle.fill").foregroundStyle(T.tint).accessibilityHidden(true)
-            TextField("Type a new event, for example: Lunch Friday 1pm", text: $text).submitLabel(.done)
-                .onSubmit { let t = text.trimmingCharacters(in: .whitespaces); guard !t.isEmpty else { return }; app.adding = t; text = "" }
-        }
-        .padding(.horizontal, 20).frame(minHeight: 52)
-        .background(T.bg).overlay(alignment: .top) { Rectangle().fill(T.line).frame(height: 0.5) }
-    }
-}
