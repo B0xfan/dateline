@@ -27,6 +27,7 @@ enum Demo {
         sampleToday = today
         Here.shared.spot = tamarindo  // the mockups' sunrise and weather; never the phone's location
         WeatherStore.sample = true  // made-up weather, never the network
+        MacSeen.sample = cal.date(bySettingHour: 6, minute: 41, second: 0, of: Date())  // "Your Mac": opened this morning (the real day, which the relative "today" reads)
         let app = PhoneState(store: Store(sample: true), today: today, sample: true)
         if let s = app.store.sets.first(where: { $0.name == "Family" }) { app.store.use(s) }
         for it in app.store.between(addDays(today, -7), addDays(today, 14)) where it.geo != nil { app.drive[it.id] = 25 }  // made-up drive times, never Apple Maps

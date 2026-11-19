@@ -476,3 +476,16 @@ extension Store {
     print("sync size: 500 events with formatted notes = \(size / 1024) KB of iCloud's 1024 KB")
     expect(size < 450_000, "sync: 500 formatted notes fit in half of iCloud's 1 MB (\(size / 1024) KB)")
 }
+
+/// When Dateline for Mac was last opened, as a note in the person's own iCloud: the iPhone and iPad show "Your Mac" from it (John 2026-11-19).
+/// Only Mac copies from the update after 2026-11-19 write it, so an older Mac reads as not installed until it updates.
+@MainActor public enum MacSeen {
+    static let key = "mac.lastOpened"
+    public static var sample: Date?  // the pictures; set there, so they never read the real iCloud
+    public static func stamp() { NSUbiquitousKeyValueStore.default.set(Date().timeIntervalSince1970, forKey: key) }
+    public static var last: Date? {
+        if let sample { return sample }
+        let t = NSUbiquitousKeyValueStore.default.double(forKey: key)
+        return t > 0 ? Date(timeIntervalSince1970: t) : nil
+    }
+}

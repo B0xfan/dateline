@@ -18,17 +18,38 @@ struct SettingsView: View {
                     link("accounts", "person.crop.circle.fill", Palette.work, "Accounts", "\(Set(store.calendars.map(\.account)).count)")
                     link("sets", "square.stack.fill", Palette.family, "Calendar sets", "\(store.sets.count)")
                     link("look", "paintbrush.fill", Palette.tags[5], "Look", Look.appearance == "Match Mac" ? "Auto" : Look.appearance)
-                    link("week", "calendar", Palette.tags[7], "Week", weekSummary)
+                    link("week", "calendar", Palette.tags[7], "Week", Self.weekSummary)
                     link("alerts", "bell.fill", Palette.tags[3], "Alerts", Alerts.soundName("events"))
                     link("weather", "cloud.sun.fill", Palette.personal, "Time & weather", WeatherPrefs.fahrenheit ? "°F" : "°C")
                 } header: { Text("Same as the Mac's settings tabs") }
-                Section {
-                    Toggle("Emoji, colors, tags, notes, sets", isOn: $sync)
-                        .onChange(of: sync) { _, on in if on { store.syncNow() } }
-                    // Nothing else tells an iPhone buyer the Mac app exists (John 2026-11-09).
-                    Link(destination: URL(string: "https://dateline.app")!) { line("laptopcomputer", .gray, "Dateline for Mac", "dateline.app") }
-                } header: { Text("Sync with your Mac") } footer: {
-                    Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "Through your own iCloud. Look and °F or °C you change here change on the Mac too.\n\nGet Dateline for Mac at dateline.app. Buying here unlocks it too, through the same iCloud.\n\nMac only, not on the \(thisDevice): menu bar icon, Quick add shortcut key, Assistant for AI apps, A4 tasks, Check for Updates.")
+                // Approved mockup "Your Mac" (John 2026-11-19): what shows depends on whether the Mac app has been opened.
+                if let mac = MacSeen.last {
+                    Section {
+                        HStack(spacing: 12) {
+                            Image(systemName: "laptopcomputer").font(.footnote.weight(.semibold)).foregroundStyle(.white).frame(width: 28, height: 28).background(.gray, in: RoundedRectangle(cornerRadius: 7)).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Dateline is on your Mac").foregroundStyle(T.text)
+                                Text("Last opened " + openedText(mac)).font(.footnote).foregroundStyle(T.text2)
+                            }
+                        }.font(.callout)
+                        Toggle(isOn: $sync) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Keep in step with the Mac")
+                                Text("Emoji, colors, tags, notes and calendar sets").font(.footnote).foregroundStyle(T.text2)
+                            }
+                        }.onChange(of: sync) { _, on in if on { store.syncNow() } }
+                    } header: { Text("Your Mac") } footer: {
+                        Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "Changes go through your own iCloud. Look and °F or °C change on both.")
+                    }
+                } else {
+                    Section {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Dateline for Mac is included").foregroundStyle(T.text)
+                            Text("Your purchase here unlocks the Mac app too. It adds a menu bar calendar, a quick add shortcut key and A4 tasks.").font(.footnote).foregroundStyle(T.text2)
+                        }.font(.callout).padding(.vertical, 2)
+                        // Nothing else tells an iPhone or iPad buyer the Mac app exists (John 2026-11-09).
+                        Link(destination: URL(string: "https://dateline.app")!) { line("laptopcomputer", .gray, "Download for Mac", "dateline.app") }
+                    } header: { Text("Your Mac") } footer: { Text("The Mac app comes from the website, not the App Store.") }
                 }
                 Section("About") {
                     let info = Bundle.main.infoDictionary ?? [:]
@@ -56,7 +77,14 @@ struct SettingsView: View {
         }
     }
 
-    private var weekSummary: String {
+    /// "today at 6:41 AM", "yesterday at 9:02 PM", "Nov 12, 2026 at 8:15 AM".
+    private func openedText(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; f.doesRelativeDateFormatting = true
+        let s = f.string(from: d)
+        return Calendar.current.isDateInToday(d) || Calendar.current.isDateInYesterday(d) ? s.prefix(1).lowercased() + s.dropFirst() : s
+    }
+
+    static var weekSummary: String {
         let all = (0..<7).map { (WorkWeek.firstWeekday - 1 + $0) % 7 + 1 }, at = all.indices.filter { WorkWeek.days.contains(all[$0]) }
         guard let a = at.first, let b = at.last else { return "No days" }
         let names = at.map { cal.shortWeekdaySymbols[all[$0] - 1] }
@@ -294,18 +322,22 @@ struct WeekPage: View {
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Working days")
-                    HStack(spacing: 6) {
+                    // Approved iPad board, option A (John 2026-11-19): seven equal buttons with short names, so the two S and T days never mix up; off days are outlines.
+                    HStack(spacing: app.wide ? 8 : 6) {
                         ForEach(order, id: \.self) { wd in
                             let on = WorkWeek.days.contains(wd)
                             Button { if on { WorkWeek.days.remove(wd) } else { WorkWeek.days.insert(wd) }; changed() } label: {
-                                Text(String(cal.veryShortWeekdaySymbols[wd - 1])).font(.callout.weight(on ? .semibold : .regular))
-                                    .foregroundStyle(on ? .white : T.text2).frame(maxWidth: .infinity, minHeight: 40)
-                                    .background(on ? T.tint : T.bg, in: RoundedRectangle(cornerRadius: 10))
+                                Text(cal.shortWeekdaySymbols[wd - 1]).font((app.wide ? Font.body : .callout).weight(on ? .semibold : .medium))
+                                    .lineLimit(1).minimumScaleFactor(0.7)
+                                    .foregroundStyle(on ? .white : T.text2).frame(maxWidth: .infinity, minHeight: app.wide ? 48 : 40)
+                                    .background(on ? T.tint : T.bg, in: RoundedRectangle(cornerRadius: app.wide ? 12 : 10))
+                                    .overlay { RoundedRectangle(cornerRadius: app.wide ? 12 : 10).strokeBorder(on ? T.tint : T.line, lineWidth: 1.5) }
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(cal.weekdaySymbols[wd - 1]).accessibilityAddTraits(on ? .isSelected : [])
                         }
                     }
+                    Text(SettingsView.weekSummary).font(.footnote).foregroundStyle(T.text2)
                 }.padding(.vertical, 4)
                 HStack {
                     Text("Working hours")

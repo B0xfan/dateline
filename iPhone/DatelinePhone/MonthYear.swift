@@ -191,6 +191,7 @@ struct YearView: View {
     var body: some View {
         let y = cal.dateInterval(of: .year, for: app.anchor)!
         let busy = dayCalendars(store.items.filter { !store.hidden.contains($0.calendarID) }, in: y)
+        if app.wide { PadYear(start: y.start, busy: busy) } else {
         ScrollView {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: 3), alignment: .leading, spacing: 18) {
                 ForEach(0..<12, id: \.self) { m in mini(cal.date(byAdding: .month, value: m, to: y.start)!, busy: busy) }
@@ -202,6 +203,7 @@ struct YearView: View {
             }
             .font(.caption).foregroundStyle(T.text2).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 20)
+        }
         }
     }
 
@@ -227,5 +229,59 @@ struct YearView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(dateText(first, "MMMM"))
+    }
+}
+
+/// The iPad's year (approved iPad board, John 2026-11-19): 4 by 3 months, weekday letters, a dot under each day with events, today circled.
+/// A day opens that day; a month's name opens the month.
+private struct PadYear: View {
+    @EnvironmentObject var app: PhoneState
+    let start: Date
+    let busy: [Date: [String]]
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 40, alignment: .top), count: 4), alignment: .leading, spacing: 18) {
+                ForEach(0..<12, id: \.self) { m in month(cal.date(byAdding: .month, value: m, to: start)!) }
+            }
+            .padding(.horizontal, 40).padding(.vertical, 18)
+        }
+    }
+
+    private func month(_ first: Date) -> some View {
+        let n = cal.range(of: .day, in: .month, for: first)!.count
+        let blanks = (cal.component(.weekday, from: first) - WorkWeek.firstWeekday + 7) % 7
+        let order = (0..<7).map { (WorkWeek.firstWeekday - 1 + $0) % 7 }  // weekday indexes, 0 = Sunday
+        let now = cal.isDate(first, equalTo: app.today, toGranularity: .month)
+        let cols = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
+        return VStack(alignment: .leading, spacing: 4) {
+            Button { app.anchor = first; app.mode = .month } label: {
+                Text(dateText(first, "MMMM")).font(.headline).foregroundStyle(now ? T.accent : T.text)
+            }
+            .buttonStyle(.plain)
+            LazyVGrid(columns: cols, spacing: 0) {
+                ForEach(order, id: \.self) { w in Text(cal.veryShortWeekdaySymbols[w]).font(.caption.weight(.semibold)).foregroundStyle(T.text2).accessibilityHidden(true) }
+            }
+            LazyVGrid(columns: cols, spacing: 2) {
+                ForEach(0..<(blanks + n), id: \.self) { i in
+                    if i < blanks { Color.clear.frame(height: 34) } else { day(addDays(first, i - blanks), i - blanks + 1) }
+                }
+            }
+        }
+    }
+
+    private func day(_ d: Date, _ num: Int) -> some View {
+        let today = cal.isDate(d, inSameDayAs: app.today), weekend = cal.isDateInWeekend(d), has = busy[d] != nil
+        return Button { app.anchor = d; app.mode = .day } label: {
+            VStack(spacing: 2) {
+                Text("\(num)").font(.subheadline.weight(today ? .bold : .regular)).monospacedDigit()
+                    .foregroundStyle(today ? .white : weekend ? T.text2 : T.text)
+                    .frame(width: 24, height: 24).background(today ? T.accent : .clear, in: Circle())
+                Circle().fill(has && !today ? T.tint : .clear).frame(width: 5, height: 5)
+            }
+            .frame(maxWidth: .infinity, minHeight: 34, alignment: .top).padding(.top, 3).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(dateText(d, "EEEE, MMMM d") + (has ? ", has events" : ""))
     }
 }

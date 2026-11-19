@@ -187,8 +187,9 @@ public final class Store: ObservableObject {
         requestReminders()
         reloadA4()
         #if os(macOS)  // the iPhone has no A4 vault to re-read when the app comes forward
+        MacSeen.stamp()
         a4Observer = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
-            Task { @MainActor in self.reloadA4() }
+            Task { @MainActor in self.reloadA4(); MacSeen.stamp() }
         }
         #endif
     }
