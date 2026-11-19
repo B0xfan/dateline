@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     @ObservedObject private var license = License.shared
+    @State private var macTick = 0
     @AppStorage("syncExtras") private var sync = true  // step 2: Store.syncOn reads it; the Mac has no switch, so it syncs always
 
     var body: some View {
@@ -23,6 +24,7 @@ struct SettingsView: View {
                     link("weather", "cloud.sun.fill", Palette.personal, "Time & weather", WeatherPrefs.fahrenheit ? "°F" : "°C")
                 } header: { Text("Same as the Mac's settings tabs") }
                 // Approved mockup "Your Mac" (John 2026-11-19): what shows depends on whether the Mac app has been opened.
+                let _ = macTick
                 if let mac = MacSeen.last {
                     Section {
                         HStack(spacing: 12) {
@@ -32,12 +34,7 @@ struct SettingsView: View {
                                 Text("Last opened " + openedText(mac)).font(.footnote).foregroundStyle(T.text2)
                             }
                         }.font(.callout)
-                        Toggle(isOn: $sync) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Keep in step with the Mac")
-                                Text("Emoji, colors, tags, notes and calendar sets").font(.footnote).foregroundStyle(T.text2)
-                            }
-                        }.onChange(of: sync) { _, on in if on { store.syncNow() } }
+                        syncToggle
                     } header: { Text("Your Mac") } footer: {
                         Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "Changes go through your own iCloud. Look and °F or °C change on both.")
                     }
@@ -49,7 +46,8 @@ struct SettingsView: View {
                         }.font(.callout).padding(.vertical, 2)
                         // Nothing else tells an iPhone or iPad buyer the Mac app exists (John 2026-11-09).
                         Link(destination: URL(string: "https://dateline.app")!) { line("laptopcomputer", .gray, "Download for Mac", "dateline.app") }
-                    } header: { Text("Your Mac") } footer: { Text("The Mac app comes from the website, not the App Store.") }
+                        syncToggle  // a Mac from before the last-opened note still syncs, so the switch stays here too
+                    } header: { Text("Your Mac") } footer: { Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "The Mac app comes from the website, not the App Store.") }
                 }
                 Section("About") {
                     let info = Bundle.main.infoDictionary ?? [:]
@@ -57,6 +55,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .onReceive(NotificationCenter.default.publisher(for: NSUbiquitousKeyValueStore.didChangeExternallyNotification)) { _ in macTick += 1 }  // the Mac's last-opened note arrived
             .navigationDestination(for: String.self) { page in
                 Group {
                     switch page {
@@ -82,6 +81,15 @@ struct SettingsView: View {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; f.doesRelativeDateFormatting = true
         let s = f.string(from: d)
         return Calendar.current.isDateInToday(d) || Calendar.current.isDateInYesterday(d) ? s.prefix(1).lowercased() + s.dropFirst() : s
+    }
+
+    private var syncToggle: some View {
+        Toggle(isOn: $sync) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Keep in step with the Mac")
+                Text("Emoji, colors, tags, notes and calendar sets").font(.footnote).foregroundStyle(T.text2)
+            }
+        }.onChange(of: sync) { _, on in if on { store.syncNow() } }
     }
 
     static var weekSummary: String {
@@ -436,8 +444,9 @@ struct WeatherPage: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(z.nick.isEmpty ? z.city : z.nick).foregroundStyle(T.text)  // the nickname shows in place of the city, as on the Mac
-                                Text(z.nick.isEmpty ? String(z.place.dropFirst(z.city.count + 2)) : z.place)  // "London" over "United Kingdom"; "Mom" over "Chicago, United States"
-                                    .font(.footnote).foregroundStyle(T.text2).lineLimit(1)
+                                let rest = z.place.hasPrefix(z.city + ", ") ? String(z.place.dropFirst(z.city.count + 2)) : ""
+                                if !(z.nick.isEmpty ? rest : z.place).isEmpty { Text(z.nick.isEmpty ? rest : z.place)  // "London" over "United Kingdom"; "Mom" over "Chicago, United States"
+                                    .font(.footnote).foregroundStyle(T.text2).lineLimit(1) }
                             }
                             Spacer()
                             Text(zoneTime(app.today, z.tz)).foregroundStyle(T.text2)
@@ -457,7 +466,6 @@ struct WeatherPage: View {
         .alert(naming.map { "Nickname for \($0.city)" } ?? "", isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
             TextField(naming?.city ?? "", text: $nick)
             Button("Save") { setNick(nick) }
-            Button("Remove the city", role: .destructive) { if let z = naming { Zones.list.removeAll { $0.id == z.id }; changed() } }
             Button("Cancel", role: .cancel) {}
         }
     }
@@ -480,6 +488,7 @@ struct CitySearch: View {
     @FocusState private var typing: Bool
     @State private var text = ""
     @State private var found: [Town] = []
+    @State private var foundFor = ""  // the text the matches are for, so return never takes a match for older text
     @State private var note: String?
     @State private var busy = false
 
@@ -490,7 +499,7 @@ struct CitySearch: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass").foregroundStyle(T.text2).accessibilityHidden(true)
                         TextField("City", text: $text).focused($typing).submitLabel(.search).autocorrectionDisabled()
-                            .onSubmit { if let m = found.first { pick(m) } else { Task { await lookUp() } } }
+                            .onSubmit { if foundFor == text.trimmingCharacters(in: .whitespaces), let m = found.first { pick(m) } else { Task { await lookUp() } } }
                         if busy { ProgressView() }
                     }
                 }
@@ -526,7 +535,7 @@ struct CitySearch: View {
                 guard !Task.isCancelled else { return }
                 let list = await searchTowns(t)
                 guard !Task.isCancelled else { return }  // the text changed while this search ran
-                found = purpose == .zone ? list.filter { $0.tz != nil } : list
+                found = purpose == .zone ? list.filter { $0.tz != nil } : list; foundFor = t
                 note = found.isEmpty ? "No city called \u{201C}\(t)\u{201D} found. Try another spelling." : nil
             }
         }
@@ -548,7 +557,7 @@ struct CitySearch: View {
         let q = text.trimmingCharacters(in: .whitespaces)
         guard purpose == .zone, !q.isEmpty, !busy else { return }
         busy = true; defer { busy = false }
-        if let z = await findZone(q), Zones.list.count < Zones.most { Zones.list.append(z); finish() }
+        if let z = await findZone(q) { Zones.list.append(z); finish() }
         else { note = "No time zone found for \u{201C}\(q)\u{201D}. Try the city's full name." }
     }
 
