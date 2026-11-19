@@ -239,12 +239,19 @@ private struct PadYear: View {
     let start: Date
     let busy: [Date: [String]]
 
+    @State private var row: CGFloat = 34  // a week row's height: the three rows of months fill the screen, never less than 34
+
     var body: some View {
-        ScrollView {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 40, alignment: .top), count: 4), alignment: .leading, spacing: 18) {
-                ForEach(0..<12, id: \.self) { m in month(cal.date(byAdding: .month, value: m, to: start)!) }
+        GeometryReader { g in
+            ScrollView {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 40, alignment: .top), count: 4), alignment: .leading, spacing: 18) {
+                    ForEach(0..<12, id: \.self) { m in month(cal.date(byAdding: .month, value: m, to: start)!) }
+                }
+                .padding(.horizontal, 40).padding(.vertical, 18)
             }
-            .padding(.horizontal, 40).padding(.vertical, 18)
+            // 3 rows of months, each a name and weekday line (about 48) and 6 week rows (each the row plus 3 above and 2 between); 36 padding, 36 between the rows.
+            .onAppear { row = max(34, (g.size.height - 72 - 3 * 48) / 18 - 5) }
+            .onChange(of: g.size.height) { _, h in row = max(34, (h - 72 - 3 * 48) / 18 - 5) }
         }
     }
 
@@ -264,7 +271,7 @@ private struct PadYear: View {
             }
             LazyVGrid(columns: cols, spacing: 2) {
                 ForEach(0..<(blanks + n), id: \.self) { i in
-                    if i < blanks { Color.clear.frame(height: 34) } else { day(addDays(first, i - blanks), i - blanks + 1) }
+                    if i < blanks { Color.clear.frame(height: row) } else { day(addDays(first, i - blanks), i - blanks + 1) }
                 }
             }
         }
@@ -279,7 +286,7 @@ private struct PadYear: View {
                     .frame(width: 24, height: 24).background(today ? T.accent : .clear, in: Circle())
                 Circle().fill(has && !today ? T.tint : .clear).frame(width: 5, height: 5)
             }
-            .frame(maxWidth: .infinity, minHeight: 34, alignment: .top).padding(.top, 3).contentShape(Rectangle())
+            .frame(maxWidth: .infinity, minHeight: row, alignment: .top).padding(.top, 3).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(dateText(d, "EEEE, MMMM d") + (has ? ", has events" : ""))
