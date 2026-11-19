@@ -21,6 +21,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PBX = os.path.join(ROOT, "iPhone/Dateline.xcodeproj/project.pbxproj")
 API = "https://api.appstoreconnect.apple.com/v1"
 PAD_GROUP = "IPAD_13_PROFILE"  # Apple's 13 inch iPad screenshot group (appAssetLibraryRefData)
+TOOL = os.path.expanduser("~/Projects/tools/app-store-compliance")  # github.com/mjmirza/app-store-compliance
+TOOL_PIN = "d2156bab9d7189835631c0a99adcc2479d32138d"  # 2.4.0, read before use; move only after reading what changed
+# Findings checked against the code and found not to apply, by rule and the file the scan names (None: it names none).
+# John 2026-11-19: run the check before every submission.
+REVIEWED = {
+    ("APPLE-3.1.1-EXTERNAL-PAYMENT", "DatelinePhone/SettingsView.swift"): "the Working hours setting; Pro is a StoreKit purchase",
+    ("APPLE-5.1.1-MISSING-PRIVACY-POLICY", None): "the privacy policy is linked on the App Store page and dateline.app",
+    ("BOTH-PLACEHOLDER", "DatelinePhone/Demo.swift"): "sample data for the store pictures and self-tests, never shown to people",
+}
 PAD_SHOTS = ["week", "week-sideways", "day", "month", "tasks", "add", "details", "settings"]  # light pictures, store order
 
 
@@ -148,6 +157,33 @@ def raise_and_push(text, version):
     print(f"Project raised to {nxt} and pushed.")
 
 
+def compliance():
+    """The App Store compliance scan on the iPhone folder; stops on a critical or high finding nobody has checked."""
+    guard = os.path.join(TOOL, "agent-os/hooks/app-store-compliance-guard.sh")
+    if not os.path.exists(guard):
+        sys.exit(f"The compliance check is missing: git clone https://github.com/mjmirza/app-store-compliance {TOOL}")
+    git = ["git", "-C", TOOL]
+    if subprocess.run(git + ["rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip() != TOOL_PIN:
+        subprocess.run(git + ["fetch", "-q", "origin"], check=False)
+        subprocess.run(git + ["checkout", "-q", TOOL_PIN], check=True)  # someone else's code: only the copy that was read runs
+    run = subprocess.run(["bash", guard, os.path.join(ROOT, "iPhone")], capture_output=True, text=True)
+    out = run.stdout + run.stderr
+    if run.returncode not in (0, 2) or not re.search(r"^(CLEAR|BLOCKED)\.", out, re.M):  # 0 clear, 2 blocked, anything else: not checked
+        sys.exit(f"The compliance check did not finish (exit {run.returncode}):\n" + out[-1500:])
+    # A finding line, then its "file." line when it has one; the dated law reminders ("in 13 days.") don't match.
+    found = [(m[1], m[2], m[3].rsplit(":", 1)[0] if m[3] else None) for m in
+             re.finditer(r"^\s*\[(CRITICAL|HIGH)\]\s+([A-Z0-9][A-Z0-9.-]+)\s.*\n(?:\s*file\. (\S+))?", out, re.M)]
+    if run.returncode == 2 and not any(level == "CRITICAL" for level, _, _ in found):
+        sys.exit("The compliance check says blocked but no critical line was read; its output format changed:\n" + out[-1500:])
+    for level, rule, path in found:
+        why = REVIEWED.get((rule, path))
+        print(f"  {level} {rule} {path or ''}: " + (f"checked before ({why})" if why else "NEW"))
+    new = [f"{rule} {path or ''}".strip() for _, rule, path in found if (rule, path) not in REVIEWED]
+    if new:
+        sys.exit("The compliance check found something to fix before Apple sees it: " + ", ".join(new))
+    print("Compliance check: clear.")
+
+
 def main():
     assert next_version("1.7") == "1.8" and next_version("1.9") == "1.10" and next_version("2.0.1") == "2.1"
     if len(sys.argv) < 2 or not sys.argv[1].strip():
@@ -163,6 +199,7 @@ def main():
     if len(found) != 1:
         sys.exit(f"The project's targets disagree on the version: {sorted(found)}")
     version = found.pop()
+    compliance()
 
     # A version already in review or on sale is closed: submitting it again would fail.
     def versions(**f):

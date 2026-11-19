@@ -35,6 +35,9 @@
 		D100000000000000000000D3 /* Demo.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000000000000006F /* Demo.swift */; };
 		D1000000000000000000000B /* DatelineCore in Frameworks */ = {isa = PBXBuildFile; productRef = D1000000000000000000000D /* DatelineCore */; };
 		D100000000000000000000D4 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000070 /* AppIcon.icon */; };
+		D50000000000000000000002 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D50000000000000000000001 /* PrivacyInfo.xcprivacy */; };
+		D50000000000000000000003 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D50000000000000000000001 /* PrivacyInfo.xcprivacy */; };
+		D50000000000000000000004 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D50000000000000000000005 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -67,6 +70,8 @@
 		D10000000000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D10000000000000000000002 /* DatelinePhone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DatelinePhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D10000000000000000000070 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = AppIcon.icon; path = ../Icon/AppIcon.icon; sourceTree = SOURCE_ROOT; };
+		D50000000000000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = SOURCE_ROOT; };
+		D50000000000000000000005 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -202,6 +207,7 @@
 				D100000000000000000000E2 /* WatchLink.swift */,
 				D10000000000000000000001 /* Info.plist */,
 				D10000000000000000000070 /* AppIcon.icon */,
+				D50000000000000000000001 /* PrivacyInfo.xcprivacy */,
 			);
 			path = DatelinePhone;
 			sourceTree = "<group>";
@@ -234,6 +240,7 @@
 				D30000000000000000000012 /* Widgets.swift */,
 				D30000000000000000000014 /* Info.plist */,
 				D30000000000000000000015 /* DatelineWatchWidgets.entitlements */,
+				D50000000000000000000005 /* PrivacyInfo.xcprivacy */,
 			);
 			path = DatelineWatchWidgets;
 			sourceTree = "<group>";
@@ -370,6 +377,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D100000000000000000000D4 /* AppIcon.icon in Resources */,
+				D50000000000000000000002 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -378,6 +386,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D20000000000000000000004 /* AppIcon.icon in Resources */,
+				D50000000000000000000003 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -385,6 +394,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D50000000000000000000004 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
