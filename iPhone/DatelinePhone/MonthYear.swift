@@ -250,9 +250,14 @@ private struct PadYear: View {
                 .padding(.horizontal, 40).padding(.vertical, 18)
             }
             // 3 rows of months, each a name and weekday line (about 48) and 6 week rows (each the row plus 3 above and 2 between); 36 padding, 36 between the rows.
-            .onAppear { row = max(34, (g.size.height - 72 - 3 * 48) / 18 - 5) }
-            .onChange(of: g.size.height) { _, h in row = max(34, (h - 72 - 3 * 48) / 18 - 5) }
+            .onAppear { row = Self.rowHeight(g.size.height) }
+            .onChange(of: g.size.height) { _, h in row = Self.rowHeight(h) }
         }
+    }
+
+    static func rowHeight(_ h: CGFloat) -> CGFloat {
+        let weeks: CGFloat = h - 72 - 3 * 48
+        return max(34, weeks / 18 - 5)
     }
 
     private func month(_ first: Date) -> some View {
