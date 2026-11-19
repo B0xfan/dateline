@@ -492,7 +492,8 @@ struct DayView: View {
         let d = app.anchor, items = store.shown(on: d), tasks = dayTasks(store, d, now: app.today), allDay = items.filter(\.allDay)
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(dateText(d, "EEEE, MMMM d")).font(.title2.bold()).lineLimit(2).accessibilityAddTraits(.isHeader)
+                // The iPad's title row already shows the date (John 2026-11-19), so only the summary stays there.
+                if !app.wide { Text(dateText(d, "EEEE, MMMM d")).font(.title2.bold()).lineLimit(2).accessibilityAddTraits(.isHeader) }
                 Text(summary(d, count: items.count)).font(.footnote).foregroundStyle(T.text2)
             }
             .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 8)

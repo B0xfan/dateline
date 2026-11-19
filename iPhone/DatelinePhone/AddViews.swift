@@ -146,7 +146,7 @@ struct EmailSheet: View {
                     SectionLabel("Dateline found")
                     Understood(p: find.parsed, calendar: app.calendarFor(find.parsed), emoji: find.emoji, alert: find.alert, unsure: find.unsure, whenNote: find.whenNote)
                     if !find.invite {
-                        Text("Read on this iPhone with Apple Intelligence. The email never leaves your phone.")
+                        Text("Read on this \(thisDevice) with Apple Intelligence. The email never leaves your \(thisDevice).")
                             .font(.footnote).foregroundStyle(T.text2).padding(.horizontal, 32).padding(.top, 14)
                     }
                 }

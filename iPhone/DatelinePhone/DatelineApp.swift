@@ -11,6 +11,9 @@ final class PhoneDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask { Self.pad ? .all : Self.turns ? .allButUpsideDown : .portrait }
 }
 
+/// "iPhone" or "iPad", for every text that names the device Dateline runs on.
+let thisDevice = PhoneDelegate.pad ? "iPad" : "iPhone"
+
 @main
 struct DatelineApp: App {
     @UIApplicationDelegateAdaptor(PhoneDelegate.self) private var delegate
@@ -52,10 +55,13 @@ struct DatelineApp: App {
     // shortcut: 30 midnights ahead (iOS holds 64 waiting); a phone that doesn't open Dateline for a month keeps the last number.
     static let ahead = 30
     private static var turn = 0  // the newest update wins: an older one still running stops at its next step
-    /// iOS has badges (or with `\.alertSetting`, the leave alerts' banners) off for Dateline (false while it hasn't asked yet).
-    static func isBlocked(_ k: KeyPath<UNNotificationSettings, UNNotificationSetting> = \.badgeSetting) async -> Bool {
+    /// iOS has badges off for Dateline (false while it hasn't asked yet).
+    /// Pass nil to ask only whether Dateline's notifications are off as a whole (leave alerts: John 2026-11-19 saw "off" with everything on).
+    static func isBlocked(_ k: KeyPath<UNNotificationSettings, UNNotificationSetting>? = \.badgeSetting) async -> Bool {
         let s = await UNUserNotificationCenter.current().notificationSettings()
-        return s.authorizationStatus != .notDetermined && (s.authorizationStatus == .denied || s[keyPath: k] != .enabled)
+        if s.authorizationStatus == .denied { return true }
+        guard let k, s.authorizationStatus != .notDetermined else { return false }
+        return s[keyPath: k] != .enabled
     }
     /// Today's number only, for leaving the app: the waiting midnights stay as they are.
     static func setToday() async {

@@ -28,7 +28,7 @@ struct SettingsView: View {
                     // Nothing else tells an iPhone buyer the Mac app exists (John 2026-11-09).
                     Link(destination: URL(string: "https://dateline.app")!) { line("laptopcomputer", .gray, "Dateline for Mac", "dateline.app") }
                 } header: { Text("Sync with your Mac") } footer: {
-                    Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "Through your own iCloud. Look and °F or °C you change here change on the Mac too.\n\nGet Dateline for Mac at dateline.app. Buying here unlocks it too, through the same iCloud.\n\nMac only, not on the phone: menu bar icon, Quick add shortcut key, Assistant for AI apps, A4 tasks, Check for Updates.")
+                    Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "Through your own iCloud. Look and °F or °C you change here change on the Mac too.\n\nGet Dateline for Mac at dateline.app. Buying here unlocks it too, through the same iCloud.\n\nMac only, not on the \(thisDevice): menu bar icon, Quick add shortcut key, Assistant for AI apps, A4 tasks, Check for Updates.")
                 }
                 Section("About") {
                     let info = Bundle.main.infoDictionary ?? [:]
@@ -111,10 +111,10 @@ struct AccountsPage: View {
             } footer: { Text("Tap an account to show or hide each of its calendars.") }
             Section {
                 NavigationLink(value: "subscribe") { Text("Subscribe to a calendar…").foregroundStyle(T.tint) }
-            } footer: { Text("A calendar from a web address (a school, a team, holidays), kept on this iPhone. You can't change its events.") }
+            } footer: { Text("A calendar from a web address (a school, a team, holidays), kept on this \(thisDevice). You can't change its events.") }
             Section {
-                Button("Add an account in iPhone Settings…") { openURL(UIApplication.openSettingsURLString) }
-            } footer: { Text("On the iPhone, accounts live in Settings › Apps › Calendar › Calendar Accounts. Dateline shows every calendar added there.") }
+                Button("Add an account in \(thisDevice) Settings…") { openURL(UIApplication.openSettingsURLString) }
+            } footer: { Text("On the \(thisDevice), accounts live in Settings › Apps › Calendar › Calendar Accounts. Dateline shows every calendar added there.") }
         }
         .navigationTitle("Accounts")
     }
@@ -152,13 +152,15 @@ struct SetsPage: View {
             Section {
                 Button { store.use(nil) } label: { pick("Everything", "\(store.calendars.count) calendars", on: active == nil && store.hidden.isEmpty) }.buttonStyle(.plain)
                 ForEach(store.sets) { s in
-                    HStack {
-                        Button { store.use(s) } label: { pick(s.name, "\(s.calendars.count) calendar\(s.calendars.count == 1 ? "" : "s")", on: active?.id == s.id) }.buttonStyle(.plain)
-                        Button { editing = s } label: { Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(T.text2.opacity(0.6)).frame(width: 44, height: 44) }
-                            .buttonStyle(.plain).accessibilityLabel("Edit \(s.name)")
-                    }
+                    // The whole row opens the set (John 2026-11-19); showing it is a button inside.
+                    Button { editing = s } label: {
+                        HStack(spacing: 0) {
+                            pick(s.name, "\(s.calendars.count) calendar\(s.calendars.count == 1 ? "" : "s")", on: active?.id == s.id)
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(T.text2.opacity(0.6)).frame(width: 44, height: 44)
+                        }.contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityHint("Opens the set to show, rename, change or delete it")
                 }
-            } header: { Text("Showing now") } footer: { Text("Tap a set to show only its calendars. Tap › to rename it, pick its calendars, or delete it. Sets are shared with your Mac.") }
+            } header: { Text("Showing now") } footer: { Text("Tap a set to show it, rename it, pick its calendars, or delete it. Sets are shared with your Mac.") }
         }
         .navigationTitle("Calendar sets")
         .toolbar { Button("New set") { editing = CalSet(name: "New set", calendars: store.calendars.filter { !store.hidden.contains($0.id) }.map(\.id)) } }
@@ -193,6 +195,9 @@ struct SetEditor: View {
                             HStack(spacing: 10) { Circle().fill(c.color).frame(width: 12, height: 12); Text(c.title); Text(c.account).font(.footnote).foregroundStyle(T.text2) }
                         }
                     }
+                }
+                if !isNew, store.activeSet?.id != draft.id, let saved = store.sets.first(where: { $0.id == draft.id }) {
+                    Section { Button("Show only this set's calendars") { store.use(saved); dismiss() } }
                 }
                 if !isNew {
                     Section { Button("Delete this set", role: .destructive) { store.deleteSet(draft.id); dismiss() } }
@@ -230,13 +235,22 @@ struct LookPage: View {
                 Picker("Font", selection: bind(Look.font) { Look.font = $0 }) { ForEach(Look.fonts, id: \.self) { Text($0) } }
                 Picker("How packed", selection: bind(Look.pack) { Look.pack = $0 }) { ForEach(Look.packs, id: \.self) { Text($0) } }
                 Picker("Hour height", selection: bind(Look.hour) { Look.hour = $0 }) { ForEach(Look.hours, id: \.self) { Text($0) } }
-            } footer: { Text("Text size on the phone follows the iPhone's own Text Size setting, so the Mac's Text size choice is not repeated here.") }
+            } footer: { Text("Text size here follows the \(thisDevice)'s own Text Size setting, so the Mac's Text size choice is not repeated here.") }
             Section {
-                HStack(spacing: 8) {
-                    RoundedRectangle(cornerRadius: 2).fill(Palette.work).frame(width: 4, height: 20 * Look.packFactor + 8)
-                    Text("Client call").fontWeight(.semibold); Text("10 AM").foregroundStyle(T.text2)
+                // Two hours of a day at the chosen hour height, so Font, How packed and Hour height all show (John 2026-11-19: the one-line preview was too small).
+                let h = Look.hourHeight
+                ZStack(alignment: .topLeading) {
+                    ForEach(0..<3) { i in
+                        HStack(alignment: .center, spacing: 8) {
+                            Text(["10 AM", "11 AM", "Noon"][i]).font(.caption).foregroundStyle(T.text2).frame(width: 48, alignment: .leading)
+                            Rectangle().fill(T.text2.opacity(0.2)).frame(height: 1)
+                        }.offset(y: CGFloat(i) * h - 7)
+                    }
+                    previewEvent("Client call", "10 to 11 AM · Zoom", Palette.work).frame(height: h - 2).offset(x: 56, y: 0)
+                    previewEvent("Lunch with Sam", "11:30 AM to 12 PM", Palette.tags[2]).frame(height: h / 2 - 2).offset(x: 56, y: h * 1.5)
                 }
-                .font(.system(size: 15, design: Look.design)).padding(.vertical, 4 * Look.packFactor)
+                .padding(.trailing, 56).frame(height: h * 2 + 8, alignment: .top).padding(.vertical, 8)
+                .accessibilityElement(children: .combine).accessibilityLabel("Preview: Client call 10 to 11 AM, Lunch with Sam 11:30 AM")
             } header: { Text("Preview") } footer: { Text("Shared with the Mac: change it here or there, both follow.") }
         }
         .navigationTitle("Look")
@@ -244,6 +258,20 @@ struct LookPage: View {
 
     private func bind(_ v: String, _ set: @escaping (String) -> Void) -> Binding<String> {
         Binding(get: { v }, set: { set($0); tick += 1; app.lookChanged(); store.syncNow() })
+    }
+
+    /// One event in the preview, drawn like the calendar's own event blocks.
+    private func previewEvent(_ title: String, _ time: String, _ c: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title).fontWeight(.semibold).lineLimit(1)
+            Text(time).foregroundStyle(T.text2).lineLimit(1)
+        }
+        .font(.system(.subheadline, design: Look.design)).foregroundStyle(T.text)
+        .padding(.leading, 10).padding(.trailing, 4).padding(.vertical, 4 * Look.packFactor)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(c.opacity(0.18))
+        .overlay(alignment: .leading) { Rectangle().fill(c).frame(width: 4) }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -262,7 +290,7 @@ struct WeekPage: View {
                     ForEach(PhoneState.Mode.allCases, id: \.self) { Text($0.rawValue).tag($0.rawValue) }
                 }
                 Picker("Week starts on", selection: Binding(get: { WorkWeek.start }, set: { WorkWeek.start = $0; changed() })) {
-                    ForEach(WorkWeek.starts, id: \.self) { Text($0 == "Match Mac" ? "Match iPhone" : $0) }
+                    ForEach(WorkWeek.starts, id: \.self) { Text($0 == "Match Mac" ? "Match " + thisDevice : $0) }
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Working days")
@@ -294,9 +322,9 @@ struct WeekPage: View {
                 Button { app.tab = .places } label: { line(nil, .clear, "Places and drive times", "") }.buttonStyle(.plain)
                 if leaveOff && WorkWeek.leave { Button("Open notification settings…") { openURL(UIApplication.openNotificationSettingsURLString) } }
             } header: { Text("Leave alerts") } footer: {
-                Text(leaveOff && WorkWeek.leave ? "Notifications are off for Dateline, so leave alerts can't show. Turn on Alerts in notification settings." : "Uses the phone's location for the drive time, the same places as the Mac.")
+                Text(leaveOff && WorkWeek.leave ? "Notifications are off for Dateline, so leave alerts can't show. Turn on Alerts in notification settings." : "Uses the \(thisDevice)'s location for the drive time, the same places as the Mac.")
             }
-            .task(id: phase) { if !app.sample, phase == .active { leaveOff = await DateBadge.isBlocked(\.alertSetting) } }  // again on coming back from iOS Settings
+            .task(id: phase) { if !app.sample, phase == .active { leaveOff = await DateBadge.isBlocked(nil) } }  // again on coming back from iOS Settings
         }
         .navigationTitle("Week")
     }
@@ -323,13 +351,13 @@ struct AlertsPage: View {
                 Toggle("Today's date on the icon", isOn: $badge)
                     .onChange(of: badge) { if app.sample { return }; DateBadge.on = badge; Task { blocked = !(await DateBadge.update(ask: true)) } }
             } footer: {
-                Text(blocked && badge ? "Badges are off for Dateline. Turn on Badges in notification settings to see the date." : "The number on Dateline's icon is today's date, as in the iPhone's own Calendar. It changes at midnight.")
+                Text(blocked && badge ? "Badges are off for Dateline. Turn on Badges in notification settings to see the date." : "The number on Dateline's icon is today's date, as in the \(thisDevice)'s own Calendar. It changes at midnight.")
             }
             .task(id: phase) { if badge, !app.sample, phase == .active { blocked = await DateBadge.isBlocked() } }  // again on coming back from iOS Settings; the app itself re-plans
             Section {
-                line(nil, .clear, "Event alerts", "iPhone Calendar", opens: false)
+                line(nil, .clear, "Event alerts", thisDevice + " Calendar", opens: false)
                 line(nil, .clear, "Mac sounds", Alerts.kinds.prefix(2).map { Alerts.soundName($0.0) }.joined(separator: ", "), opens: false)
-            } footer: { Text("Each event's alert time comes with the event, so the iPhone rings for it like any calendar alert. Sounds and banners follow the iPhone's own settings.") }
+            } footer: { Text("Each event's alert time comes with the event, so the \(thisDevice) rings for it like any calendar alert. Sounds and banners follow the \(thisDevice)'s own settings.") }
             Section {
                 Button("Open notification settings…") { openURL(UIApplication.openNotificationSettingsURLString) }
             } footer: { Text("The Mac's full screen alert and its sound choices stay on the Mac.") }
@@ -363,7 +391,7 @@ struct WeatherPage: View {
                 }
                 // Matches as you type, from Open-Meteo's free town search (as on the Mac).
                 ForEach(found) { t in Button(t.label) { pick(t) } }
-            } header: { Text("Weather") } footer: { Text((townNote.map { $0 + "\n\n" } ?? "") + "Leave the town empty to use where the phone is. Events with a place show the weather at that place. Weather data by Open-Meteo.com") }
+            } header: { Text("Weather") } footer: { Text((townNote.map { $0 + "\n\n" } ?? "") + "Leave the town empty to use where the \(thisDevice) is. Events with a place show the weather at that place. Weather data by Open-Meteo.com") }
             .task(id: town) {
                 guard !WeatherStore.sample else { return }  // the pictures never reach the network
                 let t = town.trimmingCharacters(in: .whitespaces)
@@ -479,7 +507,7 @@ struct UnlockView: View {
                             .font(.headline).foregroundStyle(.white).background(T.tint, in: RoundedRectangle(cornerRadius: 14)).disabled(busy).opacity(busy ? 0.6 : 1)
                         Text("Paid through the App Store. Price shown by Apple.").font(.footnote).foregroundStyle(T.text2).padding(.top, 6)
                     }
-                    Text("Already bought Dateline? It unlocks by itself on an iPhone signed in to the same Apple Account.").font(.footnote).foregroundStyle(T.text2).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).padding(.top, 14)  // wraps, never cut off
+                    Text("Already bought Dateline? It unlocks by itself on an \(thisDevice) signed in to the same Apple Account.").font(.footnote).foregroundStyle(T.text2).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).padding(.top, 14)  // wraps, never cut off
                     HStack(spacing: 24) {
                         Button("Restore purchase", action: restore).frame(minHeight: 44).disabled(busy)
                         Button("Not now") { dismiss() }.frame(minHeight: 44)
@@ -527,7 +555,7 @@ struct UnlockView: View {
         busy = true
         Task {
             await license.restore()
-            if case .bought = license.status { note = "Dateline is unlocked. Thank you!" } else { note = "No purchase found for this Apple Account. Bought Dateline for Mac? Enter your key on the Mac once and this iPhone unlocks by itself." }
+            if case .bought = license.status { note = "Dateline is unlocked. Thank you!" } else { note = "No purchase found for this Apple Account. Bought Dateline for Mac? Enter your key on the Mac once and this \(thisDevice) unlocks by itself." }
             busy = false
         }
     }
@@ -693,7 +721,7 @@ struct SubDetail: View {
             .onDisappear(perform: rename)
             .confirmationDialog("Remove \(s.name)?", isPresented: $removing, titleVisibility: .visible) {
                 Button("Remove", role: .destructive) { store.unsubscribe(id); dismiss() }
-            } message: { Text("Its events leave Dateline on this iPhone. You can subscribe again later.") }
+            } message: { Text("Its events leave Dateline on this \(thisDevice). You can subscribe again later.") }
         }
     }
 

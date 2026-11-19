@@ -121,7 +121,7 @@ struct PadCalHeader: View {
             }
         }
         .buttonStyle(.plain)
-        .padding(.leading, 20).padding(.trailing, 16).frame(minHeight: 56)
+        .padding(.leading, 20).padding(.trailing, 16).frame(minHeight: 64)
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .background(T.bg)
         .overlay(alignment: .bottom) { if app.mode != .week { Rectangle().fill(T.line).frame(height: 0.5) } }
@@ -130,7 +130,7 @@ struct PadCalHeader: View {
 
     private var daysPicker: some View {
         Picker("Days", selection: $app.weekDays) { ForEach([3, 5, 7], id: \.self) { Text("\($0)").tag($0) } }
-            .pickerStyle(.segmented).fixedSize().accessibilityLabel("Days shown")
+            .pickerStyle(.segmented).controlSize(.large).fixedSize().accessibilityLabel("Days shown")
     }
 
     // Quarter has no segment (it opens from the month, as on the phone), so none is lit while it shows.
@@ -138,7 +138,7 @@ struct PadCalHeader: View {
         Picker("View", selection: $app.mode) {
             ForEach([PhoneState.Mode.day, .week, .month, .year], id: \.self) { Text($0.rawValue).tag($0) }
         }
-        .pickerStyle(.segmented).fixedSize()
+        .pickerStyle(.segmented).controlSize(.large).fixedSize()
     }
 
     /// The Mac's titles: "October 26 to 30, 2026", "Oct 26 to Nov 1, 2026".
@@ -246,17 +246,18 @@ private struct ColumnLabel: ViewModifier {
     func body(content: Content) -> some View { content.font(.caption.weight(.semibold)).tracking(0.5).foregroundStyle(T.text2).padding(.bottom, 4) }
 }
 
-/// "Add: Dinner with Ana Friday 7pm" at the bottom of the iPad's calendar: return opens the add sheet with what was typed, as on the Mac.
+/// The typing strip under the iPad's calendar: return opens the add sheet with what was typed, as on the Mac.
+/// A solid strip with a line above, not a floating box, so the hint never reads as an event (John 2026-11-19).
 struct AddBar: View {
     @EnvironmentObject var app: PhoneState
     @State private var text = ""
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "plus.circle.fill").foregroundStyle(T.tint).accessibilityHidden(true)
-            TextField("Add: Dinner with Ana Friday 7pm", text: $text).submitLabel(.done)
+            TextField("Type a new event, for example: Lunch Friday 1pm", text: $text).submitLabel(.done)
                 .onSubmit { let t = text.trimmingCharacters(in: .whitespaces); guard !t.isEmpty else { return }; app.adding = t; text = "" }
         }
-        .padding(.horizontal, 16).frame(minHeight: 48).frame(maxWidth: 560)
-        .glass().padding(.horizontal, 16).padding(.bottom, 16)
+        .padding(.horizontal, 20).frame(minHeight: 52)
+        .background(T.bg).overlay(alignment: .top) { Rectangle().fill(T.line).frame(height: 0.5) }
     }
 }

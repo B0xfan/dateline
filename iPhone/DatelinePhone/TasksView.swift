@@ -162,7 +162,7 @@ struct TaskEditSheet: View {
                 Section {
                     Picker("Remind me", selection: $task.remind) { ForEach(Remind.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
                     if task.remind == .time {
-                        Text(task.timed ? "Your iPhone and Mac remind you at the due time." : "Add a time to the due date to get a reminder then.").font(.footnote).foregroundStyle(T.text2)
+                        Text(task.timed ? "Your \(thisDevice) and Mac remind you at the due time." : "Add a time to the due date to get a reminder then.").font(.footnote).foregroundStyle(T.text2)
                     } else {
                         TextField("Type a place or address", text: $placeText).submitLabel(.search).onSubmit { Task { _ = await find() } }
                         if finding { ProgressView() }
@@ -175,7 +175,7 @@ struct TaskEditSheet: View {
                         }.buttonStyle(.borderless)
                     }
                 } header: { Text("Remind me") } footer: {
-                    Text("Saved in Apple Reminders, so your Mac sees it too. A place reminder goes off on your iPhone when you get there.")
+                    Text("Saved in Apple Reminders, so your Mac sees it too. A place reminder goes off on your \(thisDevice) when you get there.")
                 }
                 Section("Notes") { TextEditor(text: $task.notes).frame(minHeight: 110).accessibilityLabel("Notes") }
                 Section { Button("Delete task", role: .destructive) { confirmDelete = true } }

@@ -6,7 +6,8 @@ import FoundationModels
 #endif
 
 #if os(iOS)
-private let device = "iPhone"
+import UIKit
+private let device = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
 #else
 private let device = "Mac"
 #endif
@@ -255,7 +256,7 @@ public func steering(_ m: Mail) -> Bool {
         } catch { off.problem = "Apple's built-in AI couldn't read this email."; return off }
     }
     #endif
-    off.problem = "Reading emails needs Apple Intelligence (\(device == "Mac" ? "macOS" : "iOS") 26 or later)."
+    off.problem = "Reading emails needs Apple Intelligence (\(device == "Mac" ? "macOS" : device == "iPad" ? "iPadOS" : "iOS") 26 or later)."
     return off
 }
 
