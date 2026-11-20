@@ -917,8 +917,12 @@ extension Store {
                 if split { lines = old.map { $0.uppercased().hasPrefix("RRULE:") ? "RRULE:" + endRule(String($0.dropFirst(6)), before: occ!, allDay: it.allDay) : $0 } }
                 else { lines = old.filter { !$0.uppercased().hasPrefix("RRULE:") && newLine != nil } + (newLine.map { [$0] } ?? []) }
                 do { _ = try await googleJSON("PATCH", path, token: t, body: ["recurrence": lines]) }
-                catch {  // the old series kept its later times: take the new one away again, or every later time shows twice
-                    if let added { _ = try? await googleJSON("DELETE", "/calendars/\(pathPart(c.remote))/events/" + added, token: t) }
+                catch {
+                    // Take the new series away only when Google shows the old one still uncut (else every later time shows twice);
+                    // a lost reply to a cut that went through, or no answer at all, keeps both: a double beats losing the later times.
+                    if let added, let now = try? await googleJSON("GET", path, token: t), (now["recurrence"] as? [String] ?? []) == old {
+                        _ = try? await googleJSON("DELETE", "/calendars/\(pathPart(c.remote))/events/" + added, token: t)
+                    }
                     throw error
                 }
             }
