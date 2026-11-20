@@ -252,6 +252,15 @@ final class PhoneState: ObservableObject {
         return nil
     }
 
+    /// Duplicate: `it` is the edited copy (its own day and calendar); the original stays.
+    @discardableResult
+    func duplicate(_ it: Item) -> Failure? {
+        guard let c = store.duplicate(it) else { return Failure(store.trialOver ? License.endedMessage : "Couldn't copy the event.") }
+        undo.push { [weak self] in self?.store.delete(c) }
+        say("Added \(c.shownTitle)")
+        return nil
+    }
+
     /// Deletes one event; Undo puts it back as a copy. (A whole series has no undo, as on the Mac.)
     @discardableResult
     func delete(_ it: Item, series: Bool) -> Failure? {

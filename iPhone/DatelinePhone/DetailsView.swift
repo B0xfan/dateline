@@ -11,6 +11,7 @@ struct DetailsView: View {
     let id: String
     @State private var editing = false
     @State private var askDelete = false
+    @State private var duplicating = false
     @State private var problem: String?
 
     var body: some View {
@@ -102,6 +103,8 @@ struct DetailsView: View {
                         Button { directions(it) } label: { Text("Directions").frame(maxWidth: .infinity, minHeight: 50).background(T.card, in: RoundedRectangle(cornerRadius: 12)) }
                             .foregroundStyle(T.tint)
                     }
+                    Button { duplicating = true } label: { Text("Duplicate").frame(maxWidth: .infinity, minHeight: 50).background(T.card, in: RoundedRectangle(cornerRadius: 12)) }
+                        .foregroundStyle(T.tint)
                     if store.calendar(it.calendarID)?.writable == true {
                     Button { askDelete = true } label: { Text("Delete").frame(maxWidth: .infinity, minHeight: 50).background(T.card, in: RoundedRectangle(cornerRadius: 12)) }
                         .foregroundStyle(T.late)
@@ -116,6 +119,7 @@ struct DetailsView: View {
             ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true } }
         }
         .sheet(isPresented: $editing, onDismiss: app.sheetClosed) { EditSheet(it).environmentObject(app).environmentObject(store) }
+        .sheet(isPresented: $duplicating, onDismiss: app.sheetClosed) { EditSheet(it, duplicate: true).environmentObject(app).environmentObject(store) }
         .confirmationDialog("Delete \(it.title)?", isPresented: $askDelete, titleVisibility: .visible) {
             // A repeating event asks which ones go; the core's delete takes "this and every later" as `series`.
             if store.isRepeating(it) {

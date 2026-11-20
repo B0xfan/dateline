@@ -386,9 +386,8 @@ public final class Store: ObservableObject {
         guard let calID else { return .failure(Failure("No calendar on this Mac can take new events.")) }
         let it = Item(id: "", calendarID: calID, title: p.title.isEmpty ? "New event" : p.title, start: p.start, end: p.end,
                       allDay: p.allDay, place: p.place, notes: p.notes, showAs: p.showAs, geo: p.geo)
-        let repeats = p.repeats.map { (unit: $0.unit, n: $0.n) }
-        if isAcc(calID) { return accAdd(it, alertMinutes: p.alertMinutes, repeats: repeats) }
-        let saved = source.add(it, alertMinutes: p.alertMinutes, repeats: repeats)
+        if isAcc(calID) { return accAdd(it, alertMinutes: p.alertMinutes, repeats: p.repeats) }
+        let saved = source.add(it, alertMinutes: p.alertMinutes, repeats: p.repeats)
         if case .success = saved { fetch() }
         return saved
     }
@@ -418,6 +417,19 @@ public final class Store: ObservableObject {
     }
 
     public func isRepeating(_ it: Item) -> Bool { isAcc(it.calendarID) ? accRepeats(it) : source.repeats(it) }
+
+    // How the event repeats now (a Google series is read from Google, so this waits).
+    public func repeatNow(_ it: Item) async -> RepeatNow { isAcc(it.calendarID) ? await accRepeatNow(it) : source.repeatNow(current(it)) }
+
+    // Sets, changes or ends the repeat. `all`: every time; else this one and every later one (the earlier ones keep the old repeat).
+    @discardableResult
+    public func setRepeat(_ it: Item, _ r: Repeat?, all: Bool) -> Failure? {
+        if trialOver { return Failure(License.endedMessage) }
+        if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be changed.") }
+        let f = isAcc(it.calendarID) ? accSetRepeat(it, r.map { $0.normal(it.start) }, all: all) : source.setRepeat(current(it), r.map { $0.normal(it.start) }, all: all)
+        fetch()
+        return f
+    }
 
     // `series`: this and every later occurrence (undo of adding a repeating event).
     @discardableResult

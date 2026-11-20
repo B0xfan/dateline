@@ -7,6 +7,7 @@ struct AppCommands: Commands {
     let app: AppState
     @ObservedObject var store: Store  // the set list and its keys follow changes; the app only redraws menus for its own
     @ObservedObject var panels: Panels  // Show or Hide Tasks, and what the set editor blocks
+    @ObservedObject var keys = EventKeys.shared  // Copy, Paste and Duplicate show the keys picked in Settings
 
     func toggle(_ title: String, _ on: Bool, _ pick: @escaping () -> Void) -> Toggle<Text> {
         Toggle(title, isOn: Binding(get: { on }, set: { _ in pick() }))
@@ -61,6 +62,10 @@ struct AppCommands: Commands {
             Button("Open Details") { app.openMain?(); app.panels.panelOpen = true }.disabled(app.selected == nil)
             Button("Delete Event…") { app.openMain?(); app.panels.confirmDelete = app.selected }.disabled(app.selected == nil)
             Button("Delete Task") { app.openMain?(); if let t = app.openTask { app.deleteTask(t) } }.disabled(app.openTask == nil || app.openTask?.a4 != nil)
+            Divider()
+            Button("Copy Event") { app.openMain?(); app.copyEvent() }.keyboardShortcut(keys.shortcut(.copy)).disabled(app.selected == nil)
+            Button("Paste Event") { app.openMain?(); app.paste() }.keyboardShortcut(keys.shortcut(.paste)).disabled(app.clip == nil)
+            Button("Duplicate Event") { app.openMain?(); app.duplicateEvent() }.keyboardShortcut(keys.shortcut(.duplicate)).disabled(app.selected == nil)
             Divider()
             Button("Previous Event") { app.openMain?(); app.selectNext(-1) }
             Button("Next Event") { app.openMain?(); app.selectNext(1) }

@@ -54,6 +54,7 @@ struct TimeGrid: View {
                                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(c, lineWidth: app.selectedID == it.id ? 2 : 0))
                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                 .onTapGesture { app.selectedID = it.id; app.panels.panelOpen = true }
+                                .contextMenu { EventMenu(app: app, it: it) }
                         }
                     }
                     .padding(.vertical, 2).frame(minWidth: 0, maxWidth: .infinity, minHeight: 36, alignment: .topLeading).clipped()
@@ -119,7 +120,11 @@ struct DayColumn: View {
                     .gesture(SpatialTapGesture(count: 2).onEnded { v in
                         let mins = Int(v.location.y / hourH * 60) / 30 * 30
                         app.dayDoubleClick(at: cal.date(byAdding: .minute, value: mins, to: day)!)
-                    }.exclusively(before: TapGesture().onEnded { app.selectedID = nil; app.panels.panelOpen = false }))
+                    }.exclusively(before: SpatialTapGesture().onEnded { v in
+                        app.selectedID = nil; app.panels.panelOpen = false
+                        app.pasteSpot = (cal.date(byAdding: .minute, value: Int(v.location.y / hourH * 60) / 30 * 30, to: day)!, true)
+                    }))
+                    .contextMenu { PasteMenu(app: app, day: day) }
                 // Phase 5: the drive there, as a striped block just before the event.
                 ForEach(items.filter { app.drive[$0.id] != nil && !$0.noTravel && $0.start >= day }) { it in
                     let (l, n) = lane[it.id] ?? (0, 1), colW = (w - 4) / CGFloat(max(n, 1))
@@ -138,6 +143,7 @@ struct DayColumn: View {
                         .frame(width: colW - 2, height: max(18, f.h + stretchDY - 2))
                         .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true }
                         .onTapGesture { app.selectedID = it.id }
+                        .contextMenu { EventMenu(app: app, it: it) }
                         .gesture(dragGesture(it, colWidth: w, stretch: false))
                         .overlay(alignment: .bottom) {
                             Color.clear.frame(height: 8).contentShape(Rectangle())
@@ -321,6 +327,7 @@ struct MonthView: View {
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true }
                     .onTapGesture { app.selectedID = it.id }
+                    .contextMenu { EventMenu(app: app, it: it) }
                 }
                 if list.count > shown.count {
                     MoreButton(app: app, store: store, day: d, list: list, hidden: list.count - shown.count, size: 11)
@@ -332,6 +339,8 @@ struct MonthView: View {
         .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { app.dayDoubleClick(at: cal.date(byAdding: .hour, value: 9, to: d)!) }
+        .onTapGesture { app.pasteSpot = (d, false) }
+        .contextMenu { PasteMenu(app: app, day: d) }
         .newEventBubble(app: app, store: store, day: d)
     }
 }
@@ -374,6 +383,7 @@ struct MoreList: View {
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true; close() }
                         .onTapGesture { app.selectedID = it.id }
+                        .contextMenu { EventMenu(app: app, it: it) }
                         .accessibilityElement(children: .combine).accessibilityAddTraits(.isButton)
                         .accessibilityAction { app.selectedID = it.id; app.panels.panelOpen = true; close() }
                     }
@@ -450,6 +460,7 @@ struct DetailPanel: View {
                     }
                     Text(lengthText).font(.ui(12)).foregroundStyle(Palette.text3).padding(.leading, 72)
                 }
+                RepeatRows(app: app, store: store, item: item, locked: locked)
                 section("SHOW AS")
                 Seg(options: ShowAs.allCases.map(\.rawValue), selected: item.showAs.rawValue) { item.showAs = ShowAs(rawValue: $0)!; commit() }
                 section("PLACE")
@@ -643,6 +654,8 @@ struct QuarterView: View {
         .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { app.dayDoubleClick(at: cal.date(byAdding: .hour, value: 9, to: d)!) }
+        .onTapGesture { app.pasteSpot = (d, false) }
+        .contextMenu { PasteMenu(app: app, day: d) }
         .newEventBubble(app: app, store: store, day: d)
     }
 }

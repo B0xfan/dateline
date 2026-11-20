@@ -482,7 +482,7 @@ struct Understood: View {
                 let code = m % 1440 == 0 ? "\(m / 1440)d" : m % 60 == 0 ? "\(m / 60)h" : "\(m)m"
                 row("Alert") { HStack(spacing: 4) { Text(alertText(m)); Text("(from -a\(code))").foregroundStyle(Palette.text3).fontWeight(.regular) } }
             }
-            if let r = p.repeats { row("Repeat") { HStack(spacing: 4) { Text(r.text); Text(verbatim: "(from -r\(r.n)\(r.unit))").foregroundStyle(Palette.text3).fontWeight(.regular) } } }
+            if let r = p.repeats { row("Repeat") { HStack(spacing: 4) { Text(r.text(p.start)); Text(verbatim: "(from -r\(r.n)\(r.unit))").foregroundStyle(Palette.text3).fontWeight(.regular) } } }
             row("Show as") { HStack(spacing: 8) { Mark(showAs: p.showAs, color: c?.color ?? .gray); Text(p.showAs.rawValue) } }
         }
     }
@@ -503,7 +503,7 @@ struct Understood: View {
         AnyView(VStack(alignment: .leading, spacing: 0) { ForEach(parts.indices, id: \.self) { i in if i > 0 { Divider() }; parts[i] } })
     }
     var tabs: [(tag: String, label: String, icon: String, view: AnyView)] = [
-        ("quick", "General", "gearshape", stack([AnyView(QuickSettings(app: app, quick: app.quick)), AnyView(LicenseSettings()), AnyView(UpdateSettings())])),
+        ("quick", "General", "gearshape", stack([AnyView(QuickSettings(app: app, quick: app.quick)), AnyView(EventKeySettings()), AnyView(LicenseSettings()), AnyView(UpdateSettings())])),
         ("accounts", "Accounts", "person.crop.circle", AnyView(AccountSettings(store: app.store))),
         ("look", "Look", "paintpalette", stack([AnyView(LookSettings(app: app)), AnyView(MenuBarSettings(app: app))])),
         ("week", "Week", "calendar", AnyView(WeekSettings(app: app))),
@@ -564,7 +564,7 @@ struct ShortcutList: View {
     var rows: [(String, String)] { [
         ("New event", "N"), ("Go to today", "T"), ("Day view", "1"), ("Previous", "Left"), ("Week view", "2"), ("Next", "Right"),
         ("Month view", "3"), ("Next or previous event", "Up / Down"), ("Quarter view", "4"), ("Open event", "Return"), ("Year view", "5"),
-        ("Delete event", "Delete"), ("Move event 15 min", "Option Up / Down"), ("Copy event", "Option drag"), ("Undo", "Command Z"), ("This list", "?"),
+        ("Delete event", "Delete"), ("Move event 15 min", "Option Up / Down"), ("Copy event", EventKeys.shared.keys[.copy]?.name ?? "Right-click"), ("Paste event", EventKeys.shared.keys[.paste]?.name ?? "Right-click"), ("Duplicate event", EventKeys.shared.keys[.duplicate]?.name ?? "Right-click"), ("Copy by dragging", "Option drag"), ("Undo", "Command Z"), ("This list", "?"),
         ("Quick add from any app", app.quick.name), ("All calendars", "Command 1"), ("Calendar sets", "Command 2 to 9"), ("Tasks", "R"), ("Map of places", "P"), ("Hide or show calendars", "S"),
     ] }
     var body: some View {

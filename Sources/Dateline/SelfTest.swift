@@ -98,7 +98,7 @@ func selftest() -> Int32 {
     p = parseSentence("Lunch with Sam tomorrow 1pm /Personal -a15m -r1w", now: now)
     expect(p.title == "Lunch with Sam" && p.start == at(10, 27, 13) && p.calendarCode == "Personal" && p.alertMinutes == 15 && p.repeats == Repeat(unit: "w", n: 1), "short codes: \(p.title)")
     p = parseSentence("-a1h Standup -r2d 9am free", now: now)
-    expect(p.title == "Standup" && p.alertMinutes == 60 && p.repeats?.text == "Every 2 days" && p.showAs == .free, "codes anywhere: \(p.title)")
+    expect(p.title == "Standup" && p.alertMinutes == 60 && p.repeats?.text(p.start) == "Every other day" && p.showAs == .free, "codes anywhere: \(p.title)")
     expect(parseSentence("Read a-ha /", now: now).title == "Read a-ha /" && parseSentence("x -a1x", now: now).alertMinutes == nil, "not codes stay in the title")
     expect(parseSentence("Call -a99999999999999999d", now: now).alertMinutes == nil, "huge alert code is ignored, not a crash")
     let cals = ["Finance", "Family", "Fun Stuff"].map { CalInfo(id: $0, title: $0, account: "", color: .gray, writable: true) }
@@ -327,6 +327,7 @@ func selftest() -> Int32 {
     MainActor.assumeIsolated { calendarSourceSelftest(expect) }
     MainActor.assumeIsolated { syncSelftest(expect) }
     licenseSelftest(expect)
+    MainActor.assumeIsolated { repeatSelfTest(expect) }
     subSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     emailSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     accountsSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }

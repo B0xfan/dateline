@@ -36,10 +36,20 @@ struct EditSheet: View {
     @State private var item: Item
     @State private var newTag = ""
     @State private var problem: String?
+    let duplicate: Bool  // Duplicate on the details screen: a new copy, a day later, saved with Add
+    @State private var repeatNow: RepeatNow?  // as saved; nil while it is read
+    @State private var repeatPick: Repeat?
+    @State private var repeatTouched = false
+    @State private var askSpan = false
 
-    init(_ it: Item) { original = it; _item = State(initialValue: it) }
+    init(_ it: Item, duplicate: Bool = false) {
+        original = it; self.duplicate = duplicate
+        var copy = it
+        if duplicate { copy.start = addDays(it.start, 1); copy.end = addDays(it.end, 1) }
+        _item = State(initialValue: copy)
+    }
 
-    private var locked: Bool { store.calendar(item.calendarID)?.writable != true }  // an invite's title is the sender's, as on the Mac
+    private var locked: Bool { !duplicate && store.calendar(item.calendarID)?.writable != true }  // an invite's title is the sender's, as on the Mac
     private var writable: [CalInfo] { store.calendars.filter(\.writable) }
     private var tagsLeft: [String] { store.allTags.map(\.0).filter { !item.tags.contains($0) } }
 
@@ -59,7 +69,7 @@ struct EditSheet: View {
                         }
                     }
                 }
-                if locked { Section { Text("This calendar is read only. You can still add an emoji, a color, tags and travel.").font(.footnote).foregroundStyle(T.text2) } }
+                if locked && !duplicate { Section { Text("This calendar is read only. You can still add an emoji, a color, tags and travel.").font(.footnote).foregroundStyle(T.text2) } }
                 when
                 Section("Show as") {
                     Picker("Show as", selection: $item.showAs) { ForEach(ShowAs.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
@@ -76,11 +86,24 @@ struct EditSheet: View {
                 }
                 extras
             }
-            .navigationTitle("Edit event").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(duplicate ? "Duplicate" : "Edit event").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Done", action: save).fontWeight(.semibold) }
+                ToolbarItem(placement: .confirmationAction) { Button(duplicate ? "Add" : "Done", action: save).fontWeight(.semibold) }
             }
+            .task {
+                // A copy of a read-only event goes to one of your own calendars.
+                if duplicate, store.calendar(item.calendarID)?.writable != true, let c = store.calendars.first(where: { $0.id == store.defaultCalendarID && $0.writable }) ?? writable.first { item.calendarID = c.id }
+                guard !duplicate else { return }
+                let now = await store.repeatNow(original)
+                repeatNow = now
+                if case .rule(let r) = now { repeatPick = r.normal(original.start) }
+            }
+            .confirmationDialog("Change the repeat?", isPresented: $askSpan, titleVisibility: .visible) {
+                Button("This and future events") { commit(all: false) }
+                Button("All events") { commit(all: true) }
+                Button("Cancel", role: .cancel) {}
+            } message: { Text("This is a repeating event.") }
             .alert(problem ?? "", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) { Button("OK") {} }
         }
     }
@@ -92,6 +115,16 @@ struct EditSheet: View {
             if !item.allDay {
                 DatePicker("Starts", selection: Binding(get: { item.start }, set: { item = EventEdit.start(item, $0) }), displayedComponents: .hourAndMinute).disabled(locked)
                 DatePicker("Ends", selection: Binding(get: { item.end }, set: { item = EventEdit.end(item, $0) }), displayedComponents: .hourAndMinute).disabled(locked)
+            }
+            if let now = repeatNow {
+                NavigationLink {
+                    RepeatPicker(r: Binding(get: { repeatPick }, set: { repeatPick = $0; repeatTouched = true }), start: item.start)
+                } label: {
+                    LabeledContent("Repeat", value: now == .other && !repeatTouched ? "Set in another app" : repeatPick.map { var shape = $0; shape.count = nil; shape.until = nil; return shape.text(item.start) } ?? "Never")
+                }.disabled(locked)
+                if let r = repeatPick {
+                    RepeatEnds(r: Binding(get: { r }, set: { repeatPick = $0; repeatTouched = true }), start: item.start).disabled(locked)
+                }
             }
         }
     }
@@ -163,17 +196,39 @@ struct EditSheet: View {
         newTag = ""
     }
 
-    /// The Mac's commit(): a read-only calendar takes only the extras; an ended trial changes nothing.
+    private var repeatChanged: Bool {
+        guard repeatTouched, let now = repeatNow else { return false }
+        if case .rule(let r) = now { return repeatPick?.normal(item.start) != r.normal(original.start) }
+        return now == .never ? repeatPick != nil : true
+    }
+
+    /// A repeat change on a repeating event asks which times it is for, as delete does.
     private func save() {
+        if repeatChanged, repeatNow != .never { askSpan = true } else { commit(all: true) }
+    }
+
+    /// The Mac's commit(): a read-only calendar takes only the extras; an ended trial changes nothing.
+    private func commit(all: Bool) {
         addTag()
         var n = item
         n.title = item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? original.title : item.title.trimmingCharacters(in: .whitespacesAndNewlines)
         n.place = item.place.trimmingCharacters(in: .whitespaces)
         if n.place != original.place { n.geo = nil }  // a typed place has no spot on the map until it is looked up
+        if duplicate {
+            if let f = app.duplicate(n) { if store.trialOver { app.unlockNext = true } else { problem = f.message; return } }
+            dismiss(); return
+        }
         if n != original {
             if let f = app.change(n, from: original, "Edited") {
                 if store.trialOver { app.unlockNext = true } else { problem = f.message; return }
             } else if app.opened[n.id] != nil { app.opened[n.id] = n }  // opened from outside the days in view: show the saved copy
+        }
+        if repeatChanged {
+            if let f = store.setRepeat(n, repeatPick, all: all) { if store.trialOver { app.unlockNext = true } else { problem = f.message; return } }
+            // Becoming (or ending) a series can give the event a new identifier: keep its details open.
+            if app.item(n.id) == nil, let same = store.items.first(where: { $0.calendarID == n.calendarID && $0.title == n.title && $0.start == n.start }) {
+                app.path = app.path.map { $0 == n.id ? same.id : $0 }
+            }
         }
         dismiss()
     }
@@ -181,4 +236,83 @@ struct EditSheet: View {
 
 private extension Character {
     var isEmoji: Bool { unicodeScalars.first.map { $0.properties.isEmojiPresentation || ($0.properties.isEmoji && unicodeScalars.count > 1) } ?? false }
+}
+
+/// The Repeat screen (approved Repeat mockup, 2026-11-20): the choices for the event's own day, then Custom to fine-tune.
+struct RepeatPicker: View {
+    @Binding var r: Repeat?
+    let start: Date
+    static let units: [(Character, String, String)] = [("d", "Daily", "day"), ("w", "Weekly", "week"), ("m", "Monthly", "month"), ("y", "Yearly", "year")]
+
+    var body: some View {
+        let wd = cal.component(.weekday, from: start)
+        Form {
+            Section {
+                ForEach(Array(Repeat.menu(start).enumerated()), id: \.offset) { _, choice in
+                    let pick = choice.map { var x = $0; x.count = r?.count; x.until = r?.until; return x }  // a choice keeps the end already set
+                    Button { r = pick } label: {
+                        HStack { Text(choice?.text(start) ?? "Never").foregroundStyle(T.text); Spacer(); if pick == r?.normal(start) { Image(systemName: "checkmark").foregroundStyle(T.tint) } }
+                    }
+                }
+            }
+            Section {
+                if let cur = r {
+                    let unit = Self.units.first { $0.0 == cur.unit }!
+                    Picker("Repeats", selection: Binding(get: { cur.unit }, set: { u in r = Repeat(unit: u, n: cur.n, days: u == "w" ? [wd] : [], count: cur.count, until: cur.until) })) {
+                        ForEach(Self.units, id: \.0) { Text($0.1).tag($0.0) }
+                    }.pickerStyle(.segmented)
+                    Stepper(value: Binding(get: { cur.n }, set: { r?.n = $0 }), in: 1...99) { Text("Every \(cur.n) " + unit.2 + (cur.n == 1 ? "" : "s")) }
+                    if cur.unit == "w" {
+                        HStack(spacing: 4) {
+                            ForEach(1...7, id: \.self) { d in
+                                let on = cur.normal(start).days.contains(d)
+                                Button {
+                                    var days = cur.normal(start).days
+                                    if on { if days.count > 1 { days.removeAll { $0 == d } } } else { days.append(d) }
+                                    r?.days = days.sorted()
+                                } label: {
+                                    Text(String(Repeat.dayNames[d - 1].prefix(1))).font(.subheadline.weight(.medium)).frame(width: 38, height: 38)
+                                        .foregroundStyle(on ? Color.white : T.text).background(Circle().fill(on ? T.tint : T.line))
+                                }.buttonStyle(.borderless).frame(maxWidth: .infinity).accessibilityLabel(Repeat.dayNames[d - 1]).accessibilityAddTraits(on ? .isSelected : [])
+                            }
+                        }
+                    }
+                    if cur.unit == "m" {
+                        Picker("On", selection: Binding(get: { cur.nth == nil }, set: { onDate in
+                            if onDate { r?.nth = nil; r?.days = [] } else { r?.nth = Repeat.nthOf(start); r?.days = [wd] }
+                        })) {
+                            Text("Day \(cal.component(.day, from: start))").tag(true)
+                            Text("A weekday").tag(false)
+                        }.pickerStyle(.segmented)
+                        if let k = cur.nth {
+                            Picker("Which", selection: Binding(get: { k }, set: { r?.nth = $0 })) { ForEach([1, 2, 3, 4, -1], id: \.self) { Text(Repeat.nthNames[$0]!.capitalized).tag($0) } }
+                            Picker("Day", selection: Binding(get: { cur.days == Repeat.weekdays ? 0 : cur.days.first ?? wd }, set: { r?.days = $0 == 0 ? Repeat.weekdays : [$0] })) {
+                                ForEach(1...7, id: \.self) { Text(Repeat.dayNames[$0 - 1]).tag($0) }
+                                Text("Weekday").tag(0)
+                            }
+                        }
+                    }
+                } else {
+                    Button("Custom…") { r = Repeat(unit: "w", n: 1).normal(start) }
+                }
+            } header: { Text("Custom") } footer: { if let cur = r { Text(cur.text(start)) } }
+        }
+        .navigationTitle("Repeat").navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Never, on a date, or after a number of times.
+struct RepeatEnds: View {
+    @Binding var r: Repeat
+    let start: Date
+    var body: some View {
+        Picker("Ends", selection: Binding(get: { r.count != nil ? 2 : r.until != nil ? 1 : 0 }, set: { k in
+            r.count = k == 2 ? 10 : nil
+            r.until = k == 1 ? cal.date(byAdding: .month, value: 3, to: cal.startOfDay(for: start)) : nil
+        })) { Text("Never").tag(0); Text("On a date").tag(1); Text("After a number of times").tag(2) }
+        if let u = r.until {
+            DatePicker("End date", selection: Binding(get: { u }, set: { r.until = cal.startOfDay(for: $0) }), in: cal.startOfDay(for: start)..., displayedComponents: .date)
+        }
+        if let n = r.count { Stepper(value: Binding(get: { n }, set: { r.count = max(1, $0) }), in: 1...999) { Text("\(n) " + (n == 1 ? "time" : "times")) } }
+    }
 }

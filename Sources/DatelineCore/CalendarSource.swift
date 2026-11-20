@@ -20,10 +20,12 @@ public protocol CalendarSource: AnyObject {
     func events(from a: Date, to b: Date) -> [Item]
     func eventsInBackground(from a: Date, to b: Date) async -> [Item]
     func eventIDs(from a: Date, to b: Date, calendars: [String]) -> [(id: String, calendarID: String, uid: String)]
-    func add(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure>
+    func add(_ it: Item, alertMinutes: Int?, repeats: Repeat?) -> Result<Item, Failure>
     func update(_ it: Item, before: Item?) -> Result<String?, Failure>  // the event's identifier now: moving calendars can change it
     func delete(_ it: Item, series: Bool) -> Result<Bool, Failure>  // true when no other occurrence is left
     func repeats(_ it: Item) -> Bool  // part of a repeating event (the phone asks "this one or all future" before deleting)
+    func repeatNow(_ it: Item) -> RepeatNow
+    func setRepeat(_ it: Item, _ r: Repeat?, all: Bool) -> Failure?  // all: every time, else this one and later ones
     func copyAlerts(from old: Item, to new: Item)  // also after `old` was deleted, for undo
 
     func reminderLists() -> [CalInfo]
@@ -139,16 +141,13 @@ public final class AppleCalendar: CalendarSource {
         return ek.events(matching: pred).first { $0.eventIdentifier == id && $0.occurrenceDate == at }
     }
 
-    public func add(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure> {
+    public func add(_ it: Item, alertMinutes: Int?, repeats: Repeat?) -> Result<Item, Failure> {
         guard let c = ek.calendar(withIdentifier: it.calendarID) else { return .failure(Failure("That calendar is gone.")) }
         let e = EKEvent(eventStore: ek)
         e.calendar = c
         apply(it, to: e)
         if let m = alertMinutes { e.addAlarm(EKAlarm(relativeOffset: -Double(m * 60))) }
-        if let r = repeats {
-            let f: [Character: EKRecurrenceFrequency] = ["d": .daily, "w": .weekly, "m": .monthly, "y": .yearly]
-            e.addRecurrenceRule(EKRecurrenceRule(recurrenceWith: f[r.unit]!, interval: r.n, end: nil))
-        }
+        if let r = repeats { e.addRecurrenceRule(r.ek) }
         do { try ek.save(e, span: .thisEvent, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
         return .success(Self.item(e))
     }
@@ -162,6 +161,18 @@ public final class AppleCalendar: CalendarSource {
     }
 
     public func repeats(_ it: Item) -> Bool { event(it)?.hasRecurrenceRules == true }
+    public func repeatNow(_ it: Item) -> RepeatNow {
+        guard let r = event(it)?.recurrenceRules?.first else { return .never }
+        return Repeat(ek: r).map(RepeatNow.rule) ?? .other
+    }
+    public func setRepeat(_ it: Item, _ r: Repeat?, all: Bool) -> Failure? {
+        guard let one = event(it) else { return Failure("That event is gone.") }
+        // The first time stands for the whole series; Apple Calendar splits the series itself for "this and later".
+        let e = all && one.hasRecurrenceRules ? one.eventIdentifier.flatMap(ek.event(withIdentifier:)) ?? one : one
+        e.recurrenceRules = r.map { [$0.ek] }
+        do { try ek.save(e, span: .futureEvents, commit: true) } catch { return Failure(error.localizedDescription) }
+        return nil
+    }
     public func delete(_ it: Item, series: Bool) -> Result<Bool, Failure> {
         guard let e = event(it) else { return .failure(Failure("That event is gone.")) }
         let alarms = e.alarms ?? [], oneTime = !e.hasRecurrenceRules
@@ -365,11 +376,12 @@ public final class SampleCalendar: CalendarSource {
     public func eventsInBackground(from a: Date, to b: Date) async -> [Item] { events(from: a, to: b) }
     public func eventIDs(from a: Date, to b: Date, calendars: [String]) -> [(id: String, calendarID: String, uid: String)] { [] }
 
-    public func add(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure> {
+    public func add(_ it: Item, alertMinutes: Int?, repeats: Repeat?) -> Result<Item, Failure> {
         guard cals.contains(where: { $0.id == it.calendarID }) else { return .failure(Failure("That calendar is gone.")) }
         var it = it
         it.id = UUID().uuidString; it.uid = it.id
         events.append(it)
+        rules[it.id] = repeats
         return .success(it)
     }
     public func update(_ it: Item, before: Item?) -> Result<String?, Failure> {
@@ -377,7 +389,15 @@ public final class SampleCalendar: CalendarSource {
         events[i] = calendarPart(it)
         return .success(it.id)
     }
-    public func repeats(_ it: Item) -> Bool { false }
+    // shortcut: made-up events keep their repeat but still show once; the pictures and self-tests need no more.
+    private var rules: [String: Repeat] = [:]
+    public func repeats(_ it: Item) -> Bool { rules[it.id] != nil }
+    public func repeatNow(_ it: Item) -> RepeatNow { rules[it.id].map(RepeatNow.rule) ?? .never }
+    public func setRepeat(_ it: Item, _ r: Repeat?, all: Bool) -> Failure? {
+        guard events.contains(where: { $0.id == it.id }) else { return Failure("That event is gone.") }
+        rules[it.id] = r
+        return nil
+    }
     public func delete(_ it: Item, series: Bool) -> Result<Bool, Failure> {
         guard events.contains(where: { $0.id == it.id }) else { return .failure(Failure("That event is gone.")) }
         events.removeAll { $0.id == it.id }

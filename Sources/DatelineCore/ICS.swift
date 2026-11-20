@@ -133,9 +133,10 @@ private func icsEvent(_ props: [(String, [String: String], String)]) -> ICalEven
 public func occurrences(_ e: ICalEvent, from a: Date, to b: Date) -> [Date] {
     let len = e.end.timeIntervalSince(e.start)
     func overlaps(_ d: Date) -> Bool { d < b && (d.addingTimeInterval(len) > a || (len == 0 && d >= a)) }
-    // shortcut: rules by the hour or minute, or with BYSETPOS/BYWEEKNO/BYYEARDAY, show the first time only; add them if a real calendar needs one.
+    // shortcut: rules by the hour or minute, BYWEEKNO/BYYEARDAY, or BYSETPOS other than one position a month, show the first time only; add them if a real calendar needs one.
+    let setPos = Int(e.rule?["BYSETPOS"] ?? "")
     guard let r = e.rule, let freq = r["FREQ"], ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].contains(freq),
-          r["BYSETPOS"] == nil, r["BYWEEKNO"] == nil, r["BYYEARDAY"] == nil else { return overlaps(e.start) ? [e.start] : [] }
+          r["BYSETPOS"] == nil || (freq == "MONTHLY" && setPos != nil), r["BYWEEKNO"] == nil, r["BYYEARDAY"] == nil else { return overlaps(e.start) ? [e.start] : [] }
     var c = Calendar(identifier: .gregorian)
     c.timeZone = e.allDay ? cal.timeZone : e.tz
     let names = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]
@@ -201,6 +202,7 @@ public func occurrences(_ e: ICalEvent, from a: Date, to b: Date) -> [Date] {
         case "MONTHLY":
             let mm = m0 - 1 + period * step
             list = inMonth(y0 + mm / 12, mm % 12 + 1)
+            if let p = setPos { let all = Set(list).sorted(), i = p > 0 ? p - 1 : all.count + p; list = all.indices.contains(i) ? [all[i]] : [] }  // "the first weekday"
         default:
             // Every Monday of the year with no month named means all twelve months; "2nd Monday" with no month keeps the first month.
             let everyMonth = !byDay.isEmpty && byDay.allSatisfy { $0.0 == 0 }

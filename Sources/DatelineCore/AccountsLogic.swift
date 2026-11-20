@@ -317,6 +317,33 @@ public func icsPatch(_ text: String, occurrence: Date?, _ it: Item, link: String
     return icsJoin(lines)
 }
 
+// The main event's RRULE, rewritten by `f` (nil drops it; a one-time event gets one).
+public func icsSetRule(_ text: String, _ f: (String?) -> String?) -> String {
+    var lines = icsUnfold(text)
+    guard let main = vevents(lines).first(where: { $0.rid == nil }) else { return text }
+    let at = lines[main.range].firstIndex { propName($0) == "RRULE" }
+    let new = f(at.map { String(lines[$0].drop { $0 != ":" }.dropFirst()) })
+    if let at { if let new { lines[at] = "RRULE:" + new } else { lines.remove(at: at) } }
+    else if let new { lines.insert("RRULE:" + new, at: main.range.lowerBound + 1) }
+    return icsJoin(lines)
+}
+
+// An RRULE that stops just before `occ`, for "this and later" (COUNT goes: the times before `occ` stay the same).
+public func endRule(_ rule: String, before occ: Date, allDay: Bool) -> String {
+    let keep = rule.split(separator: ";").filter { p in !["COUNT", "UNTIL"].contains(p.split(separator: "=").first.map { $0.uppercased() } ?? "") }
+    let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = cal.timeZone; f.dateFormat = "yyyyMMdd"
+    return (keep.map(String.init) + ["UNTIL=" + (allDay ? f.string(from: addDays(occ, -1)) : icsUTC(occ.addingTimeInterval(-1)))]).joined(separator: ";")
+}
+
+// Google's recurrence lines as the editor shows them.
+func repeatFrom(_ lines: [String], allDay: Bool) -> RepeatNow {
+    let rr = lines.filter { $0.uppercased().hasPrefix("RRULE:") }
+    guard rr.count == 1 else { return rr.isEmpty ? .never : .other }
+    let parts = Dictionary(rr[0].dropFirst(6).split(separator: ";").compactMap { p -> (String, String)? in
+        let kv = p.split(separator: "=", maxSplits: 1); return kv.count == 2 ? (kv[0].uppercased(), String(kv[1])) : nil }, uniquingKeysWith: { a, _ in a })
+    return Repeat(rule: parts, allDay: allDay).map(RepeatNow.rule) ?? .other
+}
+
 // Takes one occurrence out of a repeating event (and drops its changed copy, if any).
 public func icsDropOccurrence(_ text: String, _ occ: Date) -> String {
     var lines = icsUnfold(text)
@@ -780,10 +807,10 @@ extension Store {
         accCal(it.calendarID)?.0.kind == "google" ? (accData.google[it.calendarID]?.first { $0.item.id == it.id }?.master != nil) : (davRef(it)?.repeating ?? false)
     }
 
-    public func accAdd(_ it: Item, alertMinutes: Int?, repeats: (unit: Character, n: Int)?) -> Result<Item, Failure> {
+    public func accAdd(_ it: Item, alertMinutes: Int?, repeats: Repeat?) -> Result<Item, Failure> {
         guard let (a, c) = accCal(it.calendarID) else { return .failure(Failure("That calendar is gone.")) }
         guard c.writable else { return .failure(Failure("\(c.title) can't take new events.")) }
-        let rule = repeats.map { r in "FREQ=" + ["d": "DAILY", "w": "WEEKLY", "m": "MONTHLY", "y": "YEARLY"][r.unit]! + (r.n > 1 ? ";INTERVAL=\(r.n)" : "") }
+        let rule = repeats.map { $0.rrule(allDay: it.allDay) }
         var it = it
         let link = callLink(in: [it.link])?.url.absoluteString ?? it.link
         if a.kind == "google" {
@@ -804,6 +831,56 @@ extension Store {
         }
         refetch()
         return .success(it)
+    }
+
+    public func accRepeatNow(_ it: Item) async -> RepeatNow {
+        guard let (a, c) = accCal(it.calendarID) else { return .never }
+        if a.kind == "google" {
+            guard let ev = accData.google[c.id]?.first(where: { $0.item.id == it.id }), let m = ev.master else { return .never }
+            guard let t = try? await googleToken(a), let j = try? await googleJSON("GET", "/calendars/\(pathPart(c.remote))/events/" + pathPart(m), token: t) else { return .other }
+            return repeatFrom(j["recurrence"] as? [String] ?? [], allDay: it.allDay)
+        }
+        guard let ref = davRef(it), let main = accData.dav[c.id]?[ref.href]?.events.first(where: { $0.recurrenceID == nil }), let r = main.rule else { return .never }
+        return Repeat(rule: r, allDay: main.allDay).map(RepeatNow.rule) ?? .other
+    }
+
+    // A repeat change on an account. "This and later" on a later time ends the old series the time before and starts a new event here.
+    public func accSetRepeat(_ it: Item, _ r: Repeat?, all: Bool) -> Failure? {
+        guard let (a, c) = accCal(it.calendarID) else { return Failure("That calendar is gone.") }
+        guard c.writable else { return Failure("\(c.title) is read-only.") }
+        let newLine = r.map { "RRULE:" + $0.rrule(allDay: it.allDay) }
+        let occ = it.id.split(separator: "|").dropFirst().first.flatMap { Double($0) }.map(Date.init(timeIntervalSince1970:))
+        let minutes = it.alerts.first.map { Int(it.start.timeIntervalSince($0) / 60) }
+        if a.kind == "google" {
+            guard let ev = accData.google[c.id]?.first(where: { $0.item.id == it.id }) else { return Failure("That event is gone.") }
+            guard let m = ev.master else {  // a one-time event: its own repeat
+                var body = googleBody(it, link: it.link, known: it.link)  // the times again: Google needs a repeating event's time zone
+                body["recurrence"] = newLine.map { [$0] } ?? []
+                gSend(a, c, "PATCH", "/" + pathPart(ev.iid), body); refetch(); return nil
+            }
+            send(a, c) { s in
+                let t = try await s.googleToken(a)
+                let path = "/calendars/\(pathPart(c.remote))/events/" + pathPart(m)
+                let j = try await googleJSON("GET", path, token: t)
+                let old = j["recurrence"] as? [String] ?? []
+                let first = googleItem(c, j)?.item.start
+                let split = !all && occ != nil && first != nil && occ! > first!
+                let lines: [String]
+                if split { lines = old.map { $0.uppercased().hasPrefix("RRULE:") ? "RRULE:" + endRule(String($0.dropFirst(6)), before: occ!, allDay: it.allDay) : $0 } }
+                else { lines = old.filter { !$0.uppercased().hasPrefix("RRULE:") && newLine != nil } + (newLine.map { [$0] } ?? []) }
+                _ = try await googleJSON("PATCH", path, token: t, body: ["recurrence": lines])
+                if split { _ = s.accAdd(it, alertMinutes: minutes, repeats: r) }
+            }
+            return nil
+        }
+        guard let ref = davRef(it), let res = accData.dav[c.id]?[ref.href] else { return Failure("That event is gone.") }
+        let first = res.events.first { $0.recurrenceID == nil }?.start
+        let split = !all && ref.occ != nil && first != nil && ref.occ! > first!
+        let text = icsSetRule(res.text) { old in split ? old.map { endRule($0, before: ref.occ!, allDay: it.allDay) } : r?.rrule(allDay: it.allDay) }
+        accData.dav[c.id]?[ref.href] = DavRes(etag: res.etag, text: text, events: parseICS(text))
+        davSend(a, c, href: ref.href)
+        if split { _ = accAdd(it, alertMinutes: minutes, repeats: r) } else { refetch() }
+        return nil
     }
 
     public func accUpdate(_ it: Item, old: Item?) -> Failure? {

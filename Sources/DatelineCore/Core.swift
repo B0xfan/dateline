@@ -22,16 +22,6 @@ public struct Parsed: Equatable {
     public init(title: String = "", start: Date, end: Date, allDay: Bool = false, place: String = "", geo: Geo? = nil, showAs: ShowAs = ShowAs.busy, lengthGiven: Bool = false, dateGiven: Bool = false, calendarCode: String? = nil, alertMinutes: Int? = nil, repeats: Repeat? = nil, notes: String = "") { self.title = title; self.start = start; self.end = end; self.allDay = allDay; self.place = place; self.geo = geo; self.showAs = showAs; self.lengthGiven = lengthGiven; self.dateGiven = dateGiven; self.calendarCode = calendarCode; self.alertMinutes = alertMinutes; self.repeats = repeats; self.notes = notes }
 }
 
-public struct Repeat: Equatable {
-    public let unit: Character  // d, w, m or y
-    public let n: Int
-    public var text: String {
-        let name = ["d": "day", "w": "week", "m": "month", "y": "year"][unit]!
-        return n == 1 ? "Every \(name)" : "Every \(n) \(name)s"
-    }
-    public init(unit: Character, n: Int) { self.unit = unit; self.n = n }
-}
-
 public var cal: Calendar = { var c = Calendar(identifier: .gregorian); c.locale = Locale(identifier: "en_US"); return c }()
 
 // ISO week number (B21): the week with the year's first Thursday is week 1.

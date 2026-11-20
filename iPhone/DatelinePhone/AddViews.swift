@@ -32,7 +32,7 @@ struct Understood: View {
                 Text(calendar?.title ?? "No calendar can take new events")
             }
             if !p.allDay { Row(label: "Ends") { Text(timeText(p.end, short: true)) } }
-            if let r = p.repeats { Row(label: "Repeats") { Text(r.text) } }
+            if let r = p.repeats { Row(label: "Repeats") { Text(r.text(p.start)) } }
             Row(label: "Alert", last: true) { Text(!alert.isEmpty ? alert : p.alertMinutes.map(alertText) ?? "None") }
         }
     }

@@ -65,6 +65,8 @@ final class AppState: ObservableObject {
     @Published var mode: Mode = Mode(rawValue: AppState.openOn) ?? Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .day { didSet { if store.access != .sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") }; reload() } }
     @Published var days: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() { didSet { if Look.saves { UserDefaults.standard.set(days, forKey: "weekDays") }; reload() } }
     @Published var anchor: Date { didSet { reload(); if Look.saves && store.access != .sample { UserDefaults.standard.set(anchor, forKey: "anchor"); UserDefaults.standard.set(Date(), forKey: "anchorSaved") } } }
+    @Published var clip: Item?  // the event Copy took, for Paste
+    var pasteSpot: (day: Date, time: Bool)?  // the empty spot last clicked: an hour (time) or a whole day
     @Published var selectedID: String? { didSet { if selectedID != nil { addBox.focused = false; dropAddCursor() } } }  // a click on an event leaves the add box, so Delete reaches the event
     // The calendars sidebar on the left, hidden with the toolbar's first button or S (John 2026-10-28); kept across restarts.
     @Published var sidebarOpen = UserDefaults.standard.object(forKey: "sidebarOpen") as? Bool ?? true { didSet { if Look.saves { UserDefaults.standard.set(sidebarOpen, forKey: "sidebarOpen") } } }
@@ -422,7 +424,7 @@ final class AppState: ObservableObject {
 
     // Returns true when the key was used. Letters are left alone while typing in a field.
     func key(_ e: NSEvent) -> Bool {
-        if quick.recordingKey { return false }
+        if quick.recordingKey || EventKeys.shared.recording != nil { return false }
         if e.window is QuickPanel { return quickKey(e) }
         if e.keyCode == 53 && panels.showShortcuts { panels.showShortcuts = false; return true }  // Esc on the shortcut list, which is its own window
         // The map is its own window too: Esc or a plain P closes it.
@@ -447,6 +449,7 @@ final class AppState: ObservableObject {
         if mods == .command && e.charactersIgnoringModifiers == "f" && !typing { panels.searching = true; return true }  // here, not as a menu key: in a text field Command F stays the Mac's own Find
         if typing || panels.confirmDelete != nil || panels.showShortcuts || panels.mapOpen || error != nil { return false }
         if mods == .command, let n = Int(e.charactersIgnoringModifiers ?? ""), (1...9).contains(n) { pickSet(n); return true }
+        if let a = EventKeys.shared.action(for: e) { return runEventKey(a) }
         if !panels.search.isEmpty, responder is NSTableView, [125, 126].contains(e.keyCode) { return false }  // arrows move through the search results
         switch (e.keyCode, mods) {
         case (123, []): step(-1); return true
