@@ -848,9 +848,15 @@ extension Store {
     public func accSetRepeat(_ it: Item, _ r: Repeat?, all: Bool) -> Failure? {
         guard let (a, c) = accCal(it.calendarID) else { return Failure("That calendar is gone.") }
         guard c.writable else { return Failure("\(c.title) is read-only.") }
-        let newLine = r.map { "RRULE:" + $0.rrule(allDay: it.allDay) }
         let occ = it.id.split(separator: "|").dropFirst().first.flatMap { Double($0) }.map(Date.init(timeIntervalSince1970:))
         let minutes = it.alerts.first.map { Int(it.start.timeIntervalSince($0) / 60) }
+        // The new series after a split counts only the times still to come.
+        func rest(_ first: Date) -> Repeat? {
+            guard var r, let c = r.count, let occ else { return r }
+            r.count = max(1, c - occurrences(ICalEvent(start: first, end: first, tz: cal.timeZone, rule: r.ruleParts(allDay: it.allDay)), from: first, to: occ).count)
+            return r
+        }
+        let newLine = r.map { "RRULE:" + $0.rrule(allDay: it.allDay) }
         if a.kind == "google" {
             guard let ev = accData.google[c.id]?.first(where: { $0.item.id == it.id }) else { return Failure("That event is gone.") }
             guard let m = ev.master else {  // a one-time event: its own repeat
@@ -866,20 +872,22 @@ extension Store {
                 let first = googleItem(c, j)?.item.start
                 let split = !all && occ != nil && first != nil && occ! > first!
                 let lines: [String]
+                // The new series first: if it can't be made, the old one keeps its later times.
+                if split, case .failure(let f) = s.accAdd(it, alertMinutes: minutes, repeats: rest(first!)) { throw f }
                 if split { lines = old.map { $0.uppercased().hasPrefix("RRULE:") ? "RRULE:" + endRule(String($0.dropFirst(6)), before: occ!, allDay: it.allDay) : $0 } }
                 else { lines = old.filter { !$0.uppercased().hasPrefix("RRULE:") && newLine != nil } + (newLine.map { [$0] } ?? []) }
                 _ = try await googleJSON("PATCH", path, token: t, body: ["recurrence": lines])
-                if split { _ = s.accAdd(it, alertMinutes: minutes, repeats: r) }
             }
             return nil
         }
         guard let ref = davRef(it), let res = accData.dav[c.id]?[ref.href] else { return Failure("That event is gone.") }
         let first = res.events.first { $0.recurrenceID == nil }?.start
         let split = !all && ref.occ != nil && first != nil && ref.occ! > first!
+        if split, case .failure(let f) = accAdd(it, alertMinutes: minutes, repeats: rest(first!)) { return f }  // new series first, as for Google
         let text = icsSetRule(res.text) { old in split ? old.map { endRule($0, before: ref.occ!, allDay: it.allDay) } : r?.rrule(allDay: it.allDay) }
         accData.dav[c.id]?[ref.href] = DavRes(etag: res.etag, text: text, events: parseICS(text))
         davSend(a, c, href: ref.href)
-        if split { _ = accAdd(it, alertMinutes: minutes, repeats: r) } else { refetch() }
+        if !split { refetch() }
         return nil
     }
 

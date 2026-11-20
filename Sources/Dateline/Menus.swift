@@ -63,8 +63,8 @@ struct AppCommands: Commands {
             Button("Delete Event…") { app.openMain?(); app.panels.confirmDelete = app.selected }.disabled(app.selected == nil)
             Button("Delete Task") { app.openMain?(); if let t = app.openTask { app.deleteTask(t) } }.disabled(app.openTask == nil || app.openTask?.a4 != nil)
             Divider()
-            Button("Copy Event") { app.openMain?(); app.copyEvent() }.keyboardShortcut(keys.shortcut(.copy)).disabled(app.selected == nil)
-            Button("Paste Event") { app.openMain?(); app.paste() }.keyboardShortcut(keys.shortcut(.paste)).disabled(app.clip == nil)
+            Button("Copy Event") { app.openMain?(); app.copyEvent() }.keyboardShortcut(keys.menuShortcut(.copy)).disabled(app.selected == nil)
+            Button("Paste Event") { app.openMain?(); app.paste() }.keyboardShortcut(keys.menuShortcut(.paste)).disabled(app.clip == nil)
             Button("Duplicate Event") { app.openMain?(); app.duplicateEvent() }.keyboardShortcut(keys.shortcut(.duplicate)).disabled(app.selected == nil)
             Divider()
             Button("Previous Event") { app.openMain?(); app.selectNext(-1) }

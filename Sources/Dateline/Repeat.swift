@@ -10,6 +10,7 @@ struct RepeatRows: View {
     @State private var now: RepeatNow?
     @State private var custom: Repeat?
     @State private var asking: Repeat??  // waiting for "this and future" or "all"
+    @State private var ends: Repeat?  // the Ends being changed, saved once the clicking stops
 
     var current: Repeat? { if case .rule(let r) = now { return r.normal(item.start) }; return nil }
 
@@ -29,10 +30,14 @@ struct RepeatRows: View {
             .menuStyle(.borderlessButton).fixedSize().disabled(locked || now == nil)
         }
         if let r = current {
-            row("Ends") { EndsPicker(r: Binding(get: { r }, set: { apply($0, all: true) }), start: item.start).disabled(locked) }
+            row("Ends") { EndsPicker(r: Binding(get: { ends ?? r }, set: { ends = $0 }), start: item.start).disabled(locked) }
         }
         Color.clear.frame(height: 0)  // carries the reading and the windows, which a bare EmptyView would never show
-            .task(id: item.id) { now = await store.repeatNow(item) }
+            .task(id: item.id) { now = nil; ends = nil; now = await store.repeatNow(item) }
+            .task(id: ends) {  // one save per pause, not one per stepper click
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                if !Task.isCancelled, let e = ends { ends = nil; if e != current { apply(e, all: true) } }
+            }
             .sheet(isPresented: Binding(get: { custom != nil }, set: { if !$0 { custom = nil } })) {
                 if let r = custom { CustomRepeat(r: r, start: item.start) { done in custom = nil; if let done { choose(done) } } }
             }
@@ -54,7 +59,7 @@ struct RepeatRows: View {
 
     // A one-time event just takes it; a repeating one asks which times it is for, as delete does.
     func choose(_ r: Repeat?) {
-        if now == .never { if r != nil { apply(r, all: true) } } else if r != current { asking = .some(r) }
+        if now == .never { if r != nil { apply(r, all: true) } } else if now == .other || r != current { asking = .some(r) }
     }
 
     // shortcut: a repeat change is not on the Command Z list; add it if undoing one is missed.
@@ -64,6 +69,11 @@ struct RepeatRows: View {
         // Becoming (or ending) a series can give the event a new identifier: keep it selected.
         if !store.items.contains(where: { $0.id == item.id }), let same = store.items.first(where: { $0.calendarID == item.calendarID && $0.title == item.title && $0.start == item.start }) {
             app.selectedID = same.id
+        }
+        // An account calendar gives the new identifier only after its next sync.
+        let (cid, title, start) = (item.calendarID, item.title, item.start)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [app, store] in
+            if app.selected == nil, let same = store.items.first(where: { $0.calendarID == cid && $0.title == title && $0.start == start }) { app.selectedID = same.id }
         }
     }
 

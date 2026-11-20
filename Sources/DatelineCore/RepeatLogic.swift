@@ -60,7 +60,8 @@ public struct Repeat: Equatable, Hashable {
 
     // When the last time falls, for "10 times".
     public func lastTime(_ start: Date) -> Date? {
-        occurrences(ICalEvent(start: start, end: start, tz: cal.timeZone, rule: ruleParts(allDay: false)), from: start, to: start.addingTimeInterval(86400 * 366 * 30)).last
+        let per: [Character: Double] = ["d": 1, "w": 7, "m": 31, "y": 366]  // looks far enough ahead for 999 times
+        return occurrences(ICalEvent(start: start, end: start, tz: cal.timeZone, rule: ruleParts(allDay: false)), from: start, to: start.addingTimeInterval(86400 * (Double((count ?? 1) * n) * per[unit]! + 31))).last
     }
 
     // RRULE text, as Google and iCloud/ICS files take it. An all-day event ends on a date, a timed one at the end of that day in UTC.
@@ -90,16 +91,17 @@ public struct Repeat: Equatable, Hashable {
         let n = Int(p["INTERVAL"] ?? "1") ?? 0
         guard n >= 1 else { return nil }
         var days: [Int] = [], nth: Int? = nil
-        for part in (p["BYDAY"] ?? "").split(separator: ",") {
+        let parts = (p["BYDAY"] ?? "").split(separator: ",")
+        for part in parts {
             guard part.count >= 2, let w = Self.codes.firstIndex(of: String(part.suffix(2))) else { return nil }
             days.append(w + 1)
-            if let k = Int(part.dropLast(2)) { nth = k }
+            if let k = Int(part.dropLast(2)) { guard parts.count == 1 else { return nil }; nth = k }  // "2MO,-1FR" is another app's
         }
         if let s = p["BYSETPOS"] { guard let k = Int(s), days.count > 1, nth == nil else { return nil }; nth = k }
         if let k = nth, !(1...4).contains(k) && k != -1 { return nil }
         // Daily on chosen days, yearly on a weekday, or a monthly day list are written by other apps only.
         guard (u == "w" || u == "m" || days.isEmpty), u != "m" || days.isEmpty || nth != nil, nth == nil || u == "m" else { return nil }
-        let until = p["UNTIL"].flatMap { v in icsDate(allDay ? String(v.prefix(8)) : v.count == 8 ? v + "T235959" : v, [:])?.0 }
+        let until = p["UNTIL"].flatMap { v in icsDate(allDay ? String(v.prefix(8)) : v.count == 8 ? v + "T235959" : v, [:])?.0 }.map { cal.startOfDay(for: $0) }
         self.init(unit: Character(u), n: n, days: days, nth: nth, count: p["COUNT"].flatMap { Int($0) }, until: until)
     }
 
@@ -118,6 +120,7 @@ public struct Repeat: Equatable, Hashable {
         let u: Character = [.daily: "d", .weekly: "w", .monthly: "m", .yearly: "y"][r.frequency] ?? "d"
         let days = (r.daysOfTheWeek ?? []).map { $0.dayOfTheWeek.rawValue }
         let inWeek = r.daysOfTheWeek?.first.map { $0.weekNumber } ?? 0
+        guard Set((r.daysOfTheWeek ?? []).map(\.weekNumber)).count <= 1 else { return nil }
         let pos = r.setPositions?.first?.intValue
         let nth = pos ?? (inWeek != 0 ? inWeek : nil)
         if let k = nth, !(1...4).contains(k) && k != -1 { return nil }
@@ -153,6 +156,7 @@ public func repeatSelfTest(_ expect: (Bool, String) -> Void) {
         expect(Repeat(rule: r.ruleParts(allDay: false)) == r, "repeat: rule reads back: \(r.rrule(allDay: false))")
         expect(Repeat(ek: r.ek)?.normal(mon) == r.normal(mon), "repeat: Apple rule reads back: \(r.rrule(allDay: false))")
     }
+    expect(Repeat(rule: ["FREQ": "MONTHLY", "BYDAY": "2MO,-1FR"]) == nil, "repeat: two numbered days are another app's rule")
     expect(Repeat(rule: ["FREQ": "MONTHLY", "BYMONTHDAY": "1,15"]) == nil, "repeat: a rule from another app is kept as it is")
     expect(Repeat(rule: ["FREQ": "WEEKLY"])?.normal(mon).days == [2], "repeat: plain weekly means the event's own day")
 }

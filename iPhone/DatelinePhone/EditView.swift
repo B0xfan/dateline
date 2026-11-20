@@ -218,17 +218,20 @@ struct EditSheet: View {
             if let f = app.duplicate(n) { if store.trialOver { app.unlockNext = true } else { problem = f.message; return } }
             dismiss(); return
         }
-        if n != original {
-            if let f = app.change(n, from: original, "Edited") {
+        // The repeat first, on the event as it was, so the series (not one changed time) takes it; then the other edits.
+        var was = original
+        if repeatChanged {
+            if let f = store.setRepeat(original, repeatPick, all: all) { if store.trialOver { app.unlockNext = true } else { problem = f.message; return } }
+            // Becoming (or ending) a series can give the event a new identifier: keep its details open.
+            if app.item(original.id) == nil, let same = store.items.first(where: { $0.calendarID == original.calendarID && $0.title == original.title && $0.start == original.start }) {
+                app.path = app.path.map { $0 == original.id ? same.id : $0 }
+                was = same; n.id = same.id
+            }
+        }
+        if n != was {
+            if let f = app.change(n, from: was, "Edited") {
                 if store.trialOver { app.unlockNext = true } else { problem = f.message; return }
             } else if app.opened[n.id] != nil { app.opened[n.id] = n }  // opened from outside the days in view: show the saved copy
-        }
-        if repeatChanged {
-            if let f = store.setRepeat(n, repeatPick, all: all) { if store.trialOver { app.unlockNext = true } else { problem = f.message; return } }
-            // Becoming (or ending) a series can give the event a new identifier: keep its details open.
-            if app.item(n.id) == nil, let same = store.items.first(where: { $0.calendarID == n.calendarID && $0.title == n.title && $0.start == n.start }) {
-                app.path = app.path.map { $0 == n.id ? same.id : $0 }
-            }
         }
         dismiss()
     }

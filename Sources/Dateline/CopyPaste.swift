@@ -14,7 +14,7 @@ struct Shortcut: Equatable {
         let m: [(NSEvent.ModifierFlags, EventModifiers)] = [(.control, .control), (.option, .option), (.shift, .shift), (.command, .command)]
         return KeyboardShortcut(KeyEquivalent(Character(char)), modifiers: EventModifiers(m.filter { mods.contains($0.0) }.map(\.1)))
     }
-    init(_ char: String, _ mods: NSEvent.ModifierFlags) { self.char = char; self.mods = mods.intersection([.command, .option, .control, .shift]) }
+    init(_ char: String, _ mods: NSEvent.ModifierFlags) { self.char = char.count == 1 ? char : ""; self.mods = mods.intersection([.command, .option, .control, .shift]) }
     init(_ e: NSEvent) { self.init((e.charactersIgnoringModifiers ?? "").lowercased(), e.modifierFlags) }
 }
 
@@ -23,7 +23,7 @@ final class EventKeys: ObservableObject {
     static let shared = EventKeys()
     static let defaults: [EventAction: Shortcut] = [.copy: Shortcut("c", .command), .paste: Shortcut("v", .command), .duplicate: Shortcut("d", .command)]
     // The app's own fixed menu keys and the Mac's usual ones, which a new pick may not take.
-    static let taken: [Shortcut] = ["n", "t", "z", "f", "q", "w", "h", "m", ",", "/"].map { Shortcut($0, .command) } + (1...9).map { Shortcut("\($0)", .command) }
+    static let taken: [Shortcut] = ["n", "t", "z", "f", "q", "w", "h", "m", ",", "/", "x", "a", "s", "o"].map { Shortcut($0, .command) } + (1...9).map { Shortcut("\($0)", .command) }
         + (1...5).map { Shortcut("\($0)", [.option, .command]) } + ["r", "p"].map { Shortcut($0, [.option, .command]) } + [Shortcut("/", [.shift, .command])]
 
     @Published private(set) var keys: [EventAction: Shortcut] = [:]
@@ -34,13 +34,15 @@ final class EventKeys: ObservableObject {
         let d = UserDefaults.standard
         for a in EventAction.allCases {
             if d.bool(forKey: "key.\(a).cleared") { continue }
-            if let c = d.string(forKey: "key.\(a).char"), !c.isEmpty { keys[a] = Shortcut(c, NSEvent.ModifierFlags(rawValue: UInt(d.integer(forKey: "key.\(a).mods")))) }
+            if let c = d.string(forKey: "key.\(a).char"), c.count == 1 { keys[a] = Shortcut(c, NSEvent.ModifierFlags(rawValue: UInt(d.integer(forKey: "key.\(a).mods")))) }
             else { keys[a] = Self.defaults[a] }
         }
     }
 
     func action(for e: NSEvent) -> EventAction? { let s = Shortcut(e); return keys.first { $0.value == s }?.key }
     func shortcut(_ a: EventAction) -> KeyboardShortcut? { keys[a]?.swiftUI }
+    // In the menu bar a key that is also Edit's Copy or Paste would fire while typing in a field with nothing to copy; the key handler takes those instead.
+    func menuShortcut(_ a: EventAction) -> KeyboardShortcut? { keys[a].flatMap { ["c", "v"].contains($0.char) && $0.mods == .command ? nil : $0.swiftUI } }
 
     // Needs Command, Control or Option; refused when the app or another of these already uses it.
     @discardableResult
@@ -65,13 +67,13 @@ extension AppState {
     // On the spot last clicked: an hour in day or week view, or a day in month view at the copy's own time of day.
     func paste(on day: Date? = nil) {
         guard let c = clip else { return }
-        let spot = day.map { (day: $0, time: false) } ?? pasteSpot ?? (day: anchor, time: false)
+        let spot = day.map { d in pasteSpot.flatMap { cal.isDate($0.day, inSameDayAs: d) ? $0 : nil } ?? (day: d, time: false) } ?? pasteSpot ?? (day: anchor, time: false)
         let len = c.end.timeIntervalSince(c.start)
         var m = c
         if c.allDay { m.start = cal.startOfDay(for: spot.day) }
         else if spot.time { m.start = spot.day }
         else { let t = cal.dateComponents([.hour, .minute], from: c.start); m.start = cal.date(bySettingHour: t.hour ?? 9, minute: t.minute ?? 0, second: 0, of: spot.day) ?? spot.day }
-        m.end = m.start.addingTimeInterval(len)
+        m.end = c.allDay ? addDays(m.start, cal.dateComponents([.day], from: c.start, to: c.end).day ?? 1) : m.start.addingTimeInterval(len)  // whole days across a clock change
         copy(m)
     }
 
@@ -79,7 +81,7 @@ extension AppState {
     func duplicateEvent(_ it: Item? = nil) {
         guard let s = it ?? selected else { return }
         var m = s
-        m.start = s.end; m.end = s.end.addingTimeInterval(s.end.timeIntervalSince(s.start))
+        m.start = s.end; m.end = s.allDay ? addDays(s.end, cal.dateComponents([.day], from: s.start, to: s.end).day ?? 1) : s.end.addingTimeInterval(s.end.timeIntervalSince(s.start))
         copy(m)
     }
 

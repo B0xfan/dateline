@@ -282,7 +282,7 @@ final class AppState: ObservableObject {
     func copy(_ it: Item) {
         guard let c = store.duplicate(it) else { error = store.trialOver ? License.endedMessage : "Couldn't copy the event."; return }
         undoStack.append { [weak self] in self?.store.delete(c) }
-        selectedID = store.items.first { $0.title == c.title && $0.start == c.start }?.id ?? c.id
+        selectedID = store.items.first { $0.id != it.id && $0.title == c.title && $0.start == c.start }?.id ?? c.id  // never the original
     }
 
     // A double-click on an empty spot in a day.
