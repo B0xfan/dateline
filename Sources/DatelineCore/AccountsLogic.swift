@@ -438,7 +438,13 @@ public func googleSplitBody(_ master: [String: Any], _ base: [String: Any], rule
     var b = base
     for k in ["attendees", "reminders", "guestsCanModify", "guestsCanInviteOthers", "guestsCanSeeOtherGuests", "visibility", "colorId"] { if let v = master[k] { b[k] = v } }
     if var conf = master["conferenceData"] as? [String: Any] { conf["createRequest"] = nil; b["conferenceData"] = conf }
-    b["recurrence"] = rule.map { ["RRULE:" + $0] } ?? []
+    // The series' own time zone, so both parts move together at a clock change.
+    if let tz = (master["start"] as? [String: Any])?["timeZone"] as? String {
+        for k in ["start", "end"] { if var w = b[k] as? [String: Any], w["dateTime"] is String { w["timeZone"] = tz; b[k] = w } }
+    }
+    // Times deleted from the series stay deleted (earlier ones fall before the new start and do nothing).
+    let exdates = (master["recurrence"] as? [String] ?? []).filter { $0.uppercased().hasPrefix("EXDATE") }
+    b["recurrence"] = (rule.map { ["RRULE:" + $0] } ?? []) + exdates
     return b
 }
 
@@ -897,14 +903,24 @@ extension Store {
                 let split = !all && occ != nil && first != nil && occ! > first!
                 let lines: [String]
                 // The new series first, awaited (a queued add would run after the cut): if it can't be made, the old one keeps its later times.
+                var added: String?
                 if split {
-                    var body = googleSplitBody(j, googleBody(it, link: it.link, known: it.link), rule: rest(first!)?.rrule(allDay: it.allDay))
-                    body["id"] = UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
+                    // At the series' own slot (this time may have been moved on its own), with the times already deleted from it.
+                    var at = it; at.start = occ!
+                    if let m = googleItem(c, j)?.item { at.end = occ!.addingTimeInterval(m.end.timeIntervalSince(m.start)) }
+                    var body = googleSplitBody(j, googleBody(at, link: it.link, known: it.link), rule: rest(first!)?.rrule(allDay: it.allDay))
+                    let gid = UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
+                    body["id"] = gid
                     _ = try await googleJSON("POST", "/calendars/\(pathPart(c.remote))/events?conferenceDataVersion=1", token: t, body: body)
+                    added = gid
                 }
                 if split { lines = old.map { $0.uppercased().hasPrefix("RRULE:") ? "RRULE:" + endRule(String($0.dropFirst(6)), before: occ!, allDay: it.allDay) : $0 } }
                 else { lines = old.filter { !$0.uppercased().hasPrefix("RRULE:") && newLine != nil } + (newLine.map { [$0] } ?? []) }
-                _ = try await googleJSON("PATCH", path, token: t, body: ["recurrence": lines])
+                do { _ = try await googleJSON("PATCH", path, token: t, body: ["recurrence": lines]) }
+                catch {  // the old series kept its later times: take the new one away again, or every later time shows twice
+                    if let added { _ = try? await googleJSON("DELETE", "/calendars/\(pathPart(c.remote))/events/" + added, token: t) }
+                    throw error
+                }
             }
             return nil
         }
@@ -1282,10 +1298,13 @@ public func accountsSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, In
     expect(ge?.item.files == [Attach(name: "Plan.pdf", url: "https://drive.google.com/file/d/f1/view", id: "f1", type: "application/pdf")], "accounts: a Google event's Drive files")
     let allDay = googleItem(c, ["id": "x", "start": ["date": "2026-11-02"], "end": ["date": "2026-11-03"]])
     expect(allDay?.item.allDay == true && allDay?.item.start == at(2026, 11, 2, 0, 0) && allDay?.item.end == at(2026, 11, 3, 0, 0), "accounts: a Google all-day event")
-    let split = googleSplitBody(["attendees": [["email": "a@example.com"]], "conferenceData": ["conferenceId": "abc-defg-hij", "createRequest": ["requestId": "r"]], "summary": "Old", "id": "m"],
-                                ["summary": "Standup"], rule: "FREQ=WEEKLY;COUNT=3")
+    let split = googleSplitBody(["attendees": [["email": "a@example.com"]], "conferenceData": ["conferenceId": "abc-defg-hij", "createRequest": ["requestId": "r"]], "summary": "Old", "id": "m",
+                                 "start": ["dateTime": "2026-11-02T10:00:00-05:00", "timeZone": "America/New_York"], "recurrence": ["RRULE:FREQ=WEEKLY", "EXDATE;TZID=America/New_York:20261116T100000"]],
+                                ["summary": "Standup", "start": ["dateTime": "2026-11-09T09:00:00-06:00", "timeZone": "America/Costa_Rica"], "end": ["dateTime": "2026-11-09T10:00:00-06:00", "timeZone": "America/Costa_Rica"]],
+                                rule: "FREQ=WEEKLY;COUNT=3")
+    expect((split["start"] as? [String: Any])?["timeZone"] as? String == "America/New_York" && (split["end"] as? [String: Any])?["timeZone"] as? String == "America/New_York", "accounts: a split Google series keeps the series' own time zone")
     expect((split["attendees"] as? [[String: String]])?.first?["email"] == "a@example.com" && split["summary"] as? String == "Standup" && split["id"] == nil, "accounts: a split Google series keeps its guests, takes this time's details, and gets its own id")
-    expect((split["conferenceData"] as? [String: Any])?["conferenceId"] as? String == "abc-defg-hij" && (split["conferenceData"] as? [String: Any])?["createRequest"] == nil && split["recurrence"] as? [String] == ["RRULE:FREQ=WEEKLY;COUNT=3"], "accounts: a split Google series keeps the same Meet call and the new repeat")
+    expect((split["conferenceData"] as? [String: Any])?["conferenceId"] as? String == "abc-defg-hij" && (split["conferenceData"] as? [String: Any])?["createRequest"] == nil && split["recurrence"] as? [String] == ["RRULE:FREQ=WEEKLY;COUNT=3", "EXDATE;TZID=America/New_York:20261116T100000"], "accounts: a split Google series keeps the same Meet call, the new repeat and the deleted times")
     expect(googleItem(c, ["id": "y", "status": "cancelled", "start": ["date": "2026-11-02"], "end": ["date": "2026-11-03"]]) == nil, "accounts: a cancelled Google occurrence is left out")
     let body = googleBody(base, link: "https://zoom.us/j/9")
     expect((body["description"] as? String)?.hasSuffix("Join: https://zoom.us/j/9") == true && (body["start"] as? [String: Any])?["timeZone"] as? String == cal.timeZone.identifier,
