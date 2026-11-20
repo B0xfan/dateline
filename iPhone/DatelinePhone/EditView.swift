@@ -75,7 +75,7 @@ struct EditSheet: View {
                 }
                 if locked && !duplicate { Section { Text("This calendar is read only. You can still add an emoji, a color, tags and travel.").font(.footnote).foregroundStyle(T.text2) } }
                 when
-                alerts
+                if !duplicate { alerts }  // a copy takes the original's alerts, as on the Mac (Store.duplicate copies them)
                 Section("Show as") {
                     Picker("Show as", selection: $item.showAs) { ForEach(ShowAs.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                         .pickerStyle(.segmented).disabled(locked)
