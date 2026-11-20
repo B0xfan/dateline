@@ -107,11 +107,16 @@ struct DayColumn: View {
     @ObservedObject private var here = Here.shared
     let day: Date, days: [Date], items: [Item]
     @State private var drag: (id: String, dy: CGFloat, dx: CGFloat, stretch: Bool)?
+    @State private var taskStretch: (id: String, dy: CGFloat)?
 
     var body: some View {
         GeometryReader { g in
             let w = g.size.width
-            let lane = lanes(items)
+            let timed = app.calendarTodos.filter { t in t.timed && !isOverdue(t, now: app.now) && !store.a4OnCalendar(t) && t.due.map { cal.isDate($0, inSameDayAs: day) } == true }
+            let perPoint = 3600 / Double(hourH)  // seconds of day per point of height
+            // An A4 task is as long as its timeEstimate (LifeWorld's Planner); a reminder keeps its half-hour chip.
+            let tall = { (t: ToDo) -> CGFloat in t.a4.map { CGFloat($0.length) / 60 * hourH } ?? max(20, hourH / 2 - 2) }
+            let lane = lanes(items + timed.map { taskSpan($0, at: $0.due!, length: Double(tall($0)) * perPoint) }, minLength: 18 * perPoint)
             ZStack(alignment: .topLeading) {
                 OffHours(day: day)
                 if WorkWeek.sun, let g = here.spot { SunHours(day: day, at: g, labels: day == days.first && w >= 70) }
@@ -150,6 +155,15 @@ struct DayColumn: View {
                                 .onHover { ($0 ? NSCursor.resizeUpDown : NSCursor.arrow).set() }  // set, not push/pop: a redraw mid-hover cannot leave it stuck
                                 .gesture(dragGesture(it, colWidth: w, stretch: true))
                         }
+                        .overlay(alignment: .bottomTrailing) {
+                            if let d, d.stretch {  // the new end and length under the edge being pulled; gone on letting go
+                                let n = DragMath.stretch(it, minutes: DragMath.minutes(dy: d.dy, hourH: hourH))
+                                Text(timeText(n.end) + " · " + DragMath.length(n)).font(.ui(12)).foregroundStyle(.white)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.85)))
+                                    .fixedSize().offset(x: -6, y: 26).allowsHitTesting(false)
+                            }
+                        }
                         .offset(x: 2 + CGFloat(l) * colW + (d?.stretch == false ? d!.dx : 0), y: f.y + 1 + (d?.stretch == false ? d!.dy : 0))
                         .zIndex(d != nil ? 2 : 1)
                 }
@@ -162,10 +176,15 @@ struct DayColumn: View {
                     }.allowsHitTesting(false).zIndex(3)
                 }
                 // Reminders with a time on this day (not overdue: those sit in today's Tasks row).
-                ForEach(app.calendarTodos.filter { t in t.timed && !isOverdue(t, now: app.now) && !store.a4OnCalendar(t) && t.due.map { cal.isDate($0, inSameDayAs: day) } == true }) { t in
+                ForEach(timed) { t in
+                    let (l, n) = lane["task:" + t.id] ?? (0, 1), colW = (w - 4) / CGFloat(max(n, 1))
+                    let dy = taskStretch?.id == t.id ? taskStretch!.dy : 0
                     TaskBlock(app: app, store: store, task: t)
-                        .frame(width: w - 8, height: max(20, hourH / 2 - 2))
-                        .offset(x: 4, y: CGFloat(t.due!.timeIntervalSince(day) / 3600) * hourH + 1)
+                        .frame(width: colW - 2, height: max(20, tall(t) + dy - 2))
+                        .overlay(alignment: .bottom) {
+                            if t.a4 != nil, !t.done { stretchHandle(t) }  // stretching writes the note's timeEstimate only
+                        }
+                        .offset(x: 2 + CGFloat(l) * colW, y: CGFloat(t.due!.timeIntervalSince(day) / 3600) * hourH + 1)
                         .zIndex(2)
                 }
             }
@@ -179,6 +198,20 @@ struct DayColumn: View {
             app.drop(taskID: String(id.dropFirst(5)), at: cal.date(byAdding: .minute, value: min(95, max(0, Int(loc.y / hourH * 4))) * 15, to: day)!)
             return true
         }
+    }
+
+    // An A4 task's bottom edge, in 15-minute steps; 15 minutes is the shortest.
+    func stretchHandle(_ t: ToDo) -> some View {
+        Color.clear.frame(height: 6).contentShape(Rectangle())
+            .onHover { ($0 ? NSCursor.resizeUpDown : NSCursor.arrow).set() }
+            .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .global)
+                .onChanged { v in let step = hourH / 4; taskStretch = (t.id, max(CGFloat(15 - (t.a4?.length ?? 30)) / 60 * hourH, (v.translation.height / step).rounded() * step)) }  // the preview stops at 15 minutes, as the save does
+                .onEnded { v in
+                    taskStretch = nil
+                    let m = max(15, (t.a4?.length ?? 30) + DragMath.minutes(dy: v.translation.height, hourH: hourH))
+                    var n = t; n.a4?.minutes = m
+                    if m != t.a4?.length { app.saveTask(n) }
+                })
     }
 
     func frame(_ it: Item) -> (y: CGFloat, h: CGFloat) {
@@ -400,6 +433,11 @@ struct DetailPanel: View {
     @State var item: Item
     @FocusState private var field: String?
     @State private var notesEditing = false
+    // The alert menu's Custom… box.
+    @State private var customOpen = false
+    @State private var customAt = 0
+    @State private var customN = 10
+    @State private var customUnit = 1
     @AppStorage("attachHintOff") private var attachHintOff = false  // "Not now" on the attachments hint
 
     var body: some View {
@@ -424,7 +462,7 @@ struct DetailPanel: View {
                     }.menuStyle(.borderlessButton).fixedSize().disabled(locked)
                 }.padding(.top, 12)
                 // Phase 3: kept by Dateline on this Mac, so they work on invites and read-only calendars too.
-                row("Emoji") { EmojiRow(store: store, item: $item, commit: commit) }
+                row("Emoji") { EmojiRow(app: app, store: store, item: $item, commit: commit) }
                 row("Color") { ColorRow(store: store, item: $item, commit: commit) }
                 HStack(alignment: .top, spacing: 8) {
                     Text("Tags").foregroundStyle(Palette.text3).frame(width: 64, alignment: .leading).padding(.top, 4)
@@ -460,7 +498,8 @@ struct DetailPanel: View {
                     }
                     Text(lengthText).font(.ui(12)).foregroundStyle(Palette.text3).padding(.leading, 72)
                 }
-                RepeatRows(app: app, store: store, item: item, locked: locked)
+                if !isBlocks(item.calendarID) { RepeatRows(app: app, store: store, item: item, locked: locked) }  // the Planner's time blocks don't repeat
+                alertRows.disabled(locked)
                 section("SHOW AS")
                 Seg(options: ShowAs.allCases.map(\.rawValue), selected: item.showAs.rawValue) { item.showAs = ShowAs(rawValue: $0)!; commit() }
                 section("PLACE")
@@ -559,6 +598,50 @@ struct DetailPanel: View {
             return
         }
         app.save(item)
+    }
+
+    // Alerts (approved mockups 2026-11-10, 2026-11-17): up to five can be added (more set elsewhere stay), saved on the event so they also ring on the phone and in Apple Calendar.
+    var alertRows: some View {
+        let mins = alertMinutes(item)
+        let google = store.accCal(item.calendarID)?.0.kind == "google"  // Google takes only alerts before the start
+        let choices = (item.allDay ? allDayAlertChoices : alertChoices).filter { !(google && $0 < 0) }
+        func pick(_ act: @escaping (Int) -> Void) -> some View {
+            ForEach(choices, id: \.self) { m in Button(alertText(m, allDay: item.allDay)) { act(m) } }
+        }
+        func custom(_ i: Int) -> some View {
+            Group { if !item.allDay { Divider(); Button("Custom…") { customAt = i; customOpen = true } } }
+        }
+        let add = Menu { pick { setAlerts(mins + [$0]) }; custom(mins.count) } label: { Text("+ Add alert").foregroundStyle(Color.accentColor) }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(mins.enumerated()), id: \.offset) { i, m in
+                row(i == 0 ? "Alert" : "") {
+                    Menu { pick { v in var all = mins; all[i] = v; setAlerts(all) }; custom(i) } label: { Text(alertText(m, allDay: item.allDay)) }
+                        .menuStyle(.borderlessButton).fixedSize().frame(maxWidth: .infinity, alignment: .leading)  // keeps every ✕ at the right edge
+                    Button { var all = mins; all.remove(at: i); setAlerts(all) } label: { Image(systemName: "xmark").font(.ui(10, weight: .semibold)) }
+                        .buttonStyle(.plain).foregroundStyle(Palette.text3).accessibilityLabel("Remove alert")
+                }
+            }
+            if mins.isEmpty { row("Alert") { add } } else if mins.count < maxAlerts { add.padding(.leading, 72).padding(.top, 6) }
+        }
+        .popover(isPresented: $customOpen, arrowEdge: .leading) {
+            HStack(spacing: 8) {
+                TextField("", value: $customN, format: .number).frame(width: 48).textFieldStyle(.roundedBorder)
+                Picker("", selection: $customUnit) { Text("minutes").tag(1); Text("hours").tag(60); Text("days").tag(1440) }.labelsHidden().fixedSize()
+                Text("before").foregroundStyle(Palette.text3)
+                Button("Set") {
+                    var all = mins; let v = min(max(0, customN) * customUnit, google ? 40320 : 525_600)  // Google takes at most 4 weeks
+                    if customAt < all.count { all[customAt] = v } else { all.append(v) }
+                    setAlerts(all); customOpen = false
+                }.keyboardShortcut(.defaultAction)
+            }.padding(12)
+        }
+    }
+
+    func setAlerts(_ mins: [Int]) {
+        var seen = Set<Int>()
+        item.alerts = mins.filter { seen.insert($0).inserted }.map { item.start.addingTimeInterval(-Double($0 * 60)) }
+        commit()
     }
 
     func section(_ t: String) -> some View {

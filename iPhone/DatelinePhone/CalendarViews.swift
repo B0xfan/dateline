@@ -44,22 +44,23 @@ struct CalHeader: View {
     @EnvironmentObject var store: Store
 
     var body: some View {
+        if app.wide { PadCalHeader() } else { phone }
+    }
+
+    private var phone: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {  // side by side, so a long title at large text never runs under the buttons
                 Button("Today") { app.goToday() }
                     .font(.body.weight(.semibold)).foregroundStyle(T.tint).padding(.horizontal, 8).frame(minHeight: 44).fixedSize()
-                Text(title).font(.headline).foregroundStyle(T.text).lineLimit(1).minimumScaleFactor(0.7)
-                    .frame(maxWidth: .infinity).layoutPriority(1).accessibilityAddTraits(.isHeader)
-                if !app.emails.isEmpty {
-                    Button { app.email = app.emails.first } label: {
-                        Image(systemName: "envelope").frame(width: 44, height: 44)
-                            .overlay(alignment: .topTrailing) {
-                                Text("\(app.emails.count)").font(.caption2.bold()).foregroundStyle(.white)
-                                    .frame(minWidth: 16, minHeight: 16).background(T.tint, in: Capsule()).offset(x: -3, y: 5)
-                            }
+                Button { jumping = true } label: {  // tap the title to go to a date (approved mockup 2026-11-17)
+                    HStack(spacing: 5) {
+                        Text(title).font(.headline).foregroundStyle(T.text).lineLimit(1).minimumScaleFactor(0.7)
+                        Image(systemName: "chevron.down").font(.caption2.weight(.bold)).foregroundStyle(T.tint)
                     }
-                    .accessibilityLabel("From email, \(app.emails.count) new")
+                    .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                 }
+                .layoutPriority(1).accessibilityAddTraits(.isHeader).accessibilityHint("Go to a date")
+                EmailButton()
                 Button { app.searching = true } label: { Image(systemName: "magnifyingglass").frame(width: 44, height: 44) }
                     .accessibilityLabel("Search")
                 Button { app.adding = "" } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
@@ -85,7 +86,10 @@ struct CalHeader: View {
         }
         .background(T.bg)
         .overlay(alignment: .bottom) { Rectangle().fill(T.line).frame(height: 0.5) }
+        .sheet(isPresented: $jumping) { GoToDate(day: app.anchor) { app.anchor = cal.startOfDay(for: $0) } }
     }
+
+    @State private var jumping = false
 
     private var title: String {
         let a = app.anchor, last = app.days.last!
@@ -96,6 +100,23 @@ struct CalHeader: View {
         case .month: return dateText(a, "MMMM yyyy")
         case .quarter: let q = quarterStart(a); return dateText(q, "MMM") + " to " + dateText(cal.date(byAdding: .month, value: 2, to: q)!, "MMM yyyy")
         case .year: return dateText(a, "yyyy")
+        }
+    }
+}
+
+/// The envelope with how many events were found in emails; opens the first. Hidden when there are none.
+struct EmailButton: View {
+    @EnvironmentObject var app: PhoneState
+    var body: some View {
+        if !app.emails.isEmpty {
+            Button { app.email = app.emails.first } label: {
+                Image(systemName: "envelope").frame(width: 44, height: 44)
+                    .overlay(alignment: .topTrailing) {
+                        Text("\(app.emails.count)").font(.caption2.bold()).foregroundStyle(.white)
+                            .frame(minWidth: 16, minHeight: 16).background(T.tint, in: Capsule()).offset(x: -3, y: 5)
+                    }
+            }
+            .accessibilityLabel("From email, \(app.emails.count) new")
         }
     }
 }
@@ -253,48 +274,45 @@ struct AgendaDay: View {
     }
 }
 
-/// A day's events and tasks as rows in one rounded card: the time beside each, then its colour, name and place.
+/// A day's events and tasks as rows in one rounded card: its colour, then the time above its name and place.
 struct DayCard: View {
     @EnvironmentObject var app: PhoneState
     let day: Date
     let rows: [AgendaRow]
     let allDay: [Item]
-    @ScaledMetric(relativeTo: .caption) private var timeRaw: CGFloat = 56
-    private var timeW: CGFloat { min(timeRaw, 100) }
 
     var body: some View {
         let n = cal.dateComponents([.day], from: cal.startOfDay(for: app.today), to: day).day ?? 99
         let next: String? = n == 0 ? rows.lazy.compactMap { if case .event(let it) = $0, it.start > app.today { it.id } else { nil } }.first : nil  // rows run in time order
-        VStack(spacing: 0) {
+        VStack(spacing: 0) {  // compact like Fantastical (John 2026-11-08): no dividers, the time sits above the title
             if rows.isEmpty && allDay.isEmpty {
                 Text("Nothing planned").font(.subheadline).foregroundStyle(T.text2)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).frame(minHeight: 48)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).frame(minHeight: 44)
             }
-            ForEach(Array((allDay.map(AgendaRow.event) + rows).enumerated()), id: \.element.id) { i, r in
-                Group {
-                    switch r {
-                    case .event(let it): AgendaEvent(it: it, day: day, next: it.id == next, timeW: timeW)
-                    case .task(let t): AgendaTask(t: t, timeW: timeW)
-                    }
+            ForEach(allDay.map(AgendaRow.event) + rows, id: \.id) { r in
+                switch r {
+                case .event(let it): AgendaEvent(it: it, day: day, next: it.id == next)
+                case .task(let t): AgendaTask(t: t)
                 }
-                .overlay(alignment: .top) { if i > 0 { Rectangle().fill(T.line).frame(height: 0.5).padding(.leading, 14 + timeW + 12) } }
             }
         }
+        .padding(.vertical, 4)
         .background(T.card, in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
-/// The time beside a list row: start over end, or one line.
-struct TimeColumn: View {
-    let lines: [String]
-    let width: CGFloat
+/// The small line above a list row's title: its time on the left, a countdown or leave-by on the right.
+struct TimeLine: View {
+    let text: String
     var color = T.text2
+    var tag: (String, Color)? = nil
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            ForEach(lines.indices, id: \.self) { Text(lines[$0]).lineLimit(1).minimumScaleFactor(0.75) }  // two lines can match
+        HStack(spacing: 8) {
+            Text(text).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.8)
+            Spacer(minLength: 0)
+            if let tag { Text(tag.0).foregroundStyle(tag.1).lineLimit(1).fixedSize() }
         }
-        .font(.caption.weight(.medium)).foregroundStyle(color)
-        .frame(width: width, alignment: .leading).padding(.top, 2)
+        .font(.caption.weight(.medium))
     }
 }
 
@@ -304,44 +322,29 @@ struct AgendaEvent: View {
     let it: Item
     let day: Date
     let next: Bool
-    let timeW: CGFloat
     var body: some View {
         let past = it.end <= app.today
         let leave = app.drive[it.id].map { it.start.addingTimeInterval(-Double($0) * 60) }.flatMap { $0 > app.today ? $0 : nil }
-        let time: [String] = it.allDay ? ["all-day"]
-            : it.start >= day ? [timeText(it.start, short: true), timeText(it.end, short: true)]
-            : cal.isDate(it.end, inSameDayAs: day) ? ["until", timeText(it.end, short: true)] : ["all-day"]  // a timed event running across several days
+        let time = it.allDay ? "all-day"
+            : it.start >= day ? timeText(it.start, short: true) + " – " + timeText(it.end, short: true)
+            : cal.isDate(it.end, inSameDayAs: day) ? "until " + timeText(it.end, short: true) : "all-day"  // a timed event running across several days
+        let tag: (String, Color)? = leave.map { ("Leave \(dateText($0, "h:mm"))", .orange) } ?? (next ? ("in " + span(it.start.timeIntervalSince(app.today)), T.tint) : nil)
         Button { app.open(it) } label: {
-            HStack(alignment: .top, spacing: 12) {
-                TimeColumn(lines: time, width: timeW)
+            HStack(alignment: .top, spacing: 10) {
                 RoundedRectangle(cornerRadius: 2).fill(store.color(it)).frame(width: 4).frame(maxHeight: .infinity)
-                    .frame(width: 12, alignment: .leading)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(it.shownTitle).font(.body.weight(.semibold)).foregroundStyle(T.text).lineLimit(3)
-                    if !it.place.isEmpty { Text(it.place).font(.footnote).foregroundStyle(T.text2).lineLimit(2) }
+                    .frame(width: 12, alignment: .leading)  // same column as a task's circle, so titles line up
+                VStack(alignment: .leading, spacing: 1) {
+                    TimeLine(text: time, tag: tag)
+                    Text(it.shownTitle).font(.body).foregroundStyle(T.text).lineLimit(3)
+                    if !it.place.isEmpty { Text(it.place).font(.caption).foregroundStyle(T.text2).lineLimit(2) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if let leave {
-                    RowTag(text: "Leave \(dateText(leave, "h:mm"))", color: .orange)
-                } else if next {
-                    RowTag(text: "in " + span(it.start.timeIntervalSince(app.today)), color: T.tint)
-                }
             }
             .fixedSize(horizontal: false, vertical: true)  // the colour bar runs the row's height
-            .padding(.horizontal, 14).padding(.vertical, 11).frame(minHeight: 56)
+            .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 44)
             .opacity(past ? 0.45 : 1).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-}
-
-/// A countdown or leave-by label on a list row.
-struct RowTag: View {
-    let text: String
-    let color: Color
-    var body: some View {
-        Text(text).font(.footnote.weight(.semibold)).foregroundStyle(color).lineLimit(1).fixedSize()
-            .padding(.horizontal, 10).padding(.vertical, 4).background(color.opacity(0.14), in: Capsule())
     }
 }
 
@@ -349,20 +352,20 @@ struct AgendaTask: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     let t: ToDo
-    let timeW: CGFloat
+    @ScaledMetric(relativeTo: .body) private var ringTop: CGFloat = 21  // beside the title at every text size
     var body: some View {
         let late = isOverdue(t, now: app.today), c = late ? T.late : store.taskList(t.listID)?.color ?? T.tint
         Button { app.toggle(t) } label: {
-            HStack(alignment: .top, spacing: 12) {
-                TimeColumn(lines: late ? ["overdue"] : t.timed ? [timeText(t.due!, short: true)] : ["anytime"], width: timeW, color: late ? T.late : T.text2)
-                Circle().strokeBorder(c, lineWidth: 1.8).background(Circle().fill(t.done ? c : .clear)).frame(width: 12, height: 12).padding(.top, 4)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(t.title).font(.body.weight(.medium)).strikethrough(t.done).foregroundStyle(t.done ? T.text2 : T.text).lineLimit(3)
-                    if late, let d = t.due { Text("From \(shortDay(d, now: app.today))").font(.footnote).foregroundStyle(T.late) }
+            HStack(alignment: .top, spacing: 10) {
+                Circle().strokeBorder(c, lineWidth: 1.8).background(Circle().fill(t.done ? c : .clear)).frame(width: 12, height: 12).padding(.top, ringTop)
+                VStack(alignment: .leading, spacing: 1) {
+                    TimeLine(text: late ? "overdue" : t.timed ? timeText(t.due!, short: true) : "anytime", color: late ? T.late : T.text2)
+                    Text(t.title).font(.body).strikethrough(t.done).foregroundStyle(t.done ? T.text2 : T.text).lineLimit(3)
+                    if late, let d = t.due { Text("From \(shortDay(d, now: app.today))").font(.caption).foregroundStyle(T.late) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 14).padding(.vertical, 11).frame(minHeight: 56).contentShape(Rectangle())
+            .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 44).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(t.done ? "\(t.title), done" : "Finish \(t.title)")
@@ -419,6 +422,7 @@ struct AllDayChip: View {
 struct WeekView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
+    @ObservedObject private var weather = WeatherStore.shared  // the iPad's day headers show the forecast
     @ScaledMetric(relativeTo: .caption2) private var gutterRaw: CGFloat = 44
     private var gutter: CGFloat { min(gutterRaw, 80) }  // grows with the phone's text size, capped so three days still fit
 
@@ -430,9 +434,19 @@ struct WeekView: View {
                 ForEach(days, id: \.self) { d in
                     let today = cal.isDate(d, inSameDayAs: app.today)
                     VStack(spacing: 2) {
-                        Text(dateText(d, "EEE")).font(.caption).foregroundStyle(T.text2)
-                        Text(dateText(d, "d")).font(.headline).frame(width: 30, height: 30)
-                            .foregroundStyle(today ? .white : T.text).background(today ? T.accent : .clear, in: Circle())
+                        if app.wide {  // iPad (approved pictures 2026-11-18): "Mon 26", then "31° · 5:32"
+                            HStack(spacing: 4) {
+                                Text(dateText(d, "EEE")).foregroundStyle(T.text2)
+                                Text(dateText(d, "d")).font(.headline).frame(minWidth: 28, minHeight: 28)
+                                    .foregroundStyle(today ? .white : T.text).background(today ? T.accent : .clear, in: Circle())
+                            }
+                            let wx = [app.wx(d).map { degrees($0.hi) }, app.sun(d).map { dateText($0.set, "h:mm") }].compactMap { $0 }
+                            if !wx.isEmpty { Text(wx.joined(separator: " · ")).font(.caption).foregroundStyle(T.text2).lineLimit(1).minimumScaleFactor(0.8) }
+                        } else {
+                            Text(dateText(d, "EEE")).font(.caption).foregroundStyle(T.text2)
+                            Text(dateText(d, "d")).font(.headline).frame(width: 30, height: 30)
+                                .foregroundStyle(today ? .white : T.text).background(today ? T.accent : .clear, in: Circle())
+                        }
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -477,7 +491,8 @@ struct DayView: View {
         let d = app.anchor, items = store.shown(on: d), tasks = dayTasks(store, d, now: app.today), allDay = items.filter(\.allDay)
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(dateText(d, "EEEE, MMMM d")).font(.title2.bold()).lineLimit(2).accessibilityAddTraits(.isHeader)
+                // The iPad's title row already shows the date (John 2026-11-19), so only the summary stays there.
+                if !app.wide { Text(dateText(d, "EEEE, MMMM d")).font(.title2.bold()).lineLimit(2).accessibilityAddTraits(.isHeader) }
                 Text(summary(d, count: items.count)).font(.footnote).foregroundStyle(T.text2)
             }
             .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 8)
@@ -513,7 +528,8 @@ struct HourGrid: View {
     @EnvironmentObject var store: Store
     @Environment(\.scenePhase) private var scenePhase
     @State private var away = false
-    @GestureState private var held: DragLive? = nil  // the event held in a finger now; it clears itself when the finger lifts or the touch is cancelled
+    @GestureState private var held: DragLive? = nil  // iOS 17: the event held in a finger now; it clears itself when the finger lifts or the touch is cancelled
+    @State private var pressed: DragLive? = nil  // iOS 18 and later: the same, from HoldDrag
     let days: [Date]
     let wide: Bool
     private var hourH: CGFloat { Look.hourHeight }  // Hour height and How packed, as on the Mac (redraws on app.look)
@@ -542,12 +558,12 @@ struct HourGrid: View {
                 }
                 .padding(.bottom, 8)
             }
-            .scrollDisabled(held != nil)
-            .onChange(of: held?.id) {
-                if held != nil { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); app.dragUntil = .distantFuture }
+            .scrollDisabled(holding != nil)
+            .onChange(of: holding?.id) {
+                if holding != nil { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); app.dragUntil = .distantFuture }
                 else { app.dragUntil = Date().addingTimeInterval(0.4) }
             }
-            .onChange(of: held?.minutes) { if held != nil { UISelectionFeedbackGenerator().selectionChanged() } }
+            .onChange(of: holding?.minutes) { if holding != nil { UISelectionFeedbackGenerator().selectionChanged() } }
             // Like the Mac: the current hour's row sits mid-view on opening and each time the app comes back to the front.
             .onAppear { DispatchQueue.main.async { centre(sv) } }
             .onChange(of: app.anchor) { centre(sv) }
@@ -569,7 +585,8 @@ struct HourGrid: View {
         return CGFloat(m) / 60 * hourH
     }
 
-    private var live: DragLive? { held ?? app.demoDrag }
+    private var holding: DragLive? { held ?? pressed }
+    private var live: DragLive? { holding ?? app.demoDrag }
 
     /// The event as it would be saved if the finger lifted now.
     private func lifted(_ it: Item, _ l: DragLive, column: Date) -> Item {
@@ -609,19 +626,19 @@ struct HourGrid: View {
                 let writable = store.calendar(it.calendarID)?.writable == true
                 EventBlock(it: shown, wide: wide, lifted: l != nil)
                     .frame(width: w - 4, height: h)
-                    .gesture(hold(it, column: day, width: g.size.width, stretch: false), including: writable ? .all : .none)
+                    .modifier(Holdable(grid: self, it: it, column: day, width: g.size.width, stretch: false, on: writable))
                     .overlay(alignment: .bottom) {
                         if writable {
                             Color.clear.frame(height: min(22, h0 / 2)).contentShape(Rectangle())
                                 .onTapGesture { app.open(it) }
-                                .gesture(hold(it, column: day, width: g.size.width, stretch: true))
+                                .modifier(Holdable(grid: self, it: it, column: day, width: g.size.width, stretch: true, on: true))
                                 .accessibilityHidden(true)
                         }
                     }
                     .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in app.say("This calendar is read only.") }, including: writable ? .none : .all)
                     .accessibilityAction(named: "Move 15 minutes later") { if writable { _ = app.change(DragMath.move(it, minutes: 15), from: it, "Moved") } }
                     .accessibilityAction(named: "Move 15 minutes earlier") { if writable { _ = app.change(DragMath.move(it, minutes: -15), from: it, "Moved") } }
-                    .overlay(alignment: top < 44 ? .bottom : .top) { if l != nil { HoldPill(it: shown).offset(y: top < 44 ? 30 : -30) } }
+                    .overlay(alignment: top < 44 ? .bottom : .top) { if l != nil { HoldPill(it: shown, stretch: l?.stretch == true).offset(y: top < 44 ? 30 : -30) } }
                     .offset(x: CGFloat(pos.0) * w + 2 + CGFloat(cols) * g.size.width, y: top + (l.map { $0.stretch ? 0 : CGFloat($0.minutes) / 60 * hourH } ?? 0))
                     .zIndex(l != nil ? 2 : 0)
             }
@@ -644,6 +661,26 @@ struct HourGrid: View {
         }
     }
 
+    /// iOS 18 and later hold with HoldDrag: there SwiftUI's own hold-then-drag stops a quick swipe that starts on an event from scrolling the day (John's video 2026-11-12).
+    private struct Holdable: ViewModifier {
+        let grid: HourGrid, it: Item, column: Date, width: CGFloat, stretch: Bool, on: Bool
+        func body(content: Content) -> some View {
+            if !on { content }
+            else if #available(iOS 18.0, *) {
+                let live = { (d: CGSize) in DragLive(id: it.id, day: column, stretch: stretch, minutes: DragMath.minutes(dy: d.height, hourH: grid.hourH), columns: Int((d.width / width).rounded())) }
+                content.gesture(HoldDrag { grid.pressed = $0.map(live) } lifted: { grid.drop(it, live($0), column: column) })
+                    .onDisappear { if grid.pressed?.id == it.id && grid.pressed?.stretch == stretch { grid.pressed = nil } }  // a sync removed the held event: never leave the day frozen
+            } else { content.gesture(grid.hold(it, column: column, width: width, stretch: stretch)) }
+        }
+    }
+
+    /// The finger lifted: save the event where it was let go.
+    private func drop(_ it: Item, _ l: DragLive, column: Date) {
+        let new = lifted(it, l, column: column)
+        guard new != it else { return }
+        if let f = app.change(new, from: it, l.stretch ? "Changed the length of" : "Moved") { if store.trialOver { app.showUnlock = true } else { app.problem = f.message } }
+    }
+
     /// Press and hold, then drag: moves the event (anywhere on it) or changes its length (its bottom edge). 15 minute steps.
     private func hold(_ it: Item, column: Date, width: CGFloat, stretch: Bool) -> some Gesture {
         func live(_ v: SequenceGesture<LongPressGesture, DragGesture>.Value) -> DragLive? {
@@ -652,12 +689,32 @@ struct HourGrid: View {
         }
         return LongPressGesture(minimumDuration: 0.35).sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
             .updating($held) { v, state, _ in if let l = live(v) { state = l } }
-            .onEnded { v in
-                guard let l = live(v) else { return }
-                let new = lifted(it, l, column: column)
-                guard new != it else { return }
-                if let f = app.change(new, from: it, stretch ? "Changed the length of" : "Moved") { if store.trialOver { app.showUnlock = true } else { app.problem = f.message } }
-            }
+            .onEnded { v in if let l = live(v) { drop(it, l, column: column) } }
+    }
+}
+
+/// Press and hold, then drag, as UIKit's long press: a finger that moves before the hold is up fails it and stays a scroll.
+@available(iOS 18.0, *)
+struct HoldDrag: UIGestureRecognizerRepresentable {
+    let moved: (CGSize?) -> Void  // finger travel since the hold began; nil when it ends or is cancelled
+    let lifted: (CGSize) -> Void  // the finger lifted after this travel
+    final class Coordinator { var start: CGPoint? }
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let g = UILongPressGestureRecognizer()
+        g.minimumPressDuration = 0.35
+        return g
+    }
+    func handleUIGestureRecognizerAction(_ g: UILongPressGestureRecognizer, context: Context) {
+        let p = g.location(in: g.view?.window)  // window space: the block moves under the finger, so its own space would jitter
+        if g.state == .began { context.coordinator.start = p }
+        guard let s = context.coordinator.start else { return moved(nil) }  // never saw this hold begin: ignore it rather than jump the event
+        let d = CGSize(width: p.x - s.x, height: p.y - s.y)
+        switch g.state {
+        case .began, .changed: moved(d)
+        case .ended: moved(nil); context.coordinator.start = nil; lifted(d)
+        default: moved(nil); context.coordinator.start = nil  // cancelled or failed: nothing is saved
+        }
     }
 }
 
@@ -672,9 +729,9 @@ struct DragLive: Equatable {
 
 /// The time it would have, above a held event.
 struct HoldPill: View {
-    let it: Item
+    let it: Item, stretch: Bool
     var body: some View {
-        Text("\(dateText(it.start, "EEE")) \(timeText(it.start, short: true)) to \(timeText(it.end, short: true))")
+        Text("\(dateText(it.start, "EEE")) \(timeText(it.start, short: true)) to \(timeText(it.end, short: true))" + (stretch ? " · " + DragMath.length(it) : ""))
             .font(.caption.weight(.semibold)).foregroundStyle(.white).lineLimit(1).fixedSize()
             .padding(.horizontal, 10).padding(.vertical, 4).background(T.tint, in: Capsule())
     }
@@ -771,5 +828,25 @@ struct OffHours: View {
             }
         }
         .allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+/// Go to date: Apple's month picker; Go jumps the view in use to the picked day.
+struct GoToDate: View {
+    @State var day: Date
+    let go: (Date) -> Void
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            DatePicker("Date", selection: $day, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden()
+                .tint(T.tint).padding(.horizontal, 16)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .navigationTitle("Go to date").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) { Button("Go") { go(day); dismiss() }.bold() }
+                }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

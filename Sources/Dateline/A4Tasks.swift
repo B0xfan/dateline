@@ -141,6 +141,50 @@ func a4Selftest(_ expect: (Bool, String) -> Void) {
     expect(sides == ["a.md": "work", "b.md": "personal", "c.md": "", "d.md": "", "e.md": ""], "a4 link: a task takes its project's side of life")
     expect(a4Project("[[a/b/Home.md|H]]") == "Home" && a4Project("Plain") == "Plain", "a4: project names")
     expect(a4Stamp(now).hasPrefix("2026-10-31T09:00:00.000") && a4Stamp(now).count == 29, "a4: A4's time stamp")
+    // A task's length is its timeEstimate (LifeWorld's Planner).
+    expect(read("due: 2026-11-03T11:00\ntimeEstimate: 45")?.a4?.length == 45 && appt.a4?.length == 30 && read("timeEstimate: 0")?.a4?.minutes == nil, "a4: a task's length is its timeEstimate, half an hour when it has none")
+    var longer = appt; longer.a4?.minutes = 90
+    expect(a4Changes(old: appt, new: longer, text: "", now: now).map { "\($0.0)=\($0.1 ?? "-")" } == ["timeEstimate=90", "dateModified=\(a4Stamp(now))"], "a4: stretching writes only the timeEstimate (and the change stamp)")
+    func evLen(_ m: Int) -> Item { var e = ev(dueAt); e.end = dueAt.addingTimeInterval(Double(m * 60)); return e }
+    var lenLink = link; lenLink.minutes = 30
+    let t45 = { var x = vetTask; x.a4?.minutes = 45; return x }()
+    expect(plan([t45], ["/a": lenLink], [evLen(30)]).steps == [.moveEvent(evLen(30), to: dueAt, title: "Vet", minutes: 45)], "a4 link: a longer task stretches its event")
+    let t30 = { var x = vetTask; x.a4?.minutes = 30; return x }()
+    expect(plan([t30], ["/a": lenLink], [evLen(60)]).steps == [.moveTask(t30, to: dueAt, minutes: 60)], "a4 link: a stretched event sets the task's length")
+    expect(plan([vetTask], ["/a": link], [evLen(60)]).steps.isEmpty, "a4 link: an old one-hour event with no timeEstimate stays as it is")
+    // LifeWorld's exact note (Obsidian's own output, checked by a4-31 2026-11-16): date and time bare, an all-digit id quoted.
+    let blocksNote = "---\ntype: note\ncategory: time-blocks\nblocks:\n  - id: i3buhygn\n    date: 2026-11-17\n    time: 12:30\n    minutes: 60\n    title: Lunch\n  - id: \"12345678\"\n    date: '2026-11-18'\n    time: \"07:00\"\n    minutes: 90\n    title: \"Gym, then coffee\"\n  - id: odd1\n    date: tomorrow\n    time: 09:00\n    minutes: 30\n---\nFree time blocks from the Planner (Block time), kept by LifeWorld and Dateline. Change them in the Planner.\n"
+    let bl = blocksRead(blocksNote)
+    expect(bl == [TimeBlock(id: "i3buhygn", date: "2026-11-17", time: "12:30", minutes: 60, title: "Lunch"), TimeBlock(id: "12345678", date: "2026-11-18", time: "07:00", minutes: 90, title: "Gym, then coffee")], "blocks: reads Obsidian's note, quoted or not, and skips an entry it can't read")
+    let movedGym = blocksWrite(blocksNote, id: "12345678", TimeBlock(id: "12345678", date: "2026-11-18", time: "08:00", minutes: 60, title: "Gym"))
+    expect(movedGym?.contains("blocks:\n  - id: i3buhygn\n    date: 2026-11-17\n    time: 12:30\n    minutes: 60\n    title: Lunch\n  - id: \"12345678\"\n    date: \"2026-11-18\"\n    time: \"08:00\"\n    minutes: 60\n    title: \"Gym\"\n  - id: odd1\n    date: tomorrow\n") == true && movedGym?.hasSuffix("---\nFree time blocks from the Planner (Block time), kept by LifeWorld and Dateline. Change them in the Planner.\n") == true, "blocks: a write changes only its entry; an entry it can't read stays as written")
+    let added = blocksWrite(blocksNote, id: "new1", TimeBlock(id: "new1", date: "2026-11-19", time: "15:00", minutes: 60, title: "Free time"))
+    expect(added.flatMap(blocksRead)?.map(\.id) == ["i3buhygn", "12345678", "new1"] && added?.contains("    minutes: 30\n  - id: \"new1\"") == true, "blocks: a new block goes at the end")
+    let removed = blocksWrite(blocksNote, id: "i3buhygn", nil)
+    expect(removed.flatMap(blocksRead)?.map(\.id) == ["12345678"] && removed?.contains("odd1") == true && blocksWrite(blocksNote, id: "nope", nil) == nil, "blocks: a removal takes only its entry")
+    expect(blocksWrite("---\nblocks:\n  - id: a\n    date: 2026-11-17\n    time: 12:30\n    minutes: 60\n---\n", id: "a", nil) == "---\nblocks: []\n---\n" && blocksRead("---\nblocks: []\n---\n") == [] && blocksRead("---\ntype: note\n---\n") == [] && blocksWrite("---\ntype: note\n---\n", id: "a", TimeBlock(id: "a", date: "2026-11-17", time: "12:30", minutes: 60, title: "")).flatMap(blocksRead)?.count == 1, "blocks: none, and an empty list")
+    expect(blocksRead("---\nblocks: [{id: a}]\n---\n") == nil && blocksRead("---\nblocks:\n  stray\n  - id: a\n---\n") == nil && blocksWrite("---\nblocks: [{id: a}]\n---\n", id: "a", nil) == nil, "blocks: a list Dateline can't read is never written")
+    expect(blocksRead("---\nblocks:\n  - id: a\n    date: 2026-11-17\n    time: 12:30\n    minutes: 60\n    colour: red\n  - id: b\n    date: 2026-11-17\n    time: 12:30\n    minutes: 10\n---\n") == [], "blocks: an unknown field or under 15 minutes isn't drawn")
+    expect(blocksRead("---\nblocks:\n  - id: a\n    date: 2026-11-17\n    time: 7:00\n    minutes: 60\n    title: Lunch\n---\n")?.first?.time == "07:00" && blocksRead("---\nblocks:\n  - id: a\n    date: 2026-11-17\n    time: 12:30pm\n    minutes: 60\n---\n") == [], "blocks: 7:00 reads as 07:00, 12:30pm doesn't read")
+    expect(blocksRead("---\nblocks:\n  - id: a\n    date: 2026-11-17\n    time: \"12:30\"\n    minutes: 60\n    title: \"Lunch\" # with Ana\n---\n") == [] && blocksRead("---\nblocks:\n  - id: a\n    date: 2026-11-17\n    time: \"12:30\"\n    minutes: 60\n    title: 'Ana''s lunch'\n---\n")?.first?.title == "Ana's lunch", "blocks: a comment after a value isn't read; '' is a quote")
+    expect(blockID(taken: []).count == 6, "blocks: a new id")
+    let lunch = blockItem(bl![0])
+    expect(lunch?.start == at(17, 12, 30) && lunch?.end == at(17, 13, 30) && lunch?.calendarID == blocksCalendar && lunch?.id == "block:i3buhygn", "blocks: a block is an event at its time")
+    var stretched = lunch!; stretched.start = at(17, 13, 0); stretched.end = at(17, 13, 5)
+    expect(blockFrom(stretched, id: "i3buhygn") == TimeBlock(id: "i3buhygn", date: "2026-11-17", time: "13:00", minutes: 15, title: "Lunch"), "blocks: a moved block is written back, 15 minutes at least")
+    MainActor.assumeIsolated {
+        // Blocks in the sample: add, move and remove stay in memory.
+        let bs = Store.sampleWithA4(), before = bs.timeBlocks.count
+        guard case .success(let made) = bs.add(Parsed(start: at(19, 15, 0), end: at(19, 16, 0)), calendarID: blocksCalendar) else { expect(false, "blocks: a new block is made"); return }
+        var moved = made; moved.start = at(19, 16, 0); moved.end = at(19, 17, 30)
+        expect(bs.timeBlocks.count == before + 1 && bs.update(moved) == nil && bs.timeBlocks.last?.time == "16:00" && bs.timeBlocks.last?.minutes == 90, "blocks: a block is made and moved")
+        expect(bs.delete(moved) == nil && bs.timeBlocks.count == before, "blocks: a block is removed")
+        if case .success = bs.add(Parsed(start: at(19, 15, 0), end: at(19, 16, 0), repeats: Repeat(unit: "w", n: 1)), calendarID: blocksCalendar) { expect(false, "blocks: a repeating block is refused") }
+        if case .success(let untitled) = bs.add(Parsed(start: at(20, 9, 0), end: at(20, 10, 0)), calendarID: blocksCalendar) { expect(untitled.title == "Free time", "blocks: an untitled block is Free time") } else { expect(false, "blocks: an untitled block is made") }
+        let s = Store.sampleWithA4(); s.sets = [CalSet(name: "W", calendars: s.calendars.filter { !isBlocks($0.id) }.prefix(1).map(\.id))]
+        s.use(s.sets[0])
+        expect(!s.hidden.contains(blocksCalendar) && s.activeSet?.name == "W", "blocks: a calendar set leaves the Planner's blocks alone")
+    }
     MainActor.assumeIsolated {
         // The calendar follows the project, and an unmarked task goes nowhere.
         let routed = Store(sample: true), writable = routed.calendars.filter(\.writable)
@@ -292,7 +336,7 @@ struct A4Settings: View {
                 }
                 calendarPicker("Work tasks go on", work: true, selection: store.a4WorkCalendar).padding(.top, 8)
                 calendarPicker("Personal tasks go on", work: false, selection: store.a4Calendar)
-                Text("Each A4 task with a date and time becomes a real event, an hour long, on the calendar for its project: work or personal. Move the event, even to another calendar, and the task's Due follows; change the task and the event follows. Repeating tasks, and tasks whose project isn't marked work or personal, stay tasks. It happens while Dateline is running.")
+                Text("Each A4 task with a date and time becomes a real event, as long as the task's length in A4 (half an hour when it has none), on the calendar for its project: work or personal. Move the event, even to another calendar, and the task's Due follows; change the task and the event follows. Repeating tasks, and tasks whose project isn't marked work or personal, stay tasks. It happens while Dateline is running.")
                     .font(.ui(12)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
                 Text(FileManager.default.fileExists(atPath: store.a4Folder) || store.access == .sample
                      ? "Found \(count) tasks that aren't done. Tasks with a Due property show on the calendar; the rest sit under No date, by project."
@@ -323,6 +367,11 @@ extension Store {
         t("a4-reading", "Answer buyer questions", 1)
         t("a4-launch", "Bring the GitHub page up to date", 3)
         t("a4-home", "Vet appointment", 1, hour: 11)
+        if let i = todos.firstIndex(where: { $0.id == "a4-Vet appointment" }) { todos[i].a4?.minutes = 45 }
+        // LifeWorld's free time blocks.
+        calendars.append(blocksInfo)
+        timeBlocks = [TimeBlock(id: "lunch1", date: a4Day(addDays(mon, 1)), time: "12:30", minutes: 60, title: "Lunch"), TimeBlock(id: "gym1", date: a4Day(addDays(mon, 2)), time: "07:00", minutes: 90, title: "Gym")]
+        refetch()
         for s in ["Sign the app", "Check the code is safe to share"] { t("a4-launch", s, nil) }
         for s in ["Fix the gate latch", "Sort the garage", "Renew the car papers"] { t("a4-home", s, nil) }
     }

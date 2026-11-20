@@ -142,8 +142,9 @@ public final class WeatherStore: ObservableObject {
 /// Where the day headers' weather is for: the town picked in Settings, else where the Mac is.
 @MainActor public func headerSpot() -> Geo? { WeatherPrefs.town.isEmpty ? Here.shared.spot : WeatherPrefs.townGeo }
 
-public struct Town: Identifiable, Equatable { public var label: String, geo: Geo; public var id: String { label + "\(geo.lat),\(geo.lon)" }
-    public init(label: String, geo: Geo) { self.label = label; self.geo = geo } }
+public struct Town: Identifiable, Equatable { public var label: String, geo: Geo; public var tz: String?  // "Europe/London", when Open-Meteo knows it
+    public var id: String { label + "\(geo.lat),\(geo.lon)" }
+    public init(label: String, geo: Geo, tz: String? = nil) { self.label = label; self.geo = geo; self.tz = tz } }
 
 /// Open-Meteo's town search: up to 8 matches, "Tamarindo, Guanacaste, Costa Rica". Empty on any failure.
 public func searchTowns(_ text: String) async -> [Town] {
@@ -162,7 +163,7 @@ public func parseTowns(_ data: Data) -> [Town] {
         var parts = [name]
         for k in ["admin1", "country"] { if let v = x[k] as? String, !v.isEmpty, !parts.contains(v) { parts.append(v) } }
         let label = parts.joined(separator: ", ")
-        return seen.insert(label).inserted ? Town(label: label, geo: Geo(lat: lat, lon: lon)) : nil
+        return seen.insert(label).inserted ? Town(label: label, geo: Geo(lat: lat, lon: lon), tz: (x["timezone"] as? String).flatMap { TimeZone(identifier: $0)?.identifier }) : nil
     }
 }
 
@@ -173,8 +174,10 @@ public func weatherSelftest(_ expect: (Bool, String) -> Void) {
     expect(f?.days["2026-10-31"] == nil, "weather: a day with a gap in the answer is left out, not shown as 0")
     expect(f?.hours["2026-10-30T15:00"]?.temp == 27.6, "weather: an hour is read")
     expect(parseForecast(Data(#"{"error":true,"reason":"bad"}"#.utf8)) == nil, "weather: an error answer is no forecast")
-    let towns = parseTowns(Data(#"{"results":[{"name":"Tamarindo","latitude":10.3,"longitude":-85.84,"admin1":"Guanacaste","country":"Costa Rica"},{"name":"Tamarindo","latitude":10.3,"longitude":-85.84,"admin1":"Guanacaste","country":"Costa Rica"},{"name":"Panama","latitude":9,"longitude":-79.5,"country":"Panama"}]}"#.utf8))
+    let towns = parseTowns(Data(#"{"results":[{"name":"Tamarindo","latitude":10.3,"longitude":-85.84,"admin1":"Guanacaste","country":"Costa Rica"},{"name":"Tamarindo","latitude":10.3,"longitude":-85.84,"admin1":"Guanacaste","country":"Costa Rica"},{"name":"Panama","latitude":9,"longitude":-79.5,"country":"Panama","timezone":"Not/AZone"}]}"#.utf8))
     expect(towns.map(\.label) == ["Tamarindo, Guanacaste, Costa Rica", "Panama"], "weather: town matches, repeats and doubled names dropped")
+    let zoned = parseTowns(Data(#"{"results":[{"name":"London","latitude":51.5,"longitude":-0.13,"admin1":"England","country":"United Kingdom","timezone":"Europe/London"}]}"#.utf8))
+    expect(zoned.first?.tz == "Europe/London" && towns.last?.tz == nil, "weather: a match carries its time zone; an unknown zone is left out")
     expect(parseTowns(Data("{}".utf8)).isEmpty, "weather: no matches is an empty list")
     expect(degrees(29.4, fahrenheit: false) == "29°" && degrees(29.4, fahrenheit: true) == "85°", "weather: Celsius and Fahrenheit")
     expect(wxLook(0).symbol == "sun.max.fill" && wxLook(95).words == "Thunderstorms" && wxLook(61).words == "Light rain", "weather: codes to words")

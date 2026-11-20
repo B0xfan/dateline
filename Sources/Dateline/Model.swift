@@ -31,6 +31,7 @@ enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Mont
     @Published var reviewing: String?  // the email open in the review window
     @Published var editingSet: CalSet?  // the set editor is open on this (a new one when it is not in the list yet)
     @Published var confirmDelete: Item?
+    @Published var jumping = false  // Go to Date (Shift Command T)
     @Published var toast: AppState.Toast?
 }
 
@@ -214,7 +215,8 @@ final class AppState: ObservableObject {
 
     // MARK: changes, each one undoable with Command Z
 
-    var preview: Parsed { parseSentence(addText, now: Date()) }
+    // In Day view a sentence with no day lands on the day shown, as on the phone's + (James 2026-11-17).
+    var preview: Parsed { parseSentence(addText, now: Date(), shownDay: mode == .day ? anchor : nil) }
     var addCalendar: CalInfo? { calendar(for: preview, pick: nil).0 }
 
     var quickPreview: Parsed { let p = parseSentence(quick.text, now: Date()); return quick.pick.map { applying($0, to: p) } ?? p }
@@ -249,6 +251,7 @@ final class AppState: ObservableObject {
         case .failure(let f): error = f.message; return nil
         case .success(let it):
             undoStack.append { [weak self] in self?.store.delete(it, series: true) }
+            if p.repeats == nil { locate(it) }  // a spot saved on a new series would split off its first one
             anchor = cal.startOfDay(for: it.start)
             reload()
             selectedID = store.items.first { $0.title == it.title && $0.start == it.start }?.id ?? it.id
@@ -301,10 +304,24 @@ final class AppState: ObservableObject {
     }
 
     func save(_ new: Item) {
-        guard let old = store.items.first(where: { $0.id == new.id }), old != new else { return }
+        guard let old = store.items.first(where: { $0.id == new.id }) else { return }
+        var new = new
+        if new.geo == nil, new.place == old.place { new.geo = old.geo }  // the panel's copy predates the lookup below; same place keeps its spot
+        guard old != new else { return }
         if let f = store.update(new) { error = f.message; return }
         undoStack.append { [weak self] in self?.store.update(old) }
+        if new.place != old.place { locate(new) }
     }
+
+    // The emoji to every event with the same name (approved picture); Edit > Undo puts back each one's own emoji.
+    func emojiToAll(_ same: [Item], _ e: String) -> Bool {
+        if let f = store.saveEmoji(same.map { var x = $0; x.emoji = e; return x }) { error = f.message; return false }
+        undoStack.append { [weak self] in self?.store.saveEmoji(same) }
+        return true
+    }
+
+    // A typed place gets its spot from Apple Maps after it saves (the shared Store.findSpot).
+    private func locate(_ it: Item) { Task { if let f = await store.findSpot(it) { error = f.message } } }
 
     func delete(_ it: Item) {
         if let f = store.delete(it) { error = f.message; return }

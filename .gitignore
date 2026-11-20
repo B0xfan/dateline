@@ -4,3 +4,5 @@ build/
 .DS_Store
 .swiftpm/
 .build/
+dd-uitests/
+__pycache__/

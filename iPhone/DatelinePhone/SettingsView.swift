@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     @ObservedObject private var license = License.shared
+    @State private var macTick = 0
     @AppStorage("syncExtras") private var sync = true  // step 2: Store.syncOn reads it; the Mac has no switch, so it syncs always
 
     var body: some View {
@@ -18,15 +19,35 @@ struct SettingsView: View {
                     link("accounts", "person.crop.circle.fill", Palette.work, "Accounts", "\(Set(store.calendars.map(\.account)).count)")
                     link("sets", "square.stack.fill", Palette.family, "Calendar sets", "\(store.sets.count)")
                     link("look", "paintbrush.fill", Palette.tags[5], "Look", Look.appearance == "Match Mac" ? "Auto" : Look.appearance)
-                    link("week", "calendar", Palette.tags[7], "Week", weekSummary)
+                    link("week", "calendar", Palette.tags[7], "Week", Self.weekSummary)
                     link("alerts", "bell.fill", Palette.tags[3], "Alerts", Alerts.soundName("events"))
                     link("weather", "cloud.sun.fill", Palette.personal, "Time & weather", WeatherPrefs.fahrenheit ? "°F" : "°C")
                 } header: { Text("Same as the Mac's settings tabs") }
-                Section {
-                    Toggle("Emoji, colors, tags, notes, sets", isOn: $sync)
-                        .onChange(of: sync) { _, on in if on { store.syncNow() } }
-                } header: { Text("Sync with your Mac") } footer: {
-                    Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "Through your own iCloud. Look and °F or °C you change here change on the Mac too.\n\nMac only, not on the phone: menu bar icon, Quick add shortcut key, Assistant for AI apps, A4 tasks, Check for Updates.")
+                // Approved mockup "Your Mac" (John 2026-11-19): what shows depends on whether the Mac app has been opened.
+                let _ = macTick
+                if let mac = MacSeen.last {
+                    Section {
+                        HStack(spacing: 12) {
+                            Image(systemName: "laptopcomputer").font(.footnote.weight(.semibold)).foregroundStyle(.white).frame(width: 28, height: 28).background(.gray, in: RoundedRectangle(cornerRadius: 7)).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Dateline is on your Mac").foregroundStyle(T.text)
+                                Text("Last opened " + openedText(mac)).font(.footnote).foregroundStyle(T.text2)
+                            }
+                        }.font(.callout)
+                        syncToggle
+                    } header: { Text("Your Mac") } footer: {
+                        Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "Changes go through your own iCloud. Look and °F or °C change on both.")
+                    }
+                } else {
+                    Section {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Dateline for Mac is included").foregroundStyle(T.text)
+                            Text("Your purchase here unlocks the Mac app too. It adds a menu bar calendar, a quick add shortcut key and A4 tasks.").font(.footnote).foregroundStyle(T.text2)
+                        }.font(.callout).padding(.vertical, 2)
+                        // Nothing else tells an iPhone or iPad buyer the Mac app exists (John 2026-11-09).
+                        Link(destination: URL(string: "https://dateline.app")!) { line("laptopcomputer", .gray, "Download for Mac", "dateline.app") }
+                        syncToggle  // a Mac from before the last-opened note still syncs, so the switch stays here too
+                    } header: { Text("Your Mac") } footer: { Text((store.sync.problem.map { $0 + "\n\n" } ?? "") + "The Mac app comes from the website, not the App Store.") }
                 }
                 Section("About") {
                     let info = Bundle.main.infoDictionary ?? [:]
@@ -34,6 +55,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .onReceive(NotificationCenter.default.publisher(for: NSUbiquitousKeyValueStore.didChangeExternallyNotification)) { _ in macTick += 1 }  // the Mac's last-opened note arrived
             .navigationDestination(for: String.self) { page in
                 Group {
                     switch page {
@@ -54,7 +76,23 @@ struct SettingsView: View {
         }
     }
 
-    private var weekSummary: String {
+    /// "today at 6:41 AM", "yesterday at 9:02 PM", "Nov 12, 2026 at 8:15 AM".
+    private func openedText(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; f.doesRelativeDateFormatting = true
+        let s = f.string(from: d)
+        return Calendar.current.isDateInToday(d) || Calendar.current.isDateInYesterday(d) ? s.prefix(1).lowercased() + s.dropFirst() : s
+    }
+
+    private var syncToggle: some View {
+        Toggle(isOn: $sync) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Keep in step with the Mac")
+                Text("Emoji, colors, tags, notes and calendar sets").font(.footnote).foregroundStyle(T.text2)
+            }
+        }.onChange(of: sync) { _, on in if on { store.syncNow() } }
+    }
+
+    static var weekSummary: String {
         let all = (0..<7).map { (WorkWeek.firstWeekday - 1 + $0) % 7 + 1 }, at = all.indices.filter { WorkWeek.days.contains(all[$0]) }
         guard let a = at.first, let b = at.last else { return "No days" }
         let names = at.map { cal.shortWeekdaySymbols[all[$0] - 1] }
@@ -109,10 +147,10 @@ struct AccountsPage: View {
             } footer: { Text("Tap an account to show or hide each of its calendars.") }
             Section {
                 NavigationLink(value: "subscribe") { Text("Subscribe to a calendar…").foregroundStyle(T.tint) }
-            } footer: { Text("A calendar from a web address (a school, a team, holidays), kept on this iPhone. You can't change its events.") }
+            } footer: { Text("A calendar from a web address (a school, a team, holidays), kept on this \(thisDevice). You can't change its events.") }
             Section {
-                Button("Add an account in iPhone Settings…") { openURL(UIApplication.openSettingsURLString) }
-            } footer: { Text("On the iPhone, accounts live in Settings › Apps › Calendar › Calendar Accounts. Dateline shows every calendar added there.") }
+                Button("Add an account in \(thisDevice) Settings…") { openURL(UIApplication.openSettingsURLString) }
+            } footer: { Text("On the \(thisDevice), accounts live in Settings › Apps › Calendar › Calendar Accounts. Dateline shows every calendar added there.") }
         }
         .navigationTitle("Accounts")
     }
@@ -150,13 +188,15 @@ struct SetsPage: View {
             Section {
                 Button { store.use(nil) } label: { pick("Everything", "\(store.calendars.count) calendars", on: active == nil && store.hidden.isEmpty) }.buttonStyle(.plain)
                 ForEach(store.sets) { s in
-                    HStack {
-                        Button { store.use(s) } label: { pick(s.name, "\(s.calendars.count) calendar\(s.calendars.count == 1 ? "" : "s")", on: active?.id == s.id) }.buttonStyle(.plain)
-                        Button { editing = s } label: { Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(T.text2.opacity(0.6)).frame(width: 44, height: 44) }
-                            .buttonStyle(.plain).accessibilityLabel("Edit \(s.name)")
-                    }
+                    // The whole row opens the set (John 2026-11-19); showing it is a button inside.
+                    Button { editing = s } label: {
+                        HStack(spacing: 0) {
+                            pick(s.name, "\(s.calendars.count) calendar\(s.calendars.count == 1 ? "" : "s")", on: active?.id == s.id)
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(T.text2.opacity(0.6)).frame(width: 44, height: 44)
+                        }.contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityHint("Opens the set to show, rename, change or delete it")
                 }
-            } header: { Text("Showing now") } footer: { Text("Tap a set to show only its calendars. Tap › to rename it, pick its calendars, or delete it. Sets are shared with your Mac.") }
+            } header: { Text("Showing now") } footer: { Text("Tap a set to show it, rename it, pick its calendars, or delete it. Sets are shared with your Mac.") }
         }
         .navigationTitle("Calendar sets")
         .toolbar { Button("New set") { editing = CalSet(name: "New set", calendars: store.calendars.filter { !store.hidden.contains($0.id) }.map(\.id)) } }
@@ -191,6 +231,9 @@ struct SetEditor: View {
                             HStack(spacing: 10) { Circle().fill(c.color).frame(width: 12, height: 12); Text(c.title); Text(c.account).font(.footnote).foregroundStyle(T.text2) }
                         }
                     }
+                }
+                if !isNew, store.activeSet?.id != draft.id, let saved = store.sets.first(where: { $0.id == draft.id }) {
+                    Section { Button("Show only this set's calendars") { store.use(saved); dismiss() } }
                 }
                 if !isNew {
                     Section { Button("Delete this set", role: .destructive) { store.deleteSet(draft.id); dismiss() } }
@@ -228,13 +271,22 @@ struct LookPage: View {
                 Picker("Font", selection: bind(Look.font) { Look.font = $0 }) { ForEach(Look.fonts, id: \.self) { Text($0) } }
                 Picker("How packed", selection: bind(Look.pack) { Look.pack = $0 }) { ForEach(Look.packs, id: \.self) { Text($0) } }
                 Picker("Hour height", selection: bind(Look.hour) { Look.hour = $0 }) { ForEach(Look.hours, id: \.self) { Text($0) } }
-            } footer: { Text("Text size on the phone follows the iPhone's own Text Size setting, so the Mac's Text size choice is not repeated here.") }
+            } footer: { Text("Text size here follows the \(thisDevice)'s own Text Size setting, so the Mac's Text size choice is not repeated here.") }
             Section {
-                HStack(spacing: 8) {
-                    RoundedRectangle(cornerRadius: 2).fill(Palette.work).frame(width: 4, height: 20 * Look.packFactor + 8)
-                    Text("Client call").fontWeight(.semibold); Text("10 AM").foregroundStyle(T.text2)
+                // Two hours of a day at the chosen hour height, so Font, How packed and Hour height all show (John 2026-11-19: the one-line preview was too small).
+                let h = Look.hourHeight
+                ZStack(alignment: .topLeading) {
+                    ForEach(0..<3) { i in
+                        HStack(alignment: .center, spacing: 8) {
+                            Text(["10 AM", "11 AM", "Noon"][i]).font(.caption).foregroundStyle(T.text2).frame(width: 48, alignment: .leading)
+                            Rectangle().fill(T.text2.opacity(0.2)).frame(height: 1)
+                        }.offset(y: CGFloat(i) * h - 7)
+                    }
+                    previewEvent("Client call", "10 to 11 AM · Zoom", Palette.work).frame(height: h - 2).offset(x: 56, y: 0)
+                    previewEvent("Lunch with Sam", "11:30 AM to 12 PM", Palette.tags[2]).frame(height: h / 2 - 2).offset(x: 56, y: h * 1.5)
                 }
-                .font(.system(size: 15, design: Look.design)).padding(.vertical, 4 * Look.packFactor)
+                .padding(.trailing, 56).frame(height: h * 2 + 8, alignment: .top).padding(.vertical, 8)
+                .accessibilityElement(children: .combine).accessibilityLabel("Preview: Client call 10 to 11 AM, Lunch with Sam 11:30 AM")
             } header: { Text("Preview") } footer: { Text("Shared with the Mac: change it here or there, both follow.") }
         }
         .navigationTitle("Look")
@@ -243,11 +295,27 @@ struct LookPage: View {
     private func bind(_ v: String, _ set: @escaping (String) -> Void) -> Binding<String> {
         Binding(get: { v }, set: { set($0); tick += 1; app.lookChanged(); store.syncNow() })
     }
+
+    /// One event in the preview, drawn like the calendar's own event blocks.
+    private func previewEvent(_ title: String, _ time: String, _ c: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title).fontWeight(.semibold).lineLimit(1)
+            Text(time).foregroundStyle(T.text2).lineLimit(1)
+        }
+        .font(.system(.subheadline, design: Look.design)).foregroundStyle(T.text)
+        .padding(.leading, 10).padding(.trailing, 4).padding(.vertical, 4 * Look.packFactor)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(c.opacity(0.18))
+        .overlay(alignment: .leading) { Rectangle().fill(c).frame(width: 4) }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
 }
 
 struct WeekPage: View {
     @EnvironmentObject var app: PhoneState
+    @Environment(\.scenePhase) private var phase
     @State private var tick = 0
+    @State private var leaveOff = false  // iOS has banners off for Dateline
     var body: some View {
         let _ = tick
         let order = (0..<7).map { (WorkWeek.firstWeekday - 1 + $0) % 7 + 1 }
@@ -258,22 +326,26 @@ struct WeekPage: View {
                     ForEach(PhoneState.Mode.allCases, id: \.self) { Text($0.rawValue).tag($0.rawValue) }
                 }
                 Picker("Week starts on", selection: Binding(get: { WorkWeek.start }, set: { WorkWeek.start = $0; changed() })) {
-                    ForEach(WorkWeek.starts, id: \.self) { Text($0 == "Match Mac" ? "Match iPhone" : $0) }
+                    ForEach(WorkWeek.starts, id: \.self) { Text($0 == "Match Mac" ? "Match " + thisDevice : $0) }
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Working days")
-                    HStack(spacing: 6) {
+                    // Approved iPad board, option A (John 2026-11-19): seven equal buttons with short names, so the two S and T days never mix up; off days are outlines.
+                    HStack(spacing: app.wide ? 8 : 6) {
                         ForEach(order, id: \.self) { wd in
                             let on = WorkWeek.days.contains(wd)
                             Button { if on { WorkWeek.days.remove(wd) } else { WorkWeek.days.insert(wd) }; changed() } label: {
-                                Text(String(cal.veryShortWeekdaySymbols[wd - 1])).font(.callout.weight(on ? .semibold : .regular))
-                                    .foregroundStyle(on ? .white : T.text2).frame(maxWidth: .infinity, minHeight: 40)
-                                    .background(on ? T.tint : T.bg, in: RoundedRectangle(cornerRadius: 10))
+                                Text(cal.shortWeekdaySymbols[wd - 1]).font((app.wide ? Font.body : .callout).weight(on ? .semibold : .medium))
+                                    .lineLimit(1).minimumScaleFactor(0.7)
+                                    .foregroundStyle(on ? .white : T.text2).frame(maxWidth: .infinity, minHeight: app.wide ? 48 : 40)
+                                    .background(on ? T.tint : T.bg, in: RoundedRectangle(cornerRadius: app.wide ? 12 : 10))
+                                    .overlay { RoundedRectangle(cornerRadius: app.wide ? 12 : 10).strokeBorder(on ? T.tint : T.line, lineWidth: 1.5) }
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(cal.weekdaySymbols[wd - 1]).accessibilityAddTraits(on ? .isSelected : [])
                         }
                     }
+                    Text(SettingsView.weekSummary).font(.footnote).foregroundStyle(T.text2)
                 }.padding(.vertical, 4)
                 HStack {
                     Text("Working hours")
@@ -286,9 +358,13 @@ struct WeekPage: View {
                 Toggle("Show sunrise, sunset and the moon", isOn: Binding(get: { WorkWeek.sun }, set: { WorkWeek.sun = $0; changed() }))
             }
             Section {
-                Toggle("Alert me when it's time to leave", isOn: Binding(get: { WorkWeek.leave }, set: { WorkWeek.leave = $0; changed() }))
+                Toggle("Alert me when it's time to leave", isOn: Binding(get: { WorkWeek.leave }, set: { WorkWeek.leave = $0; changed(); app.planTravel() }))
                 Button { app.tab = .places } label: { line(nil, .clear, "Places and drive times", "") }.buttonStyle(.plain)
-            } header: { Text("Leave alerts") } footer: { Text("Uses the phone's location for the drive time, the same places as the Mac.") }
+                if leaveOff && WorkWeek.leave { Button("Open notification settings…") { openURL(UIApplication.openNotificationSettingsURLString) } }
+            } header: { Text("Leave alerts") } footer: {
+                Text(leaveOff && WorkWeek.leave ? "Notifications are off for Dateline, so leave alerts can't show. Turn on Alerts in notification settings." : "Uses the \(thisDevice)'s location for the drive time, the same places as the Mac.")
+            }
+            .task(id: phase) { if !app.sample, phase == .active { leaveOff = await DateBadge.isBlocked(nil) } }  // again on coming back from iOS Settings
         }
         .navigationTitle("Week")
     }
@@ -315,13 +391,13 @@ struct AlertsPage: View {
                 Toggle("Today's date on the icon", isOn: $badge)
                     .onChange(of: badge) { if app.sample { return }; DateBadge.on = badge; Task { blocked = !(await DateBadge.update(ask: true)) } }
             } footer: {
-                Text(blocked && badge ? "Badges are off for Dateline. Turn on Badges in notification settings to see the date." : "The number on Dateline's icon is today's date, as in the iPhone's own Calendar. It changes at midnight.")
+                Text(blocked && badge ? "Badges are off for Dateline. Turn on Badges in notification settings to see the date." : "The number on Dateline's icon is today's date, as in the \(thisDevice)'s own Calendar. It changes at midnight.")
             }
             .task(id: phase) { if badge, !app.sample, phase == .active { blocked = await DateBadge.isBlocked() } }  // again on coming back from iOS Settings; the app itself re-plans
             Section {
-                line(nil, .clear, "Event alerts", "iPhone Calendar", opens: false)
+                line(nil, .clear, "Event alerts", thisDevice + " Calendar", opens: false)
                 line(nil, .clear, "Mac sounds", Alerts.kinds.prefix(2).map { Alerts.soundName($0.0) }.joined(separator: ", "), opens: false)
-            } footer: { Text("Each event's alert time comes with the event, so the iPhone rings for it like any calendar alert. Sounds and banners follow the iPhone's own settings.") }
+            } footer: { Text("Each event's alert time comes with the event, so the \(thisDevice) rings for it like any calendar alert. Sounds and banners follow the \(thisDevice)'s own settings.") }
             Section {
                 Button("Open notification settings…") { openURL(UIApplication.openNotificationSettingsURLString) }
             } footer: { Text("The Mac's full screen alert and its sound choices stay on the Mac.") }
@@ -330,95 +406,166 @@ struct AlertsPage: View {
     }
 }
 
+// Approved mockup "Time & weather" (John 2026-11-19): the town and Add a city both open one city search.
 struct WeatherPage: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
     @State private var tick = 0
-    @State private var city = ""
-    @State private var finding = false
-    @State private var note: String?
-    @State private var town = WeatherPrefs.town
-    @State private var found: [Town] = []
-    @State private var foundFor = ""  // the text the matches are for, so Done never takes a match for older text
-    @State private var townNote: String?
+    @State private var searching: CitySearch.Purpose?
+    @State private var naming: Zone?  // the city whose nickname box is open
+    @State private var nick = ""
     var body: some View {
         let _ = tick
         List {
             Section {
                 Toggle("Show the weather on days and events", isOn: Binding(get: { WeatherPrefs.on }, set: { WeatherPrefs.on = $0; changed() }))
-                Picker("Temperature", selection: Binding(get: { WeatherPrefs.fahrenheit }, set: { WeatherPrefs.fahrenheit = $0; changed(); store.syncNow() })) {
-                    Text("°F").tag(true); Text("°C").tag(false)
-                }.pickerStyle(.segmented)
-                LabeledContent("Town for the days") {
-                    TextField("Where I am", text: $town).multilineTextAlignment(.trailing).submitLabel(.done)
-                        .onSubmit { let t = town.trimmingCharacters(in: .whitespaces); if t.isEmpty { pick(nil) } else if foundFor == t, let m = found.first { pick(m) } }
+                HStack {
+                    Text("Temperature")
+                    Spacer()
+                    Picker("Temperature", selection: Binding(get: { WeatherPrefs.fahrenheit }, set: { WeatherPrefs.fahrenheit = $0; changed(); store.syncNow() })) {
+                        Text("°F").tag(true); Text("°C").tag(false)
+                    }.pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
-                // Matches as you type, from Open-Meteo's free town search (as on the Mac).
-                ForEach(found) { t in Button(t.label) { pick(t) } }
-            } header: { Text("Weather") } footer: { Text((townNote.map { $0 + "\n\n" } ?? "") + "Leave the town empty to use where the phone is. Events with a place show the weather at that place. Weather data by Open-Meteo.com") }
-            .task(id: town) {
-                guard !WeatherStore.sample else { return }  // the pictures never reach the network
-                let t = town.trimmingCharacters(in: .whitespaces)
-                if t.isEmpty || t == WeatherPrefs.town { found = []; townNote = nil; return }  // an emptied box clears the town only on Done, not mid-edit
-                try? await Task.sleep(for: .milliseconds(300))  // wait for a pause in the typing
-                guard !Task.isCancelled else { return }
-                let list = await searchTowns(t)
-                guard !Task.isCancelled else { return }  // the text changed while this search ran
-                found = list; foundFor = t
-                townNote = list.isEmpty ? "No town called \u{201C}\(t)\u{201D} found. Try another spelling." : nil
-            }
-            Section {
-                ForEach(Zones.list) { z in
+                Button { searching = .town } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            // The nickname shows in place of the city; empty shows the city (as on the Mac).
-                            TextField(z.city, text: Binding(get: { z.nick }, set: { v in
-                                if let i = Zones.list.firstIndex(where: { $0.id == z.id }) { Zones.list[i].nick = v }
-                            })).submitLabel(.done).onSubmit(changed).accessibilityLabel("Nickname for \(z.city)")  // the calendar redraws once, on Done or on leaving the page
-                            Text(z.place).font(.footnote).foregroundStyle(T.text2).lineLimit(1)
+                            Text("Weather town").foregroundStyle(T.text)
+                            Text("The weather on each day comes from here").font(.footnote).foregroundStyle(T.text2)
                         }
                         Spacer()
-                        Text(zoneTime(app.today, z.tz)).foregroundStyle(T.text2)
+                        Text(WeatherPrefs.town.isEmpty ? "Where I am" : WeatherPrefs.town).foregroundStyle(T.tint).lineLimit(1)
+                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(T.text2).accessibilityHidden(true)
+                    }
+                }
+            } header: { Text("Weather") } footer: { Text("Events with a place show the weather at that place. Weather data by Open-Meteo.com") }
+            Section {
+                ForEach(Zones.list) { z in
+                    Button { nick = z.nick; naming = z } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(z.nick.isEmpty ? z.city : z.nick).foregroundStyle(T.text)  // the nickname shows in place of the city, as on the Mac
+                                let rest = z.place.hasPrefix(z.city + ", ") ? String(z.place.dropFirst(z.city.count + 2)) : ""
+                                if !(z.nick.isEmpty ? rest : z.place).isEmpty { Text(z.nick.isEmpty ? rest : z.place)  // "London" over "United Kingdom"; "Mom" over "Chicago, United States"
+                                    .font(.footnote).foregroundStyle(T.text2).lineLimit(1) }
+                            }
+                            Spacer()
+                            Text(zoneTime(app.today, z.tz)).foregroundStyle(T.text2)
+                        }
                     }
                 }
                 .onDelete { Zones.list.remove(atOffsets: $0); changed() }
                 .onMove { Zones.list.move(fromOffsets: $0, toOffset: $1); changed() }
                 if Zones.list.count < Zones.most {
-                    HStack {
-                        TextField("Add a city", text: $city).submitLabel(.done).onSubmit(add)
-                        if finding { ProgressView() } else if !city.isEmpty { Button("Add", action: add) }
-                    }
+                    Button { searching = .zone } label: { Label("Add a city", systemImage: "plus.circle.fill").fontWeight(.medium) }
                 }
-            } header: { Text("Time zones") } footer: { Text(note ?? "Tap a city's name to give it a nickname. Swipe left to remove, or tap Edit to reorder. Up to \(Zones.most) places. The Mac's sidebar card choice stays on the Mac.") }
+            } header: { Text("Other time zones") } footer: { Text("Up to \(Zones.most) cities.") }
         }
         .navigationTitle("Time & weather")
         .toolbar { if Zones.list.count > 1 { EditButton() } }
-        .onDisappear(perform: changed)
+        .sheet(item: $searching) { CitySearch(purpose: $0) { changed() } }
+        .alert(naming.map { "Nickname for \($0.city)" } ?? "", isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
+            TextField(naming?.city ?? "", text: $nick)
+            Button("Save") { setNick(nick) }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 
     private func changed() { tick += 1; app.reload() }
 
-    /// nil = back to where the phone is.
-    private func pick(_ t: Town?) {
-        WeatherPrefs.town = t?.label ?? ""; WeatherPrefs.townGeo = t?.geo
-        town = WeatherPrefs.town; found = []; townNote = nil
-        changed()
+    private func setNick(_ v: String) {
+        guard let z = naming, let i = Zones.list.firstIndex(where: { $0.id == z.id }) else { return }
+        Zones.list[i].nick = v.trimmingCharacters(in: .whitespaces); changed()
     }
+}
 
-    private func add() {
-        let q = city.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty, !finding else { return }
-        finding = true
-        Task {
-            let z = await findZone(q)
-            finding = false
-            if let z { Zones.list.append(z); city = ""; note = nil; changed() } else { note = "No time zone found for \"\(q)\". Try the city's full name." }
+/// One search for both the weather town and a new time zone city: matches as you type, each with its time now.
+struct CitySearch: View {
+    enum Purpose: String, Identifiable { case town, zone; var id: String { rawValue } }
+    let purpose: Purpose
+    let done: () -> Void
+    @EnvironmentObject var app: PhoneState
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var typing: Bool
+    @State private var text = ""
+    @State private var found: [Town] = []
+    @State private var foundFor = ""  // the text the matches are for, so return never takes a match for older text
+    @State private var note: String?
+    @State private var busy = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(T.text2).accessibilityHidden(true)
+                        TextField("City", text: $text).focused($typing).submitLabel(.search).autocorrectionDisabled()
+                            .onSubmit { if foundFor == text.trimmingCharacters(in: .whitespaces), let m = found.first { pick(m) } else { Task { await lookUp() } } }
+                        if busy { ProgressView() }
+                    }
+                }
+                if purpose == .town, !WeatherPrefs.town.isEmpty {
+                    Section { Button("Where I am") { WeatherPrefs.town = ""; WeatherPrefs.townGeo = nil; finish() } }
+                }
+                if !found.isEmpty {
+                    Section("Matches") {
+                        ForEach(found) { t in
+                            Button { pick(t) } label: {
+                                HStack {
+                                    let parts = t.label.components(separatedBy: ", ")
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(parts[0]).foregroundStyle(T.text)
+                                        if parts.count > 1 { Text(parts.dropFirst().joined(separator: ", ")).font(.footnote).foregroundStyle(T.text2) }
+                                    }
+                                    Spacer()
+                                    if let tz = t.tz { Text(zoneTime(app.today, tz)).foregroundStyle(T.text2) }
+                                }
+                            }
+                        }
+                    }
+                } else if let note { Section { Text(note).foregroundStyle(T.text2) } }
+            }
+            .navigationTitle(purpose == .town ? "Weather town" : "Add a city")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .onAppear { typing = true }
+            .task(id: text) {
+                let t = text.trimmingCharacters(in: .whitespaces)
+                guard !t.isEmpty, !WeatherStore.sample else { found = []; note = nil; return }  // the pictures never reach the network
+                try? await Task.sleep(for: .milliseconds(300))  // wait for a pause in the typing
+                guard !Task.isCancelled else { return }
+                let list = await searchTowns(t)
+                guard !Task.isCancelled else { return }  // the text changed while this search ran
+                found = purpose == .zone ? list.filter { $0.tz != nil } : list; foundFor = t
+                note = found.isEmpty ? "No city called \u{201C}\(t)\u{201D} found. Try another spelling." : nil
+            }
         }
     }
 
-    private func zoneTime(_ d: Date, _ tz: String) -> String {
-        let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none; f.timeZone = TimeZone(identifier: tz); return f.string(from: d)
+    private func pick(_ t: Town) {
+        switch purpose {
+        case .town: WeatherPrefs.town = t.label; WeatherPrefs.townGeo = t.geo
+        case .zone:
+            guard let tz = t.tz, Zones.list.count < Zones.most else { return }
+            let parts = t.label.components(separatedBy: ", ")  // "London, England, United Kingdom" is kept as "London, United Kingdom"
+            Zones.list.append(Zone(tz: tz, place: parts.count > 2 ? [parts[0], parts.last!].joined(separator: ", ") : t.label))
+        }
+        finish()
     }
+
+    /// Return with no match yet: Apple Maps, as before, for a time zone; a weather town needs a pick from the list.
+    private func lookUp() async {
+        let q = text.trimmingCharacters(in: .whitespaces)
+        guard purpose == .zone, !q.isEmpty, !busy else { return }
+        busy = true; defer { busy = false }
+        if let z = await findZone(q) { Zones.list.append(z); finish() }
+        else { note = "No time zone found for \u{201C}\(q)\u{201D}. Try the city's full name." }
+    }
+
+    private func finish() { done(); dismiss() }
+}
+
+private func zoneTime(_ d: Date, _ tz: String) -> String {
+    let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none; f.timeZone = TimeZone(identifier: tz); return f.string(from: d)
 }
 
 struct UnlockView: View {
@@ -471,7 +618,7 @@ struct UnlockView: View {
                             .font(.headline).foregroundStyle(.white).background(T.tint, in: RoundedRectangle(cornerRadius: 14)).disabled(busy).opacity(busy ? 0.6 : 1)
                         Text("Paid through the App Store. Price shown by Apple.").font(.footnote).foregroundStyle(T.text2).padding(.top, 6)
                     }
-                    Text("Already bought Dateline? It unlocks by itself on an iPhone signed in to the same Apple Account.").font(.footnote).foregroundStyle(T.text2).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).padding(.top, 14)  // wraps, never cut off
+                    Text("Already bought Dateline? It unlocks by itself on an \(thisDevice) signed in to the same Apple Account.").font(.footnote).foregroundStyle(T.text2).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).padding(.top, 14)  // wraps, never cut off
                     HStack(spacing: 24) {
                         Button("Restore purchase", action: restore).frame(minHeight: 44).disabled(busy)
                         Button("Not now") { dismiss() }.frame(minHeight: 44)
@@ -519,7 +666,7 @@ struct UnlockView: View {
         busy = true
         Task {
             await license.restore()
-            if case .bought = license.status { note = "Dateline is unlocked. Thank you!" } else { note = "No purchase found for this Apple Account. Bought Dateline for Mac? Enter your key on the Mac once and this iPhone unlocks by itself." }
+            if case .bought = license.status { note = "Dateline is unlocked. Thank you!" } else { note = "No purchase found for this Apple Account. Bought Dateline for Mac? Enter your key on the Mac once and this \(thisDevice) unlocks by itself." }
             busy = false
         }
     }
@@ -685,7 +832,7 @@ struct SubDetail: View {
             .onDisappear(perform: rename)
             .confirmationDialog("Remove \(s.name)?", isPresented: $removing, titleVisibility: .visible) {
                 Button("Remove", role: .destructive) { store.unsubscribe(id); dismiss() }
-            } message: { Text("Its events leave Dateline on this iPhone. You can subscribe again later.") }
+            } message: { Text("Its events leave Dateline on this \(thisDevice). You can subscribe again later.") }
         }
     }
 

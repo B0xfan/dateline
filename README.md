@@ -1,10 +1,10 @@
 # Dateline
 
-A calendar app for the Mac. It works with the calendars and Apple Reminders already set up on your Mac (iCloud, Google, Exchange and anything else in Apple Calendar), so there are no new accounts to set up. Your data stays on your Mac.
+A calendar app for Mac and iPhone, with an Apple Watch app included. I went through 107 features across nine calendar apps and built the 72 best into Dateline. It works with the calendars and Apple Reminders you already have (iCloud, Google, Exchange and anything else in Apple Calendar), so there are no new accounts to set up. Your data stays on your devices.
 
-**[Download the free 7 day trial](https://github.com/B0xfan/dateline/releases/latest/download/Dateline.dmg)** · **[Buy Dateline for $29.99](https://payhip.com/b/P4iIX)** · [dateline.app](https://dateline.app)
+**[Download the free 7 day trial](https://github.com/B0xfan/dateline/releases/latest/download/Dateline.dmg)** · **[Buy Dateline for $29.99](https://payhip.com/b/P4iIX)** · [iPhone app on the App Store](https://apps.apple.com/app/dateline-calendar/id6831255878) · [dateline.app](https://dateline.app) · [Watch the 36 second ad](https://youtu.be/saH30AyIN84)
 
-One payment, no subscription. All updates are free.
+One payment covers your Mac and your iPhone, with no subscription. All updates are free.
 
 ![Week view](docs/screenshots/week.png)
 
@@ -74,7 +74,7 @@ Press ? in the app for every keyboard shortcut.
 
 ## Install
 
-You need a Mac with macOS 14 (Sonoma) or newer.
+You need a Mac with macOS 14 (Sonoma) or newer. The iPhone app needs iOS 17 or newer and comes [from the App Store](https://apps.apple.com/app/dateline-calendar/id6831255878); its Apple Watch app needs watchOS 10 or newer.
 
 1. Download [Dateline.dmg](https://github.com/B0xfan/dateline/releases/latest/download/Dateline.dmg), the newest version. It is signed and checked by Apple.
 2. Open Dateline.dmg and drag Dateline onto the Applications folder in the window that appears, then open Dateline from Applications.
@@ -82,7 +82,7 @@ You need a Mac with macOS 14 (Sonoma) or newer.
 
 ### Free trial and buying
 
-Every copy starts with a 7 day free trial. After that your calendar is still there to look at, and adding or changing events needs a key. [Buy Dateline on Payhip](https://payhip.com/b/P4iIX) for $29.99 once; your key comes in the email from Payhip. Paste it into Settings > License. The same key works on a new Mac.
+Every copy starts with a 7 day free trial. After that your calendar is still there to look at, and adding or changing events needs a key. [Buy Dateline on Payhip](https://payhip.com/b/P4iIX) for $29.99 once; your key comes in the email from Payhip. Paste it into Settings > General, under "Already bought it?". The same key works on a new Mac, and your iPhone unlocks by itself through iCloud on the same Apple Account. You can also buy inside the iPhone app, and your Mac unlocks the same way.
 
 ### Updates
 

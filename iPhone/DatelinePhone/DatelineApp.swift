@@ -4,11 +4,15 @@ import UIKit
 import UserNotifications
 import DatelineCore
 
-/// The app stays upright, except Week, which turns sideways to show the whole week (John 2026-11-06).
+/// The phone stays upright, except Week, which turns sideways to show the whole week (John 2026-11-06). The iPad turns every way.
 final class PhoneDelegate: NSObject, UIApplicationDelegate {
     static var turns = false
-    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask { Self.turns ? .allButUpsideDown : .portrait }
+    static let pad = UIDevice.current.userInterfaceIdiom == .pad
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask { Self.pad ? .all : Self.turns ? .allButUpsideDown : .portrait }
 }
+
+/// "iPhone" or "iPad", for every text that names the device Dateline runs on.
+let thisDevice = PhoneDelegate.pad ? "iPad" : "iPhone"
 
 @main
 struct DatelineApp: App {
@@ -21,7 +25,9 @@ struct DatelineApp: App {
             #if DEBUG
             if let demo = Demo.make() { return demo }  // debug builds only: sample calendars for the checks and pictures, never a real calendar
             #endif
-            return PhoneState(store: Store(sample: false), today: Date(), sample: false)
+            let real = PhoneState(store: Store(sample: false), today: Date(), sample: false)
+            WatchLink.shared.start(real)  // saves the watch's ticks and spoken events
+            return real
         }
         _app = StateObject(wrappedValue: made)
     }
@@ -34,7 +40,7 @@ struct DatelineApp: App {
                 // the pictures and checks never touch the real icon or ask; on leaving too, in case midnight passed with Dateline open
                 if !app.sample, phase == .active { Task { await DateBadge.update(ask: true) } }
                 if !app.sample, phase == .background { Task { await DateBadge.setToday() } }  // only the number: no re-plan while iOS may suspend us mid-way
-                if phase == .active { app.store.refreshSubs() }  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
+                if phase == .active { app.store.refreshSubs(); app.planTravel() }  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
             }
     }
 }
@@ -50,9 +56,12 @@ struct DatelineApp: App {
     static let ahead = 30
     private static var turn = 0  // the newest update wins: an older one still running stops at its next step
     /// iOS has badges off for Dateline (false while it hasn't asked yet).
-    static func isBlocked() async -> Bool {
+    /// Pass nil to ask only whether Dateline's notifications are off as a whole (leave alerts: John 2026-11-19 saw "off" with everything on).
+    static func isBlocked(_ k: KeyPath<UNNotificationSettings, UNNotificationSetting>? = \.badgeSetting) async -> Bool {
         let s = await UNUserNotificationCenter.current().notificationSettings()
-        return s.authorizationStatus != .notDetermined && (s.authorizationStatus == .denied || s.badgeSetting != .enabled)
+        if s.authorizationStatus == .denied { return true }
+        guard let k, s.authorizationStatus != .notDetermined else { return false }
+        return s[keyPath: k] != .enabled
     }
     /// Today's number only, for leaving the app: the waiting midnights stay as they are.
     static func setToday() async {
@@ -68,7 +77,8 @@ struct DatelineApp: App {
         let s = await c.notificationSettings()
         if s.authorizationStatus == .notDetermined {
             guard ask else { return true }
-            guard (try? await c.requestAuthorization(options: [.badge])) == true else { return false }
+            // one ask for everything: iOS never asks twice, so the leave alerts' banner and sound are asked for here too
+            guard (try? await c.requestAuthorization(options: [.badge, .alert, .sound])) == true else { return false }
         } else if s.authorizationStatus == .denied || s.badgeSetting != .enabled { return false }
         guard turn == me, on else { return true }
         let today = cal.startOfDay(for: Date())
@@ -98,13 +108,31 @@ final class PhoneState: ObservableObject {
     let store: Store
     let sample: Bool  // sample calendars: tests and pictures
     @Published var today: Date
-    @Published var mode: Mode = .list { didSet { listDay = nil; reload(); turnRule(); if !sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") } } }  // the list is the main screen (approved mockup, John 2026-11-05)
+    @Published var mode: Mode = .list { didSet { listDay = nil; monthPick = nil; reload(); turnRule(); if !autoMode { listBeforeWide = false; if !sample { UserDefaults.standard.set(mode.rawValue, forKey: "mode") } } } }  // the list is the main screen (approved mockup, John 2026-11-05); a view picked by hand stays when the iPad narrows
     // Settings > Week: the view Dateline opens on; "" = where you left it (John 2026-11-06).
     static var openOn: String { get { UserDefaults.standard.string(forKey: "openOn") ?? "" } set { UserDefaults.standard.set(newValue, forKey: "openOn") } }
-    @Published var anchor: Date { didSet { listDay = nil; reload() } }
+    @Published var anchor: Date { didSet { listDay = nil; monthPick = nil; reload() } }
+    @Published var monthPick: Date?  // the day tapped in the month view
     @Published var listDay: Date?  // the day at the top of the list as it scrolls; the month title and week strip follow it (John 2026-11-06)
     @Published var tab: Tab = .calendar { didSet { turnRule() } }
     @Published var sideways = false { didSet { if sideways != oldValue { reload() } } }  // the phone is turned (only Week allows it)
+    // The iPad at full width (approved pictures 2026-11-18): the calendar column, tabs on top, and the Mac's 3, 5 or 7 day week. No list there, so it opens on Week.
+    // The switch to Week is not saved, so Settings > Open on and the phone-width list are kept; narrowing goes back to the list.
+    @Published var wide = false {
+        didSet {
+            guard wide != oldValue else { return }
+            autoMode = true; defer { autoMode = false }
+            if wide && mode == .list { listBeforeWide = true; mode = .week }
+            else if !wide && listBeforeWide { listBeforeWide = false; if mode == .week { mode = .list } else { reload() } }
+            else { reload() }
+        }
+    }
+    private var autoMode = false, listBeforeWide = false
+    @Published var weekDays: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() {
+        didSet { if !sample { UserDefaults.standard.set(weekDays, forKey: "weekDays") }; reload() }
+    }
+    @Published var column = true  // iPad: the calendar column shows (portrait hides it until its button is tapped)
+    @Published var portrait = false  // iPad held upright: Today moves down beside the dates, the set picker up into the top bar
     @Published var path: [String] = []  // event ids open on the calendar tab
     @Published var adding: String?  // the add sheet's starting text; nil = closed
     @Published var email: EmailFind?
@@ -115,8 +143,8 @@ final class PhoneState: ObservableObject {
     @Published var look = 0  // bumped when a Look choice changes here or arrives from the Mac, so the screens redraw in it
     var unlockNext = false  // an add refused by the ended trial: the unlock screen opens once the add sheet has closed
     @Published var problem: String?
-    // shortcut: only the sample fills this; the phone does not run the shared drive planner (Trips) yet, which also schedules the leave alerts (a later step).
-    @Published var drive: [String: Int] = [:]  // minutes of driving before an event with a place
+    @Published var drive: [String: Int] = [:]  // minutes of driving before an event with a place (planTravel; the sample's are made up)
+    private let trips = Trips()
     @Published var emails: [EmailFind] = []  // events found in emails opened in Dateline
     @Published var pickingEmail = false  // the Files picker for an email file
     private var readingEmail = false
@@ -125,9 +153,20 @@ final class PhoneState: ObservableObject {
     var demoWidgets = false
     var demoScroll = false  // pictures only: the list scrolls halfway down, as a finger would
     var demoEdit = false  // pictures only: open the event's edit sheet
+    var demoPlace: String?  // pictures only: a place typed into the edit sheet, so its Apple Maps suggestions show
     var demoDrag: DragLive?  // pictures only: an event held mid-drag
+    var demoSideways = false  // pictures only: the iPad's sideways layout, drawn turned (the simulator can't turn an iPad)
     var demoHold = false  // pictures only: the Undo banner stays up
     @Published var addStart: Date?  // a tap on an empty time: the add sheet starts there
+    /// The day the screen is on, where a new event with no typed day lands (James 2026-11-17): the list's top day, the day or week view's anchor day, the month's tapped day.
+    var shownDay: Date? {
+        switch mode {
+        case .list: return listDay ?? anchor
+        case .day, .week: return anchor
+        case .month: return monthPick ?? (cal.isDate(today, equalTo: anchor, toGranularity: .month) ? cal.startOfDay(for: today) : cal.startOfDay(for: anchor))
+        default: return nil
+        }
+    }
     @Published var toast: Toast?  // the Undo banner
     @Published var dragUntil = Date.distantPast  // the day-to-day swipe stays quiet while an event is held and for a moment after
     let undo = UndoStack()
@@ -136,6 +175,7 @@ final class PhoneState: ObservableObject {
     init(store: Store, today: Date, sample: Bool) {
         self.store = store; self.today = today; self.sample = sample
         anchor = cal.startOfDay(for: today)
+        if sample { weekDays = 7 }  // checks and pictures never follow a saved day count
         if !sample {  // the pictures always start on the list
             mode = Mode(rawValue: Self.openOn) ?? Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .list
             turnRule()
@@ -145,12 +185,21 @@ final class PhoneState: ObservableObject {
 
     /// The days the day and week views show: one, three from the anchor (the phone's week), or the whole week when turned sideways.
     var days: [Date] {
+        if mode == .week && wide {  // as on the Mac: from the day you are on; a 5 day week skips days off
+            let work = workDays(1)
+            if weekDays == 5 && !work.isEmpty { return [anchor] + work.dropLast() }
+            return (0..<(weekDays == 3 ? 3 : 7)).map { addDays(anchor, $0) }  // no working days ticked: the 5 day week shows all 7
+        }
         if mode == .week && sideways { let s = startOfWeek(anchor); return (0..<7).map { addDays(s, $0) } }
         return (0..<(mode == .day ? 1 : 3)).map { addDays(anchor, $0) }
     }
 
+    /// The working days in the 7 days after (or, going back, before) the anchor, nearest first (the Mac's workDaysFromAnchor).
+    private func workDays(_ direction: Int) -> [Date] { (1...7).map { addDays(anchor, direction * $0) }.filter(WorkWeek.isWorkDay) }
+
     /// Lets the phone turn only while Week shows; leaving Week turns it back upright.
     private func turnRule() {
+        guard !PhoneDelegate.pad else { return }  // the iPad always turns
         let turns = tab == .calendar && mode == .week
         guard turns != PhoneDelegate.turns else { return }
         PhoneDelegate.turns = turns
@@ -178,6 +227,7 @@ final class PhoneState: ObservableObject {
         switch mode {
         case .list: anchor = addDays(anchor, 7 * n)
         case .day: anchor = addDays(anchor, n)
+        case .week where wide: if weekDays == 5, let next = workDays(n).last { anchor = next } else { anchor = addDays(anchor, n * (weekDays == 3 ? 3 : 7)) }  // a whole page of working days, none skipped
         case .week: anchor = addDays(anchor, (sideways ? 7 : 3) * n)
         case .month: anchor = cal.date(byAdding: .month, value: n, to: anchor)!
         case .quarter: anchor = cal.date(byAdding: .month, value: 3 * n, to: quarterStart(anchor))!
@@ -199,21 +249,37 @@ final class PhoneState: ObservableObject {
         guard !readingEmail else { problem = "Dateline is still reading the last email. Try again in a moment."; return }  // one at a time, as on the Mac
         readingEmail = true; defer { readingEmail = false }
         say("Reading the email…"); defer { if toast?.text == "Reading the email…" { toast = nil } }  // cleared on every way out, failures too
-        // Off the main thread: a big email's file and its parts take a moment. A copy iOS made for Dateline (its Inbox folder) is removed once read.
-        let read = await Task.detached { () -> (Int, Mail?) in
+        let read = await Self.openedFile(url)
+        guard let m = await Task.detached(operation: { read.1.map(readMail) }).value else { problem = read.0 >= 30_000_000 ? "This email is too big to read (over 30 MB)." : "Dateline couldn't open that email file."; return }
+        let d = await readEvent(m, now: today)
+        guard d.problem.isEmpty, let s = d.start else { problem = d.problem.isEmpty ? "Dateline couldn't find a date in that email." : d.problem; return }
+        let f = EmailFind(from: m.fromName.isEmpty ? m.subject : m.fromName, quote: d.quotes.first ?? m.subject,
+                          parsed: Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes), unsure: d.unsure, whenNote: d.whenNote)
+        show(f)
+    }
+
+    /// An invite file (.ics) opened with Dateline: no AI, the invite already says what, when and where (the Mac reads it the same way).
+    func readInviteFile(_ url: URL) async {
+        let read = await Self.openedFile(url)
+        guard let text = read.1.map({ String(decoding: $0, as: UTF8.self) }) else { problem = "Dateline couldn't open that invite."; return }
+        guard let inv = inviteFind(text) else { problem = "This invite has no event to add. It may be a cancellation."; return }
+        show(EmailFind(from: inv.0.fromName.isEmpty ? "the invite" : inv.0.fromName, quote: inv.0.subject, parsed: inv.1, unsure: inv.2.unsure, whenNote: inv.2.whenNote, invite: true))
+    }
+
+    /// Off the main thread: a big file takes a moment. A copy iOS made for Dateline (its Inbox folder) is removed once read.
+    nonisolated static func openedFile(_ url: URL) async -> (Int, Data?) {
+        await Task.detached { () -> (Int, Data?) in
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             let data = size < 30_000_000 ? try? Data(contentsOf: url) : nil
             let inbox = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Inbox").standardizedFileURL.path + "/"
             if url.standardizedFileURL.path.hasPrefix(inbox) { try? FileManager.default.removeItem(at: url) }  // only Dateline's own copy, never the user's file
-            return (size, data.map(readMail))
+            return (size, data)
         }.value
-        guard let m = read.1 else { problem = read.0 >= 30_000_000 ? "This email is too big to read (over 30 MB)." : "Dateline couldn't open that email file."; return }
-        let d = await readEvent(m, now: today)
-        guard d.problem.isEmpty, let s = d.start else { problem = d.problem.isEmpty ? "Dateline couldn't find a date in that email." : d.problem; return }
-        let f = EmailFind(from: m.fromName.isEmpty ? m.subject : m.fromName, quote: d.quotes.first ?? m.subject,
-                          parsed: Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes), unsure: d.unsure, whenNote: d.whenNote)
+    }
+
+    private func show(_ f: EmailFind) {
         emails.insert(f, at: 0)
         // Opens over the calendar; an add or search sheet closes first. If another sheet is up, the envelope at the top keeps it.
         adding = nil; searching = false
@@ -239,8 +305,16 @@ final class PhoneState: ObservableObject {
         if case .success(let it) = r {
             undo.push { [weak self] in self?.store.delete(it, series: true) }  // like the Mac: a repeating one goes whole
             say("Added \(it.shownTitle)")
+            if p.repeats == nil { Task { if let f = await store.findSpot(it) { problem = f.message } } }  // a typed place gets its map spot, as on the Mac; never a new series (it would split)
         }
         return r
+    }
+
+    /// Drive times for the next 7 days' events with a place, from Apple Maps, and their leave alerts (the Mac's planTravel, same shared planner).
+    func planTravel() {
+        guard store.access == .granted else { return }  // the pictures keep their made-up 25 minutes
+        let all = store.soon.filter { !store.hidden.contains($0.calendarID) }
+        Task { if await trips.run(tripList(all, now: Date()), all: all, store: store, done: { m in if self.drive != m { self.drive = m } }) { planTravel() } }
     }
 
     /// A saved change to an event (drag, stretch, edit): Undo puts `old` back.
@@ -330,4 +404,12 @@ struct EmailFind: Identifiable {
     var from: String, quote: String
     var parsed: Parsed, emoji = "", alert = ""
     var unsure: [String] = [], whenNote = ""  // what the email reader guessed, shown in orange
+    var invite = false  // from an invite file, not read by the AI
+}
+
+/// An invite's text as the email sheet's sender and event. Pure, so the phone check covers it.
+func inviteFind(_ text: String) -> (Mail, Parsed, Draft)? {
+    guard let r = readInvite(text), let s = r.1.start else { return nil }
+    let d = r.1
+    return (r.0, Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes), d)
 }

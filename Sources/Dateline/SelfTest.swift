@@ -42,12 +42,31 @@ func selftest() -> Int32 {
     expect(searchEvents("  ", in: [hit("Dentist", at(11, 1, 9))], hidden: [], now: at(10, 26, 12)).coming.isEmpty, "search: blank text finds nothing")
     expect(dayCalendars([ev("x", at(1, 1, 0).addingTimeInterval(-86400 * 900), at(1, 1, 0).addingTimeInterval(86400 * 900))], in: yr).count == 365, "year dots: a years-long event is clipped to the year")
 
+    expect(jumpDay("march 19", now: now).map { cal.dateComponents([.month, .day], from: $0) == DateComponents(month: 3, day: 19) } == true, "go to date: march 19")
+    expect(birthdayTitle(name: "Ana Rojas", born: DateComponents(year: 1986, month: 11, day: 3), on: at(11, 3, 0)) == "Ana Rojas turns 40", "birthday: age")
+    expect(birthdayTitle(name: "Ana Rojas", born: DateComponents(month: 11, day: 3), on: at(11, 3, 0)) == nil, "birthday: no year, Apple's title stays")
+    expect(birthdayTitle(name: "Ana Rojas", born: DateComponents(year: 1986, month: 11, day: 3), on: at(6, 1, 0)) == nil, "birthday: an anniversary keeps Apple's title")
+    let len = Item(id: "l", calendarID: "c", title: "", start: at(11, 3, 8, 30), end: at(11, 3, 10, 15), allDay: false, place: "", notes: "", showAs: .busy)
+    expect(DragMath.length(len) == "1 h 45 min", "resize length: \(DragMath.length(len))")
+    expect(DragMath.length(DragMath.stretch(len, minutes: 15)) == "2 h" && DragMath.length(DragMath.stretch(len, minutes: -60)) == "45 min", "resize length: whole hours, minutes only")
+    expect(jumpDay("next friday", now: now) == at(10, 30, 0), "go to date: next friday")
+    expect(jumpDay("lunch", now: now) == nil && jumpDay("", now: now) == nil, "go to date: no day written gives nothing")
     var p = parseSentence("Dinner with Ana Friday 7pm at Casa Luna", now: now)
     expect(p.title == "Dinner with Ana", "title: \(p.title)")
     expect(p.start == at(10, 30, 19) && p.end == at(10, 30, 20), "Friday 7pm, one hour: \(p.start)")
     expect(p.place == "Casa Luna" && !p.allDay, "place: \(p.place)")
     p = parseSentence("Dinner with Ana Friday 7pm", now: now)
     expect(p.title == "Dinner with Ana" && p.start == at(10, 30, 19), "mockup sentence")
+    // The day on screen (James 2026-11-17): no day typed lands there; a typed day wins; today on screen changes nothing.
+    let thu = at(10, 29, 0)
+    p = parseSentence("Dinner 7pm", now: now, shownDay: thu)
+    expect(p.start == at(10, 29, 19) && p.end == at(10, 29, 20), "shown day: time only lands on it: \(p.start)")
+    expect(parseSentence("Dinner Friday 7pm", now: now, shownDay: thu).start == at(10, 30, 19), "shown day: typed weekday wins")
+    expect(parseSentence("Dinner tomorrow 7pm", now: now, shownDay: thu).start == at(10, 27, 19), "shown day: tomorrow is still from today")
+    p = parseSentence("Holiday", now: now, shownDay: thu)
+    expect(p.allDay && p.start == thu && p.end == at(10, 30, 0) && !p.dateGiven, "shown day: no time is all day there, still no due date for a task")
+    expect(parseSentence("Coffee 8am", now: now, shownDay: thu).start == at(10, 29, 8), "shown day: a morning time is not pushed a day")
+    expect(parseSentence("Coffee 8am", now: now, shownDay: now) == parseSentence("Coffee 8am", now: now), "shown day: today on screen reads as before")
     p = parseSentence("Call mom tomorrow at 3", now: now)
     expect(p.title == "Call mom" && p.start == at(10, 27, 15), "bare 3 after 'at' reads as 3 PM: \(p.start)")
     p = parseSentence("Standup 9:30am for 15 min", now: now)
@@ -105,6 +124,11 @@ func selftest() -> Int32 {
     expect(matchCalendar("f", in: cals, hidden: ["Finance"])?.id == "Family" && matchCalendar("funstuff", in: cals, hidden: [])?.id == "Fun Stuff"
            && matchCalendar("fin", in: cals, hidden: ["Finance"])?.id == "Finance" && matchCalendar("x", in: cals, hidden: []) == nil, "/code prefers shown calendars")
     expect(alertText(15) == "15 minutes before" && alertText(60) == "1 hour before" && alertText(2880) == "2 days before", "alert text")
+    expect(alertText(900, allDay: true) == "1 day before, 9 AM" && alertText(-540, allDay: true) == "On the day, 9 AM"
+           && alertText(9540, allDay: true) == "1 week before, 9 AM" && alertText(2370, allDay: true) == "2 days before, 8:30 AM", "all-day alert text")
+    let alerted = Item(id: "a", calendarID: "c", title: "", start: Date(timeIntervalSince1970: 100_000), end: Date(timeIntervalSince1970: 103_600), allDay: false,
+                       place: "", notes: "", showAs: .busy, alerts: [Date(timeIntervalSince1970: 100_000 - 900), Date(timeIntervalSince1970: 100_000 + 32400)])
+    expect(alertMinutes(alerted) == [15, -540], "alert minutes from the saved alert times")
     let pastList = [Item(id: "a", calendarID: "personal", title: "Lunch with the team", start: at(9, 30, 12), end: at(9, 30, 13), allDay: false, place: "Office", notes: "", showAs: .busy),
                     Item(id: "b", calendarID: "personal", title: "Lunch with Sam", start: at(10, 13, 12), end: at(10, 13, 13, 30), allDay: false, place: "Casa Luna", notes: "", showAs: .maybe),
                     Item(id: "c", calendarID: "work", title: "Gym", start: at(10, 1, 7), end: at(10, 1, 8), allDay: false, place: "", notes: "", showAs: .busy)]
@@ -119,8 +143,12 @@ func selftest() -> Int32 {
     func it2(_ t: String, _ a: Date, _ b: Date, allDay: Bool = false) -> Item { Item(id: t, calendarID: "w", title: t, start: a, end: b, allDay: allDay, place: "", notes: "", showAs: .busy) }
     let soon = comingUp([it2("Review", at(10, 26, 9), at(10, 26, 10, 21)), it2("Lunch", at(10, 26, 11, 21), at(10, 26, 12)),
                          it2("Beach day", at(11, 1, 0), at(11, 2, 0), allDay: true), it2("Old", at(10, 26, 0), at(10, 27, 0), allDay: true)], now: now)
-    expect(soon.map(\.title) == ["Lunch", "Beach day", "Review"], "coming up order: \(soon.map(\.title))")
-    expect(soon[0].big == "1 h 40 min" && soon[1].big == "6 days" && soon[1].tail == " · Sunday" && soon[2].lead == "ends in 40 min · started 41 min ago", "coming up text: \(soon)")
+    expect(soon.map(\.title) == ["Review", "Lunch", "Beach day"], "coming up order: \(soon.map(\.title))")
+    expect(soon[1].big == "1 h 40 min" && soon[2].big == "6 days" && soon[2].tail == " · Sunday" && soon[0].lead == "ends in 40 min · started 41 min ago" && soon[0].dim, "coming up text: \(soon)")
+    // The second event today still shows (the Packers game, John 2026-11-08), all-day sits on its day, and the list stops at 4.
+    let many = comingUp([it2("Game", at(10, 26, 9), at(10, 26, 11)), it2("Packers", at(10, 26, 13), at(10, 26, 16)),
+                         it2("Birthday", at(10, 28, 0), at(10, 29, 0), allDay: true), it2("Dentist", at(10, 28, 9), at(10, 28, 10)), it2("Later", at(10, 30, 9), at(10, 30, 10))], now: now)
+    expect(many.map(\.title) == ["Game", "Packers", "Birthday", "Dentist"], "coming up keeps time order: \(many.map(\.title))")
     expect(comingUp([it2("Trip", at(10, 29, 8), at(10, 29, 9))], now: now).first?.big == "3 days", "far next event counts days")
     expect(timeText(at(10, 26, 19)) == "7:00 PM" && timeText(at(10, 26, 19), short: true) == "7 PM", "clock text")
     // Phase 3: formatted notes keep plain text the phone can read.
@@ -164,6 +192,8 @@ func selftest() -> Int32 {
     expect(taskRowDay(td(at(10, 23, 0), done: true), now: now) == at(10, 23, 0), "a ticked task stays on its own day")
     // Week settings.
     MainActor.assumeIsolated {
+        sampleToday = now  // sample events must sit in the test's week, or up/down finds none
+        defer { sampleToday = nil }
         let a = AppState(store: Store(sample: true), today: now)
         a.mode = .week; a.days = 5
         expect(a.visibleDays == (0..<5).map { at(10, 26 + $0, 0) }, "5 days from Monday = Mon to Fri")
@@ -185,6 +215,11 @@ func selftest() -> Int32 {
         a.selectedID = nil
         let gap = [at(10, 29, 0), at(10, 30, 0), at(11, 2, 0)]
         expect(dayShift(columns: 1, from: gap[1], in: gap) == 3 && dayShift(columns: -1, from: gap[2], in: gap) == -3 && dayShift(columns: 2, from: gap[2], in: gap) == 2 && dayShift(columns: 2, from: gap[1], in: gap) == 4, "dragging over the weekend gap moves by the days between columns")
+        let xPost = Item(id: "x", calendarID: "", title: "X post", start: at(11, 10, 7, 51), end: at(11, 10, 8, 6), allDay: false, place: "", notes: "", showAs: .busy)
+        let dentist = taskSpan(ToDo(id: "d", listID: "", title: "Dentist"), at: at(11, 10, 8), length: 1800), ln = lanes([xPost, dentist])
+        expect(ln["x"]?.1 == 2 && ln["task:d"]?.1 == 2 && ln["x"]?.0 != ln["task:d"]?.0, "a timed task beside an event it overlaps gets its own lane, not on top")
+        var short = xPost; short.start = at(11, 10, 7, 50); short.end = at(11, 10, 8)
+        expect(lanes([short, dentist])["x"]?.1 == 1 && lanes([short, dentist], minLength: 1200)["x"]?.1 == 2, "a short event drawn taller than its time still gets its own lane")
         a.days = 3; a.anchor = at(10, 26, 0); a.now = at(10, 26, 23)
         a.tick(at(10, 28, 8)); expect(a.anchor == at(10, 28, 0) && a.now == at(10, 28, 8), "a new day: the view showing today moves on")
         a.anchor = at(10, 26, 0); a.now = at(10, 28, 8); a.tick(at(10, 29, 8)); expect(a.anchor == at(10, 26, 0), "a new day: a view paged elsewhere stays, even with today on screen")
@@ -248,6 +283,9 @@ func selftest() -> Int32 {
     expect(fullScreenDue([tenAM], from: at(10, 26, 9, 54).addingTimeInterval(55), to: at(10, 26, 9, 55).addingTimeInterval(5), lead: 5) { _ in true }.count == 1, "full alert 5 min before")
     expect(fullScreenDue([tenAM], from: at(10, 26, 10), to: at(10, 26, 10).addingTimeInterval(10), lead: 0) { _ in true }.isEmpty, "a check landing exactly on the start shows it once, not twice")
     expect(fullScreenDue([tenAM], from: at(10, 26, 9, 59), to: at(10, 26, 10), lead: 0) { $0 != "work" }.isEmpty, "only the picked calendars")
+    var zoomTen = tenAM; zoomTen.notes = "Join: https://us02web.zoom.us/j/8123456789"
+    expect(fullScreenDue([tenAM, zoomTen], from: at(10, 26, 9, 59), to: at(10, 26, 10), lead: 0, callsOnly: true) { _ in true }.map(\.notes) == [zoomTen.notes], "only video calls: the event without a call link stays away")
+    expect(fullScreenDue([tenAM, zoomTen], from: at(10, 26, 9, 59), to: at(10, 26, 10), lead: 0) { _ in true }.count == 2, "all events: both cover the screen")
     expect(zoneDiff(TimeZone(identifier: "Asia/Kolkata")!, at: now) == "11 h 30 min ahead", "half-hour zone")
     expect(zoneDiff(TimeZone(identifier: "America/Costa_Rica")!, at: now) == "same time", "same zone")
     expect(zoneOffset(TimeZone(identifier: "America/Los_Angeles")!, at: now) == "-1 h", "zone behind")
@@ -285,6 +323,20 @@ func selftest() -> Int32 {
         s.show(from: addDays(day, -30), to: addDays(day, 30))
         let onDays = s.items.filter { $0.start >= addDays(day, -30) && $0.end > $0.start && !s.hidden.contains($0.calendarID) }
         expect(!onDays.isEmpty && onDays.allSatisfy { it in s.shown(on: it.start).contains { $0.id == it.id } }, "a day asked for by a date that isn't midnight still finds its events")
+        // John 2026-11-17: one emoji to every event with the same name, and Undo puts each one's own back.
+        if let lunch = s.items.first(where: { $0.title == "Lunch with Sam" }) {
+            var odd = lunch; odd.title = "  LUNCH with   sam "
+            let same = s.sameName(as: odd)
+            expect(same.count == 2 && same.allSatisfy { $0.calendarID == lunch.calendarID }, "same name ignores capitals and spaces")
+            expect(s.sameName(as: s.items.first { $0.title == "Lunch with the team" }!).count == 1, "a different name or calendar doesn't match")
+            s.saveEmoji(same.map { var x = $0; x.emoji = "🥗"; return x })
+            expect(s.sameName(as: lunch).allSatisfy { $0.emoji == "🥗" }, "the emoji reaches every matching event")
+            var tagged = s.sameName(as: lunch)[0]; tagged.tags = ["Later"]; tagged.rich = Data("{\\rtf1 Later}".utf8); s.update(tagged)  // changes made after "Add to all"
+            s.saveEmoji(same)
+            let after = s.sameName(as: lunch).first { $0.id == tagged.id }
+            expect(after?.tags == ["Later"] && after?.rich == tagged.rich, "undo leaves later tags and formatted notes alone")
+            expect(s.sameName(as: lunch).map(\.emoji) == same.map(\.emoji), "undo puts their own emoji back")
+        } else { expect(false, "the sample has Lunch with Sam") }
     }
     let grouped = itemsByDay(spans, from: dayA, to: addDays(dayC, 1))
     expect([dayA, dayB, dayC].allSatisfy { d in grouped[d]?.map(\.id) ?? [] == spans.filter { $0.start < addDays(d, 1) && $0.end > d }.map(\.id) } && grouped.count == 3, "events grouped by day land on the days the old scan found")
@@ -329,6 +381,7 @@ func selftest() -> Int32 {
     licenseSelftest(expect)
     MainActor.assumeIsolated { repeatSelfTest(expect) }
     subSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
+    inviteSelftest(expect)
     emailSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     accountsSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     print(fails == 0 ? "selftest: all passed" : "selftest: \(fails) failed")

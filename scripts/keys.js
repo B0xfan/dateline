@@ -2,14 +2,14 @@
 'use strict';
 // Dateline buyer keys, run on John's Mac only. Same scheme as Reading Vault's Pro keys, with Dateline's own signing key.
 //
-//   node scripts/keys.js init        makes the signing key pair once and prints the public half for License.swift
+//   node scripts/keys.js init        makes the signing key pair once and prints the public half for LicenseLogic.swift
 //   node scripts/keys.js batch 150   makes 150 numbered keys in one file, one per line, for Payhip ("From a list")
 //   node scripts/keys.js key         makes one numbered key (e.g. John's own)
 //   node scripts/keys.js check DLK-… checks a key exactly as the app does
 //
 // The private key lives in ~/.dateline-keys/private-key.pem, outside the repository (backup in Bitwarden,
 // "Dateline buyer key signing key"). Anyone who has it can make keys: never commit, paste or email it.
-// Key format (must match keySerial in License.swift): DLK-K<6 digits>.<86-char base64url Ed25519 signature of "K<6 digits>">,
+// Key format (must match keySerial in LicenseLogic.swift): DLK-K<6 digits>.<86-char base64url Ed25519 signature of "K<6 digits>">,
 // 98 characters, under Payhip's 100. The first number is random so numbers don't show sales; after that they count up.
 
 const crypto = require('crypto');
@@ -18,7 +18,7 @@ const os = require('os');
 const path = require('path');
 
 const DIR = process.env.DATELINE_KEYS_DIR || path.join(os.homedir(), '.dateline-keys');
-const SWIFT = path.join(__dirname, '..', 'Sources', 'Dateline', 'License.swift');
+const SWIFT = path.join(__dirname, '..', 'Sources', 'DatelineCore', 'LicenseLogic.swift');  // where publicKeys and revoked live
 const KEY_RE = /^DLK-K(\d{6})\.([A-Za-z0-9_-]{86})$/;
 const b64url = (buf) => Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 // The raw 32 bytes of an Ed25519 public key, as CryptoKit reads them: the end of its SPKI DER.
@@ -30,7 +30,7 @@ function makeKey(n, pem) {
   return `DLK-${payload}.${b64url(crypto.sign(null, Buffer.from(payload), pem))}`;
 }
 
-// The public keys and refunded numbers in License.swift, so a check here answers as the app does.
+// The public keys and refunded numbers in LicenseLogic.swift, so a check here answers as the app does.
 function appLists() {
   const src = fs.readFileSync(SWIFT, 'utf8');
   const keys = /static let publicKeys = \[(.*)\]/.exec(src), revoked = /static let revoked: Set<Int> = \[(.*)\]/.exec(src);
@@ -84,12 +84,12 @@ function main([cmd, arg]) {
     fs.mkdirSync(DIR, { recursive: true, mode: 0o700 });
     const { publicKey, privateKey: priv } = crypto.generateKeyPairSync('ed25519');
     fs.writeFileSync(p, priv.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600, flag: 'wx' });
-    console.log(`Made the signing key at ${p}. Back it up to Bitwarden now.\nAdd this to publicKeys in License.swift: "${rawPublic(publicKey)}"`);
+    console.log(`Made the signing key at ${p}. Back it up to Bitwarden now.\nAdd this to publicKeys in LicenseLogic.swift: "${rawPublic(publicKey)}"`);
   } else if (cmd === 'batch' || cmd === 'key') {
     const n = cmd === 'key' ? 1 : Number(arg);
     if (!Number.isInteger(n) || n < 1 || n > 10000) throw new Error('Say how many keys, 1 to 10000: node scripts/keys.js batch 150');
     const pem = privateKey();
-    if (check(makeKey(1, pem)) === null) throw new Error('This signing key\'s public half is not in License.swift, so the app would refuse these keys. Nothing was made.');
+    if (check(makeKey(1, pem)) === null) throw new Error('This signing key\'s public half is not in LicenseLogic.swift, so the app would refuse these keys. Nothing was made.');
     const { first, last, commit } = reserve(n);
     const keys = [];
     for (let i = first; i <= last; i++) keys.push(makeKey(i, pem));

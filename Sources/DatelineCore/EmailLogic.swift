@@ -1,12 +1,13 @@
 // Email to event, shared by the Mac and the iPhone: reads an email file (.eml) into its sender, subject and text, and Apple's on-device AI
 // turns it into an event draft that is added only after a review. Moved here from the Mac app (2026-11-06) so the phone reads emails the same way.
 import Foundation
-#if canImport(FoundationModels)
+#if canImport(FoundationModels) && !os(watchOS)  // no on-device AI on the watch
 import FoundationModels
 #endif
 
 #if os(iOS)
-private let device = "iPhone"
+import UIKit
+private let device = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
 #else
 private let device = "Mac"
 #endif
@@ -211,7 +212,7 @@ public func makeDraft(found: Bool, title: String, when: String = "", sent: Date 
     return d
 }
 
-#if canImport(FoundationModels)
+#if canImport(FoundationModels) && !os(watchOS)  // no on-device AI on the watch
 @available(macOS 26, iOS 26, *)
 @Generable struct EmailGuess {
     @Guide(description: "true only if the email is about one event, appointment, booking, flight, reservation or meeting that has a date. Ads, newsletters and sales are false") var found: Bool
@@ -240,7 +241,7 @@ public func steering(_ m: Mail) -> Bool {
         d.problem = "This email has text that tries to tell the AI what to do, so nothing was filled in."
         return d
     }
-    #if canImport(FoundationModels)
+    #if canImport(FoundationModels) && !os(watchOS)  // no on-device AI on the watch
     if #available(macOS 26, iOS 26, *) {
         guard case .available = SystemLanguageModel.default.availability else { off.problem = "Apple Intelligence is off on this \(device), so nothing was filled in."; return off }
         let s = LanguageModelSession(instructions: """
@@ -255,7 +256,24 @@ public func steering(_ m: Mail) -> Bool {
         } catch { off.problem = "Apple's built-in AI couldn't read this email."; return off }
     }
     #endif
-    off.problem = "Reading emails needs Apple Intelligence (\(device == "Mac" ? "macOS" : "iOS") 26 or later)."
+    off.problem = "Reading emails needs Apple Intelligence (\(device == "Mac" ? "macOS" : device == "iPad" ? "iPadOS" : "iOS") 26 or later)."
     return off
 }
 
+
+// A calendar invite file (.ics, the attachment on an emailed invite) read as an email and a finished draft.
+// No AI: the invite already says what, when and where. nil when it holds no event that can be added (a cancellation).
+// shortcut: the first event only, and a repeating invite is added as its first time; read the repeat rule if repeating invites show up.
+public func readInvite(_ text: String) -> (Mail, Draft)? {
+    // Only a real invite: a reply to your own invite (REPLY, COUNTER, REFRESH) would add your event twice.
+    let method = text.components(separatedBy: .newlines).lazy.compactMap { icsLine($0) }.first { $0.0 == "METHOD" }?.2.uppercased() ?? ""
+    guard ["", "REQUEST", "PUBLISH"].contains(method), let e = parseICS(text).first(where: { !$0.cancelled && $0.recurrenceID == nil }) else { return nil }
+    let name = e.organizerName, addr = e.organizer
+    var notes = e.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !e.url.isEmpty, !notes.contains(e.url) { notes += (notes.isEmpty ? "" : "\n\n") + e.url }  // the meeting link, kept where Dateline finds video links
+    let title = plain(e.title)
+    var d = Draft(title: title, place: plain(e.place), notes: notes, start: e.start, end: e.end, allDay: e.allDay, unsure: title.isEmpty ? ["title"] : [])
+    if !e.allDay, !e.zoneName.isEmpty, icsZone(e.zoneName) == nil { d.unsure.append("when"); d.whenNote = "The invite's time zone (\(e.zoneName)) isn't one Dateline knows, so this is your time zone. Check the time." }
+    let mail = Mail(from: name.isEmpty ? addr : addr.isEmpty ? name : "\(name) <\(addr)>", subject: title.isEmpty ? "Calendar invite" : title, body: notes, date: e.stamp ?? Date())  // dated, so it sorts with new mail
+    return (mail, d)
+}

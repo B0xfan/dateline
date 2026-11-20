@@ -5,11 +5,14 @@ import DatelineCore
 
 // The emoji row: the button opens the picker under it.
 struct EmojiRow: View {
+    @ObservedObject var app: AppState
     @ObservedObject var store: Store
     @Binding var item: Item
     let commit: () -> Void
     @State private var open = false
+    @State private var added: (id: String, count: Int)?  // "Add to all" just ran on this event
     var body: some View {
+        let same = store.sameName(as: item)
         HStack(spacing: 8) {
             Button { open = true } label: {
                 Text(item.emoji.isEmpty ? "Add" : item.emoji).font(.ui(item.emoji.isEmpty ? 12 : 15)).foregroundStyle(Palette.text2)
@@ -19,8 +22,17 @@ struct EmojiRow: View {
             .popover(isPresented: $open, arrowEdge: .bottom) {
                 EmojiPicker(recent: store.recentEmoji) { e in item.emoji = e; store.usedEmoji(e); open = false; commit() }
             }
-            if !item.emoji.isEmpty { Button("Remove") { item.emoji = ""; commit() }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.text3) }
+            // A read-only calendar's cake is the Birthdays marker: it can be swapped, not removed.
+            if !item.emoji.isEmpty, !(item.emoji == "🎂" && store.calendar(item.calendarID)?.writable != true) { Button("Remove") { item.emoji = ""; commit() }.buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.text3) }
+            if let a = added, a.id == item.id, same.allSatisfy({ $0.emoji == item.emoji }) {  // gone once Undo has run
+                Text("Added to \(a.count). Edit > Undo takes it back.").font(.ui(12)).foregroundStyle(Palette.text3)
+            } else if !item.emoji.isEmpty, same.count > 1, same.contains(where: { $0.emoji != item.emoji }) {
+                Button("Add to all \(same.count) like this") { if app.emojiToAll(same, item.emoji) { added = (item.id, same.count) } }
+                    .buttonStyle(.plain).font(.ui(12)).foregroundStyle(Palette.accent)
+                    .help("Gives this emoji to every loaded event on this calendar with the same name")
+            }
         }
+        .onChange(of: item.emoji) { _, _ in added = nil }
     }
 }
 

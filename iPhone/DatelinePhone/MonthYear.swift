@@ -13,15 +13,13 @@ func weekDayNames() -> [String] {
 struct MonthView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
-    @State private var picked: Date?
 
     var body: some View {
         let grid = monthGrid(app.anchor), month = cal.component(.month, from: app.anchor)
-        let sel = picked ?? (cal.isDate(app.today, equalTo: app.anchor, toGranularity: .month) ? cal.startOfDay(for: app.today) : cal.startOfDay(for: app.anchor))
+        let sel = app.shownDay ?? cal.startOfDay(for: app.anchor)
         let list = store.shown(on: sel)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-              VStack(alignment: .leading, spacing: 0) {  // the calendar on white; the day's card below on grey
+        VStack(alignment: .leading, spacing: 0) {  // the month stays put; only the day's list scrolls (John 2026-11-07)
+            VStack(alignment: .leading, spacing: 0) {  // the calendar on white; the day's card below on grey
                 HStack(spacing: 0) {
                     SetMenu()
                     Spacer(minLength: 0)
@@ -54,35 +52,36 @@ struct MonthView: View {
                     .padding(.horizontal, 10)
                     .overlay(alignment: .bottom) { Rectangle().fill(T.line).frame(height: 0.5) }
                 }
-              }
-              .background(T.bg)
-                (Text(dateText(sel, "EEEE, MMMM d")).foregroundColor(T.text).fontWeight(.semibold)
-                 + Text("  " + (list.isEmpty ? "No events" : list.count == 1 ? "1 event" : "\(list.count) events")))
-                    .font(.footnote).foregroundStyle(T.text2)
-                    .padding(.horizontal, 18).padding(.top, 13).padding(.bottom, 7)
-                    .accessibilityAddTraits(.isHeader)
+            }
+            .background(T.bg)
+            (Text(dateText(sel, "EEEE, MMMM d")).foregroundColor(T.text).fontWeight(.semibold)
+             + Text("  " + (list.isEmpty ? "No events" : list.count == 1 ? "1 event" : "\(list.count) events")))
+                .font(.footnote).foregroundStyle(T.text2)
+                .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 6)
+                .accessibilityAddTraits(.isHeader)
+            ScrollView {
                 DayCard(day: sel, rows: agendaRows(store, sel, now: app.today).filter { if case .event(let it) = $0 { !it.allDay } else { true } },
                         allDay: list.filter(\.allDay))
                     .padding(.horizontal, 16).padding(.bottom, 20)
             }
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(T.grouped)
-        .onChange(of: app.anchor) { picked = nil }
     }
 
     private func cell(_ d: Date, inMonth: Bool, picked sel: Date) -> some View {
         let today = cal.isDate(d, inSameDayAs: app.today), on = cal.isDate(d, inSameDayAs: sel)
         var seen = Set<String>()
         let dots = store.shown(on: d).filter { it in seen.insert(it.color.map { n in "c\(n)" } ?? it.calendarID).inserted }.prefix(3).map { store.color($0) }
-        return Button { picked = d } label: {
-            VStack(spacing: 4) {
-                Text(dateText(d, "d")).font(.subheadline.weight(today ? .semibold : .regular))
+        return Button { app.monthPick = d } label: {
+            VStack(spacing: 2) {  // compact like Fantastical (John 2026-11-08): 34 pt weeks instead of 56
+                Text(dateText(d, "d")).font(.subheadline.weight(today ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(today ? .white : on ? T.tint : inMonth ? T.text : T.text2.opacity(0.6))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 24, height: 24)
                     .background(today ? T.accent : on ? T.tint.opacity(0.14) : .clear, in: Circle())
-                HStack(spacing: 3) { ForEach(Array(dots.enumerated()), id: \.offset) { _, c in Dot(color: c, size: 5) } }.frame(height: 5)
+                HStack(spacing: 2) { ForEach(Array(dots.enumerated()), id: \.offset) { _, c in Dot(color: c, size: 4) } }.frame(height: 4)
             }
-            .frame(maxWidth: .infinity, minHeight: 52, alignment: .top).padding(.top, 4).contentShape(Rectangle())
+            .frame(maxWidth: .infinity, minHeight: 32, alignment: .top).padding(.top, 2).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)  // seven days across: like the week strip, it stops growing before the numbers clip
@@ -192,6 +191,7 @@ struct YearView: View {
     var body: some View {
         let y = cal.dateInterval(of: .year, for: app.anchor)!
         let busy = dayCalendars(store.items.filter { !store.hidden.contains($0.calendarID) }, in: y)
+        if app.wide { PadYear(start: y.start, busy: busy) } else {
         ScrollView {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: 3), alignment: .leading, spacing: 18) {
                 ForEach(0..<12, id: \.self) { m in mini(cal.date(byAdding: .month, value: m, to: y.start)!, busy: busy) }
@@ -203,6 +203,7 @@ struct YearView: View {
             }
             .font(.caption).foregroundStyle(T.text2).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 20)
+        }
         }
     }
 
@@ -228,5 +229,71 @@ struct YearView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(dateText(first, "MMMM"))
+    }
+}
+
+/// The iPad's year (approved iPad board, John 2026-11-19): 4 by 3 months, weekday letters, a dot under each day with events, today circled.
+/// A day opens that day; a month's name opens the month.
+private struct PadYear: View {
+    @EnvironmentObject var app: PhoneState
+    let start: Date
+    let busy: [Date: [String]]
+
+    @State private var row: CGFloat = 34  // a week row's height: the three rows of months fill the screen, never less than 34
+
+    var body: some View {
+        GeometryReader { g in
+            ScrollView {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 40, alignment: .top), count: 4), alignment: .leading, spacing: 18) {
+                    ForEach(0..<12, id: \.self) { m in month(cal.date(byAdding: .month, value: m, to: start)!) }
+                }
+                .padding(.horizontal, 40).padding(.vertical, 18)
+            }
+            // 3 rows of months, each a name and weekday line (about 48) and 6 week rows (each the row plus 3 above and 2 between); 36 padding, 36 between the rows.
+            .onAppear { row = Self.rowHeight(g.size.height) }
+            .onChange(of: g.size.height) { _, h in row = Self.rowHeight(h) }
+        }
+    }
+
+    static func rowHeight(_ h: CGFloat) -> CGFloat {
+        let weeks: CGFloat = h - 72 - 3 * 48
+        return max(34, weeks / 18 - 5)
+    }
+
+    private func month(_ first: Date) -> some View {
+        let n = cal.range(of: .day, in: .month, for: first)!.count
+        let blanks = (cal.component(.weekday, from: first) - WorkWeek.firstWeekday + 7) % 7
+        let order = (0..<7).map { (WorkWeek.firstWeekday - 1 + $0) % 7 }  // weekday indexes, 0 = Sunday
+        let now = cal.isDate(first, equalTo: app.today, toGranularity: .month)
+        let cols = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
+        return VStack(alignment: .leading, spacing: 4) {
+            Button { app.anchor = first; app.mode = .month } label: {
+                Text(dateText(first, "MMMM")).font(.headline).foregroundStyle(now ? T.accent : T.text)
+            }
+            .buttonStyle(.plain)
+            LazyVGrid(columns: cols, spacing: 0) {
+                ForEach(order, id: \.self) { w in Text(cal.veryShortWeekdaySymbols[w]).font(.caption.weight(.semibold)).foregroundStyle(T.text2).accessibilityHidden(true) }
+            }
+            LazyVGrid(columns: cols, spacing: 2) {
+                ForEach(0..<(blanks + n), id: \.self) { i in
+                    if i < blanks { Color.clear.frame(height: row) } else { day(addDays(first, i - blanks), i - blanks + 1) }
+                }
+            }
+        }
+    }
+
+    private func day(_ d: Date, _ num: Int) -> some View {
+        let today = cal.isDate(d, inSameDayAs: app.today), weekend = cal.isDateInWeekend(d), has = busy[d] != nil
+        return Button { app.anchor = d; app.mode = .day } label: {
+            VStack(spacing: 2) {
+                Text("\(num)").font(.subheadline.weight(today ? .bold : .regular)).monospacedDigit()
+                    .foregroundStyle(today ? .white : weekend ? T.text2 : T.text)
+                    .frame(width: 24, height: 24).background(today ? T.accent : .clear, in: Circle())
+                Circle().fill(has && !today ? T.tint : .clear).frame(width: 5, height: 5)
+            }
+            .frame(maxWidth: .infinity, minHeight: row, alignment: .top).padding(.top, 3).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(dateText(d, "EEEE, MMMM d") + (has ? ", has events" : ""))
     }
 }

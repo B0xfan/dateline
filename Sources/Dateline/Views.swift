@@ -97,6 +97,7 @@ struct MainView: View {
         .sheet(item: $panels.confirmDelete) { it in ConfirmDelete(app: app, store: store, item: it) }
         .sheet(item: $panels.editingSet) { s in SetEditor(app: app, store: store, draft: s) }
         .sheet(isPresented: $panels.subscribing) { SubscribeSheet(app: app, store: store) }
+        .sheet(isPresented: $panels.jumping) { GoToDate(app: app) }
         .sheet(isPresented: Binding(get: { panels.reviewing != nil }, set: { if !$0 { panels.reviewing = nil } })) {
             if let p = app.emails.items.first(where: { $0.id == panels.reviewing }) { EmailReview(app: app, p: p) }
         }
@@ -113,6 +114,7 @@ struct MainView: View {
     @ToolbarContentBuilder var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
             Button("Today") { app.goToday() }.help("Go to today (T)")
+            Button("Go to Date…") { app.panels.jumping = true }.help("Go to a date (Shift Command T)")
             Button("Previous", systemImage: "chevron.left") { app.step(-1) }.help("Go back (Left arrow)")
             Button("Next", systemImage: "chevron.right") { app.step(1) }.help("Go forward (Right arrow)")
         }
@@ -121,6 +123,7 @@ struct MainView: View {
             if app.mode == .week && width >= 800 {
                 Picker("Days", selection: $app.days) { ForEach([3, 5, 7], id: \.self) { Text(String($0)).tag($0) } }
                     .pickerStyle(.segmented).labelsHidden().fixedSize().help("Days to show in the week")
+                    .padding(.trailing, 12)  // John's 2026-11-14 bug: with no gap, "7" ran into "Day" and read as "7 Day"
             }
             Picker("View", selection: $app.mode) {
                 ForEach(Mode.allCases, id: \.self) { m in Text(width < 800 ? String(m.rawValue.prefix(1)) : m.rawValue).tag(m).accessibilityLabel(m.rawValue) }

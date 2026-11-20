@@ -27,6 +27,7 @@ enum Demo {
         sampleToday = today
         Here.shared.spot = tamarindo  // the mockups' sunrise and weather; never the phone's location
         WeatherStore.sample = true  // made-up weather, never the network
+        MacSeen.sample = Calendar.current.date(bySettingHour: 6, minute: 41, second: 0, of: Date())  // "Your Mac": opened this morning (the device clock, which the shown time reads)
         let app = PhoneState(store: Store(sample: true), today: today, sample: true)
         if let s = app.store.sets.first(where: { $0.name == "Family" }) { app.store.use(s) }
         for it in app.store.between(addDays(today, -7), addDays(today, 14)) where it.geo != nil { app.drive[it.id] = 25 }  // made-up drive times, never Apple Maps
@@ -53,6 +54,7 @@ enum Demo {
         case "day": app.mode = .day
         case "week-sideways":  // the simulator can't be turned from the script: the app turns itself once its window is up
             app.mode = .week
+            if PhoneDelegate.pad { app.demoSideways = true; break }  // an iPad won't turn itself either: drawn turned instead
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 for case let w as UIWindowScene in UIApplication.shared.connectedScenes { w.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) }
             }
@@ -64,8 +66,9 @@ enum Demo {
         case "details", "details2":
             let title = s == "details" ? "Dentist" : "Marco at the condo"
             if let it = app.store.between(today, addDays(today, 7)).first(where: { $0.title == title }) { app.open(it) }
-        case "edit", "edit-invite":
-            let want = s == "edit" ? "Dentist" : "Holiday: no school"
+        case "edit", "edit-invite", "edit-place":
+            let want = s == "edit-invite" ? "Holiday: no school" : "Dentist"
+            if s == "edit-place" { app.demoPlace = "Hotel Capitan Suizo" }
             if let it = app.store.between(today, addDays(today, 7)).first(where: { $0.title == want }) { app.demoEdit = true; app.open(it) }
         case "drag", "resize", "undo-toast", "tap-new":
             let day = addDays(cal.startOfDay(for: today), 2)  // the dentist, Wednesday 8:30
@@ -135,6 +138,21 @@ enum SelfTest {
         let at = app.anchor; app.step(1)
         check(app.anchor == addDays(at, 7), "turned sideways a swipe moves a whole week")
         app.sideways = false; app.anchor = at  // back where the next checks expect it
+        app.wide = true; app.anchor = mon  // the iPad at full width: the Mac's 3, 5 or 7 day week, from the day you are on
+        check(app.mode == .week && app.days == (0..<7).map { addDays(mon, $0) }, "iPad: the week shows seven days from today, as on the Mac")
+        app.step(1); check(app.anchor == addDays(mon, 7), "iPad: a swipe moves the 7 day week by a week")
+        app.anchor = mon; app.weekDays = 5
+        check(app.days == (0..<5).map { addDays(mon, $0) }, "iPad: the 5 day week shows Monday to Friday")
+        app.step(1); check(app.anchor == addDays(mon, 7), "iPad: a swipe moves the 5 day week to the next Monday")
+        app.anchor = mon; app.weekDays = 3
+        check(app.days == (0..<3).map { addDays(mon, $0) }, "iPad: the 3 day week shows three days from today")
+        app.weekDays = 7; app.wide = false; app.anchor = at
+        check(app.days.count == 3, "back at phone width the week shows three days again")
+        app.mode = .list; app.wide = true; app.wide = false
+        check(app.mode == .list, "iPad: after full width, phone width goes back to the list")
+        app.wide = true; app.mode = .week; app.wide = false
+        check(app.mode == .week, "iPad: a view picked by hand at full width stays at phone width")
+        app.mode = .list
         app.mode = .day; app.step(-1)
         check(app.anchor == addDays(mon, 2), "a swipe moves the day view by one day")
         app.goToday()
@@ -226,6 +244,10 @@ enum SelfTest {
 
         let eml = readMail(Data("From: Maya <maya@example.com>\nSubject: =?utf-8?Q?Cena_s=C3=A1bado?=\nContent-Type: text/plain\n\nDinner at Pangas Saturday at 7".utf8))
         check(eml.fromName == "Maya" && eml.subject == "Cena sábado" && eml.body.hasPrefix("Dinner"), "an email file is read as on the Mac")
+        let inv = inviteFind("BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nDTSTART:20261120T150000Z\r\nDTEND:20261120T163000Z\r\nORGANIZER;CN=Ana Ruiz:mailto:ana@example.com\r\nSUMMARY:Project kickoff\r\nLOCATION:Room 4\r\nURL:https://meet.google.com/abc-defg-hij\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+        check(inv?.0.fromName == "Ana Ruiz" && inv?.1.title == "Project kickoff" && inv?.1.place == "Room 4" && inv?.1.notes == "https://meet.google.com/abc-defg-hij"
+              && inv.map { $0.1.end.timeIntervalSince($0.1.start) } == 5400 && inv?.1.allDay == false, "an invite file is read into the event sheet")
+        check(inviteFind("BEGIN:VCALENDAR\nMETHOD:CANCEL\nBEGIN:VEVENT\nDTSTART:20261120T150000Z\nSUMMARY:x\nEND:VEVENT\nEND:VCALENDAR") == nil, "a cancelled invite is not offered")
 
         check(!License.shared.enter("DLK-K000001.not-a-real-key") && License.shared.status == .bought(serial: 0), "a wrong key is refused and changes nothing")
         check(!store.trialOver, "the sample calendars never lock, whatever the trial")

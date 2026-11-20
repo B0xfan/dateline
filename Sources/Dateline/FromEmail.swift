@@ -49,7 +49,7 @@ final class EmailInbox: ObservableObject {
         guard !sample else { return }
         let files = (try? FileManager.default.contentsOfDirectory(at: Self.folder, includingPropertiesForKeys: nil)) ?? []
         let known = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        items = files.filter { $0.pathExtension.lowercased() == "eml" }.compactMap { url in
+        items = files.filter { ["eml", "ics"].contains($0.pathExtension.lowercased()) }.compactMap { url in
             if let p = known[url.lastPathComponent] { return p }  // already read; the folder only changed elsewhere
             if ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) >= 30_000_000 {  // shown, not read, so it doesn't vanish without a word
                 var d = Draft(); d.problem = "This email is too big to read (over 30 MB). Open it and add the event yourself."; d.unsure = ["title", "when"]
@@ -57,6 +57,13 @@ final class EmailInbox: ObservableObject {
             }
             guard let data = try? Data(contentsOf: url) else { return nil }
             let s = (try? Data(contentsOf: side(url))).flatMap { try? JSONDecoder().decode(Side.self, from: $0) }
+            if url.pathExtension.lowercased() == "ics" {  // an invite: already a finished draft, never sent to the AI
+                guard let inv = readInvite(String(decoding: data, as: UTF8.self)) else {
+                    var d = Draft(); d.problem = "This invite has no event to add. It may be a cancellation."; d.unsure = ["title", "when"]
+                    return Pending(id: url.lastPathComponent, mail: Mail(subject: "Calendar invite"), draft: d, file: url)
+                }
+                return Pending(id: url.lastPathComponent, mail: inv.0, draft: s?.draft ?? inv.1, seen: s?.seen ?? false, file: url)
+            }
             return Pending(id: url.lastPathComponent, mail: readMail(data), draft: s?.draft, seen: s?.seen ?? false, file: url)
         }.sorted { ($0.mail.date ?? .distantPast) > ($1.mail.date ?? .distantPast) }
         for p in items where p.draft == nil && !reading.contains(p.id) {
@@ -94,16 +101,18 @@ final class EmailInbox: ObservableObject {
         }
     }
 
-    // File > Make Event from Email File…: a copy goes into the folder; the picked file stays where it is.
-    func importFile(_ url: URL) {
-        guard !sample else { return }
+    // File > Make Event from Email File…, or an invite file opened with Dateline: a copy goes into the folder; the picked file stays where it is.
+    @discardableResult func importFile(_ url: URL) -> String? {
+        guard !sample else { return nil }
         // Copied under a hidden name first, so scan() never reads a half-copied email.
         let id = UUID().uuidString, tmp = Self.folder.appendingPathComponent("." + id + ".tmp")
+        let name = id + (url.pathExtension.lowercased() == "ics" ? ".ics" : ".eml")
         do {
             try FileManager.default.copyItem(at: url, to: tmp)
-            try FileManager.default.moveItem(at: tmp, to: Self.folder.appendingPathComponent(id + ".eml"))
-        } catch { try? FileManager.default.removeItem(at: tmp) }
+            try FileManager.default.moveItem(at: tmp, to: Self.folder.appendingPathComponent(name))
+        } catch { try? FileManager.default.removeItem(at: tmp); return nil }
         scan()
+        return name
     }
 
     // The approved mockup's three emails, for --sample and the pictures.
@@ -190,7 +199,7 @@ struct EmailReview: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("THE EMAIL").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
+                Text(invite ? "THE INVITE" : "THE EMAIL").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                 Text(p.mail.from).font(.ui(12)).foregroundStyle(Palette.text2).lineLimit(1)
                 Text(p.mail.subject).font(.ui(14, weight: .semibold)).lineLimit(2)
                 Divider().overlay(Palette.line)
@@ -199,7 +208,7 @@ struct EmailReview: View {
             .padding(20).frame(width: 380).frame(maxHeight: .infinity, alignment: .top).background(Palette.side)
             Divider().overlay(Palette.line)
             VStack(alignment: .leading, spacing: 12) {
-                Text("Event from this email").font(.ui(15, weight: .semibold))
+                Text(invite ? "Event from this invite" : "Event from this email").font(.ui(15, weight: .semibold))
                 if !d.problem.isEmpty { Text(d.problem).font(.ui(12)).foregroundStyle(Palette.family) }
                 field("Title", "title") { TextField("Title", text: $d.title).textFieldStyle(.roundedBorder) }
                 field("When", "when", note: d.whenNote) {
@@ -220,14 +229,14 @@ struct EmailReview: View {
                     VStack(alignment: .leading, spacing: 4) {
                         TextEditor(text: $d.notes).font(.ui(13)).frame(height: 72).scrollContentBackground(.hidden).padding(4)
                             .background(RoundedRectangle(cornerRadius: 8).fill(Palette.field)).overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line))
-                        Text("The full email is saved with the event.").font(.ui(11)).foregroundStyle(Palette.text3)
+                        if !invite { Text("The full email is saved with the event.").font(.ui(11)).foregroundStyle(Palette.text3) }
                     }
                 }
                 Spacer(minLength: 0)
                 HStack {
                     Button("Throw away") { app.onUndo(app.emails.remove(p.id)); app.panels.reviewing = nil }
                     Spacer()
-                    Button("Open the email") { if let f = p.file { NSWorkspace.shared.open(f) } }.disabled(p.file == nil)
+                    if !invite { Button("Open the email") { if let f = p.file { NSWorkspace.shared.open(f) } }.disabled(p.file == nil) }  // an invite would only open in Dateline again
                     Button("Add event") { addEvent() }.keyboardShortcut(.defaultAction).disabled(d.title.trimmingCharacters(in: .whitespaces).isEmpty || calID.isEmpty)
                 }
             }
@@ -247,6 +256,8 @@ struct EmailReview: View {
         return a
     }
 
+    var invite: Bool { p.file?.pathExtension.lowercased() == "ics" }
+
     func field<V: View>(_ label: String, _ key: String, note: String = "", @ViewBuilder _ content: () -> V) -> some View {
         let unsure = !key.isEmpty && d.unsure.contains(key)
         return VStack(alignment: .leading, spacing: 4) {
@@ -262,8 +273,8 @@ struct EmailReview: View {
         var p = Parsed(start: start, end: d.allDay ? addDays(cal.startOfDay(for: end), 1) : end > start ? end : start.addingTimeInterval(3600))
         if d.allDay { p.start = cal.startOfDay(for: start) }
         p.title = plain(d.title); p.place = plain(d.place); p.allDay = d.allDay
-        let email = "From the email \"\(self.p.mail.subject)\" (\(self.p.mail.from)):\n\n\(self.p.mail.body.prefix(8000))"
-        p.notes = d.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? email : d.notes + "\n\n" + email
+        let email = invite ? "" : "From the email \"\(self.p.mail.subject)\" (\(self.p.mail.from)):\n\n\(self.p.mail.body.prefix(8000))"
+        p.notes = [d.notes.trimmingCharacters(in: .whitespacesAndNewlines), email].filter { !$0.isEmpty }.joined(separator: "\n\n")
         guard app.add(p, calendar: app.store.calendar(calID)) != nil else { return }
         app.alsoOnUndo(app.emails.remove(self.p.id))
         app.panels.reviewing = nil
@@ -272,6 +283,48 @@ struct EmailReview: View {
 }
 
 // MARK: checks
+
+// A Google-style invite: folded lines, escaped commas, a time zone, the organizer and a meeting link.
+let sampleInvite = """
+    BEGIN:VCALENDAR\r
+    METHOD:REQUEST\r
+    BEGIN:VTIMEZONE\r
+    TZID:America/New_York\r
+    END:VTIMEZONE\r
+    BEGIN:VEVENT\r
+    DTSTART;TZID=America/New_York:20261120T100000\r
+    DTEND;TZID=America/New_York:20261120T113000\r
+    UID:abc@google.com\r
+    ORGANIZER;CN=Ana Ruiz:mailto:ana@example.com\r
+    ATTENDEE;CN=John;PARTSTAT=NEEDS-ACTION:mailto:john@example.com\r
+    SUMMARY:Project kickoff\r
+    LOCATION:Room 4\r
+    DESCRIPTION:Agenda: goals\\, dates\\nBring the plan.\r
+    URL:https://meet.google.com/abc-defg-hij\r
+    END:VEVENT\r
+    END:VCALENDAR\r
+
+    """
+
+func inviteSelftest(_ expect: (Bool, String) -> Void) {
+    guard let inv = readInvite(sampleInvite) else { expect(false, "invite: a normal invite reads"); return }
+    let (m, d) = inv
+    var ny = Calendar(identifier: .gregorian); ny.timeZone = TimeZone(identifier: "America/New_York")!
+    expect(d.title == "Project kickoff" && d.place == "Room 4" && d.unsure.isEmpty && !d.allDay, "invite: title and place, nothing marked unsure")
+    expect(d.start == ny.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 10)) && d.end == ny.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 11, minute: 30)), "invite: times read in the invite's own time zone")
+    expect(d.notes == "Agenda: goals, dates\nBring the plan.\n\nhttps://meet.google.com/abc-defg-hij", "invite: description and meeting link in the notes (\(d.notes))")
+    expect(m.from == "Ana Ruiz <ana@example.com>" && m.fromName == "Ana Ruiz" && m.subject == "Project kickoff", "invite: the organizer shows as the sender (\(m.from))")
+    expect(readInvite(sampleInvite.replacingOccurrences(of: "METHOD:REQUEST", with: "METHOD:CANCEL")) == nil, "invite: a cancellation is not added")
+    expect(readInvite(sampleInvite.replacingOccurrences(of: "METHOD:REQUEST", with: "METHOD:REPLY")) == nil, "invite: a reply to your own invite is not added again")
+    expect(readInvite(sampleInvite.replacingOccurrences(of: "\r\n", with: "\r"))?.0.from == "Ana Ruiz <ana@example.com>", "invite: old Mac line endings keep the sender")
+    expect(readInvite("BEGIN:VCALENDAR\nEND:VCALENDAR") == nil, "invite: a file with no event")
+    let outlook = readInvite(sampleInvite.replacingOccurrences(of: "TZID=America/New_York", with: "TZID=Eastern Standard Time"))?.1
+    expect(outlook?.start == d.start && outlook?.unsure.isEmpty == true, "invite: Outlook's Windows time zone name is read")
+    let odd = readInvite(sampleInvite.replacingOccurrences(of: "TZID=America/New_York", with: "TZID=Customized Time Zone"))?.1
+    expect(odd?.unsure == ["when"] && odd?.whenNote.contains("Customized Time Zone") == true, "invite: an unknown time zone is marked for checking")
+    let day = readInvite("BEGIN:VEVENT\nDTSTART;VALUE=DATE:20261124\nDTEND;VALUE=DATE:20261126\nEND:VEVENT")?.1
+    expect(day?.allDay == true && day?.end == addDays(day!.start!, 2) && day?.unsure == ["title"], "invite: two all-day days, no title marked unsure")
+}
 
 func emailSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int, Int) -> Date) {
     let eml = """
@@ -341,5 +394,12 @@ func emailSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int, In
         let added = a.store.items.first { $0.title == "Dinner at Pangas" }
         expect(added?.place == "Pangas Beach Club, Tamarindo" && added?.notes.contains("Bring Ana") == true && added?.notes.hasPrefix("Table for 4") == true, "email: Add event saves place, notes and the email")
         expect(a.emails.items.count == 2 && a.panels.reviewing == nil, "email: an added email leaves the list")
+        // An invite opened with Dateline: added exactly as the invite says, its notes not doubled by an email copy.
+        if let inv = readInvite(sampleInvite) {
+            let (m, d) = inv
+            EmailReview(app: a, p: Pending(id: "inv.ics", mail: m, draft: d, file: URL(fileURLWithPath: "/nonexistent/inv.ics"))).addEvent()
+            let got = a.store.items.first { $0.title == "Project kickoff" }
+            expect(got?.start == d.start && got?.end == d.end && got?.place == "Room 4" && got?.notes == d.notes, "invite: Add event saves it as the invite says (\(String(describing: got?.notes)))")
+        } else { expect(false, "invite: the sample invite reads") }
     }
 }

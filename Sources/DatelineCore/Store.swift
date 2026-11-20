@@ -154,6 +154,7 @@ public final class Store: ObservableObject {
     @Published public var a4Links: [String: A4Link] = [:]  // by the note's path
     public var a4Syncing = false
     public var a4LastError: String?
+    @Published public var timeBlocks: [TimeBlock] = []  // LifeWorld's free time blocks (TimeBlocksLogic.swift)
 
     // Phase 7: subscribed and ready-made calendars (Subscribed.swift).
     @Published public var subs: [Sub] = [] { didSet { save(subs, "subscriptions") } }
@@ -186,8 +187,9 @@ public final class Store: ObservableObject {
         requestReminders()
         reloadA4()
         #if os(macOS)  // the iPhone has no A4 vault to re-read when the app comes forward
+        MacSeen.stamp()
         a4Observer = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
-            Task { @MainActor in self.reloadA4() }
+            Task { @MainActor in self.reloadA4(); MacSeen.stamp() }
         }
         #endif
     }
@@ -214,11 +216,11 @@ public final class Store: ObservableObject {
         if sets.isEmpty { syncRemoved("sets") }
     }
 
-    public var activeSet: CalSet? { DatelineCore.activeSet(sets, calendars: calendars.map(\.id), hidden: hidden) }
+    public var activeSet: CalSet? { DatelineCore.activeSet(sets, calendars: calendars.map(\.id).filter { !isBlocks($0) }, hidden: hidden) }
 
     // Shows only that set's calendars; nil = all calendars.
     public func use(_ s: CalSet?) {
-        hidden = s.map { Set(calendars.map(\.id)).subtracting($0.calendars) } ?? []
+        hidden = s.map { Set(calendars.map(\.id).filter { !isBlocks($0) }).subtracting($0.calendars) } ?? []  // the Planner's blocks have their own switch
         if s == nil { hiddenLists = [] } else if let l = s?.lists, !lists.isEmpty { hiddenLists = Set(lists.filter { $0.account != a4Account }.map(\.id)).subtracting(l) }  // A4 has its own switch in Settings; a set never hides its projects
     }
 
@@ -229,13 +231,34 @@ public final class Store: ObservableObject {
 
     public func usedEmoji(_ e: String) { recentEmoji = Array(([e] + recentEmoji.filter { $0 != e }).prefix(16)) }
 
+    // "Add this emoji to all" (approved picture, John 2026-11-17): the loaded events, past and coming, on the same calendar with
+    // the same name (capitals and extra spaces ignored), `it` included; one per series, since a series shares its extras.
+    public func sameName(as it: Item) -> [Item] {
+        func name(_ s: String) -> String { s.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ") }
+        let n = name(it.title)
+        guard !n.isEmpty else { return [] }
+        var seen = Set<String>()
+        return (items + soon).filter { $0.calendarID == it.calendarID && name($0.title) == n && seen.insert(key($0.id)).inserted }
+    }
+
+    // Saves only the emoji of many events at once (the emoji to all matching events, and its undo); their other extras stay as they are now.
+    @discardableResult
+    public func saveEmoji(_ list: [Item]) -> Failure? {
+        if trialOver { return Failure(License.endedMessage) }
+        let loaded = items + soon  // each event as it is now (notes, tags, formatting), not the copy in `list`
+        list.forEach { old in var x = loaded.first { $0.id == old.id } ?? old; x.emoji = old.emoji; setExtras(x) }
+        fetch()
+        return nil
+    }
+
     // A repeating event's occurrences share their extras.
     func key(_ id: String) -> String { String(resolve(id).split(separator: "|").first ?? "") }
 
     public func decorated(_ it: Item) -> Item {
         guard let x = extras[key(it.id)] ?? (it.uid.isEmpty ? nil : extras["~" + syncUID(it.uid)]) else { return it }  // "~": extras that came from the other device before this one knew the event
         var it = it
-        it.emoji = x.emoji; it.color = x.color; it.tags = x.tags
+        if !x.emoji.isEmpty || it.emoji != "🎂" { it.emoji = x.emoji }  // the Birthdays cake stays unless another emoji was picked
+        it.color = x.color; it.tags = x.tags
         it.noTravel = x.noTravel ?? false; it.leave = x.leave; it.from = x.from ?? .here
         if x.plain == it.notes { it.rich = x.rich }
         return it
@@ -286,7 +309,7 @@ public final class Store: ObservableObject {
 
     private var reopened = false
     public func reloadCalendars() {
-        calendars = source.calendars() + accInfos + subInfos
+        calendars = source.calendars() + accInfos + subInfos + blocksInfos
         if !reopened {
             reopened = true
             if let id = UserDefaults.standard.string(forKey: "lastSet"), let s = sets.first(where: { $0.id == id }), activeSet?.id != id { use(s) }
@@ -324,14 +347,14 @@ public final class Store: ObservableObject {
     public func between(_ a: Date, _ b: Date) -> [Item] {
         let own = canRead ? source.events(from: a, to: b) : []
         followIDs(own)  // before decorating, so an event whose id changed shows its extras at once
-        return ((own.map(decorated) + subEvents(from: a, to: b) + accEvents(from: a, to: b))).sorted { $0.start < $1.start }
+        return ((own.map(decorated) + subEvents(from: a, to: b) + accEvents(from: a, to: b) + blockEvents(from: a, to: b).map(decorated))).sorted { $0.start < $1.start }
     }
 
     // The same, read off the main thread (the Mac's event search reads two years).
     public func betweenInBackground(_ a: Date, _ b: Date) async -> [Item] {
         let own = canRead ? await source.eventsInBackground(from: a, to: b) : []
         followIDs(own)
-        return ((own.map(decorated) + subEvents(from: a, to: b) + accEvents(from: a, to: b))).sorted { $0.start < $1.start }
+        return ((own.map(decorated) + subEvents(from: a, to: b) + accEvents(from: a, to: b) + blockEvents(from: a, to: b).map(decorated))).sorted { $0.start < $1.start }
     }
 
     // The last year's events, one per title, newest first (quick add's "From your past events").
@@ -386,6 +409,13 @@ public final class Store: ObservableObject {
         guard let calID else { return .failure(Failure("No calendar on this Mac can take new events.")) }
         let it = Item(id: "", calendarID: calID, title: p.title.isEmpty ? "New event" : p.title, start: p.start, end: p.end,
                       allDay: p.allDay, place: p.place, notes: p.notes, showAs: p.showAs, geo: p.geo)
+        if isBlocks(calID) {
+            if p.repeats != nil { return .failure(Failure("Time blocks don't repeat. Add each one in the Planner or here.")) }
+            var it = it; it.title = p.title.isEmpty ? "Free time" : p.title
+            let id = blockID(taken: timeBlocks.map(\.id))
+            if let f = saveBlock(id: id, it) { return .failure(f) }
+            return .success(blockItem(blockFrom(it, id: id)) ?? it)
+        }
         if isAcc(calID) { return accAdd(it, alertMinutes: p.alertMinutes, repeats: p.repeats) }
         let saved = source.add(it, alertMinutes: p.alertMinutes, repeats: p.repeats)
         if case .success = saved { fetch() }
@@ -395,11 +425,20 @@ public final class Store: ObservableObject {
     // Saves changes to an event (move, stretch, edits in the details panel). Repeating events change this occurrence only.
     @discardableResult
     public func update(_ it: Item) -> Failure? {
+        var it = it
+        let before = items.first { $0.id == it.id }
+        // A moved event keeps its alerts the same time before the start, as the calendars do.
+        if let b = before, b.alerts == it.alerts, b.start != it.start { it.alerts = it.alerts.map { $0.addingTimeInterval(it.start.timeIntervalSince(b.start)) } }
         if trialOver { fetch(); return Failure(License.endedMessage) }  // the fetch puts a dragged event back
         // Only Dateline's extras changed (also on read-only calendars and invites): nothing goes to the calendar.
-        if let old = items.first(where: { $0.id == it.id }), sameInCalendar(old, it) { setExtras(it); fetch(); return nil }
+        if let old = before, sameInCalendar(old, it) { setExtras(it); fetch(); return nil }
         if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be changed.") }
-        let before = items.first { $0.id == it.id }
+        if isBlocks(it.calendarID) || before.map({ isBlocks($0.calendarID) }) == true {
+            // A block off screen has no `before`; its calendar says it is one.
+            guard before.map({ $0.calendarID == it.calendarID }) ?? true else { fetch(); return Failure("Time blocks stay in the Planner's own calendar.") }
+            if let f = saveBlock(id: String(it.id.dropFirst("block:".count)), it) { fetch(); return f }
+            setExtras(it); return nil
+        }
         if isAcc(it.calendarID) || before.map({ isAcc($0.calendarID) }) == true {
             if let f = accUpdate(it, old: before) { fetch(); return f }
             setExtras(it); fetch(); return nil
@@ -426,6 +465,7 @@ public final class Store: ObservableObject {
     public func setRepeat(_ it: Item, _ r: Repeat?, all: Bool) -> Failure? {
         if trialOver { return Failure(License.endedMessage) }
         if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be changed.") }
+        if isBlocks(it.calendarID) { return Failure("Time blocks don't repeat. Add each one in the Planner or here.") }
         let f = isAcc(it.calendarID) ? accSetRepeat(it, r.map { $0.normal(it.start) }, all: all) : source.setRepeat(current(it), r.map { $0.normal(it.start) }, all: all)
         fetch()
         return f
@@ -436,6 +476,7 @@ public final class Store: ObservableObject {
     public func delete(_ it: Item, series: Bool = false) -> Failure? {
         if trialOver { return Failure(License.endedMessage) }
         if isSub(it.calendarID) { return Failure("Events in a subscribed calendar can't be deleted. Remove the whole calendar from the sidebar instead.") }
+        if isBlocks(it.calendarID) { return saveBlock(id: String(it.id.dropFirst("block:".count)), nil) }
         if isAcc(it.calendarID) {
             let oneTime = !accRepeats(it)
             if let f = accDelete(it, series: series) { return f }

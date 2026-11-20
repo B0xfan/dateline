@@ -65,7 +65,7 @@ struct AddSheet: View {
 
     /// The sentence as read, but a tapped time on the calendar is the start when the sentence gives none.
     private func read() -> Parsed {
-        var p = parseSentence(text, now: app.today)
+        var p = parseSentence(text, now: app.today, shownDay: app.addStart ?? app.shownDay)
         if let s = app.addStart, !p.dateGiven {
             p.end = s.addingTimeInterval(p.lengthGiven ? p.end.timeIntervalSince(p.start) : 3600); p.start = s; p.allDay = false
         }
@@ -145,12 +145,14 @@ struct EmailSheet: View {
                         .padding(.horizontal, 16).padding(.top, 8)
                     SectionLabel("Dateline found")
                     Understood(p: find.parsed, calendar: app.calendarFor(find.parsed), emoji: find.emoji, alert: find.alert, unsure: find.unsure, whenNote: find.whenNote)
-                    Text("Read on this iPhone with Apple Intelligence. The email never leaves your phone.")
-                        .font(.footnote).foregroundStyle(T.text2).padding(.horizontal, 32).padding(.top, 14)
+                    if !find.invite {
+                        Text("Read on this \(thisDevice) with Apple Intelligence. The email never leaves your \(thisDevice).")
+                            .font(.footnote).foregroundStyle(T.text2).padding(.horizontal, 32).padding(.top, 14)
+                    }
                 }
             }
             .background(T.grouped)
-            .navigationTitle("Event from email").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(find.invite ? "Event from invite" : "Event from email").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) { Button("Add", action: add).fontWeight(.semibold).disabled(app.calendarFor(find.parsed) == nil) }

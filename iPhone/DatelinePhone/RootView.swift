@@ -7,6 +7,7 @@ import DatelineCore
 struct RootView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
+    @Environment(\.horizontalSizeClass) private var hsc
     private let clock = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -14,19 +15,27 @@ struct RootView: View {
     }
 
     private var main: some View {
-        // The standard iPhone tab bar (2026-11-06 design); adding moved to the + in the calendar's top bar.
-        TabView(selection: $app.tab) {
-            CalendarTab().tabItem { Label("Calendar", systemImage: "calendar") }.tag(PhoneState.Tab.calendar)
-            TasksView().tabItem { Label("Tasks", systemImage: "checkmark.circle") }.tag(PhoneState.Tab.tasks)
-            PlacesView().tabItem { Label("Places", systemImage: "mappin") }.tag(PhoneState.Tab.places)
-            SettingsView().tabItem { Label("Settings", systemImage: "gearshape") }.tag(PhoneState.Tab.settings)
+        Group {
+            if app.wide { PadRoot() }  // the iPad at full width (approved pictures 2026-11-18)
+            else {
+                // The standard iPhone tab bar (2026-11-06 design); adding moved to the + in the calendar's top bar.
+                TabView(selection: $app.tab) {
+                    CalendarTab().tabItem { Label("Calendar", systemImage: "calendar") }.tag(PhoneState.Tab.calendar)
+                    TasksView().tabItem { Label("Tasks", systemImage: "checkmark.circle") }.tag(PhoneState.Tab.tasks)
+                    PlacesView().tabItem { Label("Places", systemImage: "mappin") }.tag(PhoneState.Tab.places)
+                    SettingsView().tabItem { Label("Settings", systemImage: "gearshape") }.tag(PhoneState.Tab.settings)
+                }
+            }
         }
+        // A big iPhone turned sideways is wide too, but keeps the phone's screens; an iPad in a narrow Split View gets the phone's.
+        .onChange(of: hsc, initial: true) { app.wide = PhoneDelegate.pad && hsc == .regular }
         .overlay(alignment: .bottom) { if let t = app.toast { UndoBanner(toast: t).padding(.horizontal, 16).padding(.bottom, 92).transition(.move(edge: .bottom).combined(with: .opacity)) } }
         .animation(.easeOut(duration: 0.2), value: app.toast?.id)
         .background(ShakeToUndo { app.undoLast() })
         .background(T.bg)
         .preferredColorScheme(Look.appearance == "Light" ? .light : Look.appearance == "Dark" ? .dark : nil)  // app.look changing redraws this
         .onReceive(NotificationCenter.default.publisher(for: Look.synced)) { _ in app.lookChanged() }  // a Look choice arrived from the Mac
+        .onChange(of: store.soon) { app.planTravel() }  // drive times follow the coming events, as on the Mac
         .sheet(isPresented: Binding(get: { app.adding != nil }, set: { if !$0 { app.adding = nil } }), onDismiss: { app.sheetClosed() }) { AddSheet(start: app.adding ?? "") }
         .sheet(isPresented: $app.searching) { SearchSheet() }
         .sheet(item: $app.email, onDismiss: { app.sheetClosed() }) { EmailSheet(find: $0) }
@@ -34,16 +43,22 @@ struct RootView: View {
         .fileImporter(isPresented: $app.pickingEmail, allowedContentTypes: [.emailMessage]) { r in
             if case .success(let url) = r { Task { await app.readEmail(url) } }
         }
-        .onOpenURL { url in if url.isFileURL { app.tab = .calendar; Task { await app.readEmail(url) } } }  // an .eml shared or opened in Dateline
+        .onOpenURL { url in  // an .eml or an invite (.ics) shared or opened in Dateline
+            guard url.isFileURL else { return }
+            app.tab = .calendar
+            Task { if url.pathExtension.lowercased() == "ics" { await app.readInviteFile(url) } else { await app.readEmail(url) } }
+        }
         .alert(app.problem ?? "", isPresented: Binding(get: { app.problem != nil }, set: { if !$0 { app.problem = nil } })) { Button("OK") {} }
         .onReceive(clock) { now in
             guard !app.sample else { return }  // the pictures keep the mockup's 9:41
             app.today = now
             License.shared.tick(now)
+            if Int(now.timeIntervalSince1970) % 300 < 30 { Here.shared.refresh(); app.planTravel() }  // every 5 minutes, as on the Mac (this clock ticks every 30 s)
         }
         .task {
             guard !app.sample else { return }
-            Here.shared.start()  // sunrise and weather for where the phone is; never in a test
+            Here.shared.start()  // sunrise, weather and drive times for where the phone is; never in a test
+            LeaveAlerts.shared.install()  // the leave alert's Directions and In 5 min buttons
             await License.shared.storeReady()
             if License.shared.trialNotStarted { app.showUnlock = true }  // first open: the trial's terms before it starts (App Review 3.1.1)
         }

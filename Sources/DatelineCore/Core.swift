@@ -97,8 +97,9 @@ private func shortCode(_ w: String, _ prefix: String) -> (Int, Character)? {
 }
 
 // Reads a sentence like "Dinner with Ana Friday 7pm at Casa Luna /Personal -a15m". `now` is the moment the box is typed in.
+// `shownDay` is the day on screen: a sentence that names no day lands there instead of today (James 2026-11-17).
 // Short codes are taken out first, wherever they are; the rest is read as below.
-public func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60) -> Parsed {
+public func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60, shownDay: Date? = nil) -> Parsed {
     var code: String? = nil, alert: Int? = nil, rep: Repeat? = nil
     let rest = text.split(separator: " ").filter { word in
         let w = word.lowercased()
@@ -107,13 +108,26 @@ public func parseSentence(_ text: String, now: Date, defaultMinutes: Int = 60) -
         if let (n, u) = shortCode(w, "-r"), n > 0, "dwmy".contains(u) { rep = Repeat(unit: u, n: n); return false }
         return true
     }
-    var p = parsePlain(rest.joined(separator: " "), now: now, defaultMinutes: defaultMinutes)
+    var p = parsePlain(rest.joined(separator: " "), now: now, defaultMinutes: defaultMinutes, shownDay: shownDay)
     p.calendarCode = code; p.alertMinutes = alert; p.repeats = rep
     return p
 }
 
+// Birthdays: "Ana Rojas turns 40" when the contact's birth year is saved and this is the birthday (not an anniversary); nil keeps Apple's title.
+public func birthdayTitle(name: String, born: DateComponents?, on day: Date) -> String? {
+    let d = cal.dateComponents([.year, .month, .day], from: day)
+    guard !name.isEmpty, let b = born, let y = b.year, b.month == d.month, b.day == d.day, let age = d.year.map({ $0 - y }), age > 0 else { return nil }
+    return "\(name) turns \(age)"
+}
+
+// Go to Date (Mac box): "march 19", "next friday", "12/24" -> that day; nil when no day was written.
+public func jumpDay(_ text: String, now: Date) -> Date? {
+    let p = parseSentence(text, now: now)
+    return p.dateGiven && p.title.isEmpty ? cal.startOfDay(for: p.start) : nil
+}
+
 // Words not taken as a date, time or mark make the title; after "at <place>" they make the place.
-private func parsePlain(_ text: String, now: Date, defaultMinutes: Int) -> Parsed {
+private func parsePlain(_ text: String, now: Date, defaultMinutes: Int, shownDay: Date?) -> Parsed {
     // "9:30 AM" or "9 p.m." typed as two words joins into one time word, so the AM never stays in the title.
     var words: [String] = []
     for w in text.split(separator: " ").map(String.init) {
@@ -188,7 +202,9 @@ private func parsePlain(_ text: String, now: Date, defaultMinutes: Int) -> Parse
     if let placeFrom { p.place = join((placeFrom + 1)..<words.count) }
     p.showAs = showAs
     p.dateGiven = day != nil || startMin != nil
-    let base = day ?? today
+    // A typed day wins; else the day on screen, unless that is today (so a past time still rolls to tomorrow).
+    let shown = shownDay.map { cal.startOfDay(for: $0) }.flatMap { $0 == today ? nil : $0 }
+    let base = day ?? shown ?? today
     if allDay || startMin == nil {
         p.allDay = true
         p.start = base; p.end = addDays(base, 1)
@@ -196,7 +212,7 @@ private func parsePlain(_ text: String, now: Date, defaultMinutes: Int) -> Parse
     }
     var start = cal.date(byAdding: .minute, value: startMin!, to: base)!
     // A time already past today, with no day written, means tomorrow.
-    if day == nil && start < now { start = addDays(start, 1) }
+    if day == nil && shown == nil && start < now { start = addDays(start, 1) }
     p.start = start
     p.lengthGiven = endMin != nil || duration != nil
     let len = endMin.map { $0 > startMin! ? $0 - startMin! : $0 + 1440 - startMin! } ?? duration ?? defaultMinutes
@@ -285,6 +301,20 @@ public func alertText(_ m: Int) -> String {
     return "\(n) \(unit)\(n == 1 ? "" : "s") before"
 }
 
+// The event panel's alert choices, in minutes before the start. All-day events count from their midnight: 900 is the day before at 9 AM, -540 the day itself at 9 AM.
+public let alertChoices = [0, 5, 15, 30, 60, 120, 1440, 2880]
+public let allDayAlertChoices = [-540, 900, 2340, 9540]
+public let maxAlerts = 5  // Mac and iPhone (approved mockup 2026-11-17); Google takes 5 too
+public func alertMinutes(_ it: Item) -> [Int] { it.alerts.map { Int((it.start.timeIntervalSince($0) / 60).rounded()) } }
+public func alertText(_ m: Int, allDay: Bool) -> String {
+    guard allDay else { return alertText(m) }
+    let days = Int((Double(m) / 1440).rounded(.up)), t = days * 1440 - m  // whole days before, then minutes after that midnight
+    let h = t / 60 % 12 == 0 ? 12 : t / 60 % 12
+    let time = "\(h)" + (t % 60 == 0 ? "" : String(format: ":%02d", t % 60)) + (t / 60 < 12 ? " AM" : " PM")
+    let when = days <= 0 ? "On the day" : days % 7 == 0 ? (days == 7 ? "1 week before" : "\(days / 7) weeks before") : days == 1 ? "1 day before" : "\(days) days before"
+    return when + ", " + time
+}
+
 // "/fam" or "/f" -> the calendar named that, or starting with it. Calendars shown in the sidebar win over hidden ones.
 public func matchCalendar(_ code: String, in cals: [CalInfo], hidden: Set<String>) -> CalInfo? {
     let k = code.lowercased()
@@ -303,7 +333,6 @@ public func quarterStart(_ d: Date) -> Date {
 public struct Soon: Equatable { public let title: String; public let calendarID: String; public let lead: String; public let big: String; public let tail: String; public let dim: Bool
     public init(title: String, calendarID: String, lead: String, big: String, tail: String, dim: Bool) { self.title = title; self.calendarID = calendarID; self.lead = lead; self.big = big; self.tail = tail; self.dim = dim } }
 
-// The next event, the next all-day event (the next big day), and the event under way now.
 // "5 min", "2 h", "5 h 28 min" (also the menu bar's "What's next").
 public func span(_ s: TimeInterval) -> String {
     let m = max(1, Int(s / 60)), h = m / 60, r = m % 60
@@ -315,19 +344,14 @@ public func comingUp(_ items: [Item], now: Date) -> [Soon] {
         let n = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: d)).day!
         return (n == 1 ? "1 day" : "\(n) days", " · " + dateText(d, "EEEE"))
     }
-    var out: [Soon] = []
-    let timed = items.filter { !$0.allDay }.sorted { $0.start < $1.start }
-    if let n = timed.first(where: { $0.start > now }) {
-        if n.start.timeIntervalSince(now) < 86400 { out.append(Soon(title: n.shownTitle, calendarID: n.calendarID, lead: "starts in ", big: span(n.start.timeIntervalSince(now)), tail: "", dim: false)) }
-        else { let (b, t) = days(n.start); out.append(Soon(title: n.shownTitle, calendarID: n.calendarID, lead: "in ", big: b, tail: t, dim: false)) }
+    // In time order (John 2026-11-08): what is on now, then the next events; an all-day event sits at the start of its day.
+    let onNow = items.filter { !$0.allDay && $0.start <= now && $0.end > now }.sorted { $0.start < $1.start }.map {
+        Soon(title: $0.shownTitle, calendarID: $0.calendarID, lead: "ends in \(span($0.end.timeIntervalSince(now))) · started \(span(now.timeIntervalSince($0.start))) ago", big: "", tail: "", dim: true)
     }
-    if let b = items.filter({ $0.allDay && $0.start > now }).min(by: { $0.start < $1.start }) {
-        let (big, t) = days(b.start)
-        out.append(Soon(title: b.shownTitle, calendarID: b.calendarID, lead: "in ", big: big, tail: t, dim: false))
+    let next = items.filter { $0.start > now }.sorted { $0.start < $1.start }.prefix(4).map { n -> Soon in
+        if !n.allDay && n.start.timeIntervalSince(now) < 86400 { return Soon(title: n.shownTitle, calendarID: n.calendarID, lead: "starts in ", big: span(n.start.timeIntervalSince(now)), tail: "", dim: false) }
+        let (b, t) = days(n.start); return Soon(title: n.shownTitle, calendarID: n.calendarID, lead: "in ", big: b, tail: t, dim: false)
     }
-    if let c = timed.first(where: { $0.start <= now && $0.end > now }) {
-        out.append(Soon(title: c.shownTitle, calendarID: c.calendarID, lead: "ends in \(span(c.end.timeIntervalSince(now))) · started \(span(now.timeIntervalSince(c.start))) ago", big: "", tail: "", dim: true))
-    }
-    return out
+    return Array((onNow + next).prefix(4))
 }
 

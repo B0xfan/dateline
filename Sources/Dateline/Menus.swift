@@ -8,6 +8,7 @@ struct AppCommands: Commands {
     @ObservedObject var store: Store  // the set list and its keys follow changes; the app only redraws menus for its own
     @ObservedObject var panels: Panels  // Show or Hide Tasks, and what the set editor blocks
     @ObservedObject var keys = EventKeys.shared  // Copy, Paste and Duplicate show the keys picked in Settings
+    @ObservedObject var fullScreen = FullScreen.shared  // Enter or Exit Full Screen
 
     func toggle(_ title: String, _ on: Bool, _ pick: @escaping () -> Void) -> Toggle<Text> {
         Toggle(title, isOn: Binding(get: { on }, set: { _ in pick() }))
@@ -29,7 +30,16 @@ struct AppCommands: Commands {
             Button("Make Event from Email File…") {
                 let o = NSOpenPanel(); o.allowedContentTypes = [UTType(filenameExtension: "eml") ?? .data]; o.allowsMultipleSelection = true
                 guard o.runModal() == .OK else { return }
-                o.urls.forEach(app.emails.importFile); app.openMain?()
+                o.urls.forEach { app.emails.importFile($0) }; app.openMain?()
+            }
+            Button("Open Calendar Invites in Dateline") {  // the Mac's choice for invite files; Calendar can take it back the same way
+                NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpen: UTType("com.apple.ical.ics") ?? UTType(filenameExtension: "ics")!) { err in
+                    DispatchQueue.main.async {
+                        let a = NSAlert(); a.messageText = err == nil ? "Calendar invites now open in Dateline" : "The Mac didn't make Dateline the app for invites"
+                        a.informativeText = err == nil ? "Open an invite from an email and it waits under From email, ready to add." : err!.localizedDescription
+                        a.runModal()
+                    }
+                }
             }
         }
         CommandGroup(after: .textEditing) {
@@ -51,12 +61,18 @@ struct AppCommands: Commands {
             }.disabled(app.panels.editingSet != nil)  // the set editor is showing what would change behind it
             Divider()
             Button("Today") { app.openMain?(); app.goToday() }.keyboardShortcut("t")
+            Button("Go to Date…") { app.openMain?(); app.panels.jumping = true }.keyboardShortcut("t", modifiers: [.shift, .command])
+                .disabled(app.panels.confirmDelete != nil || app.panels.editingSet != nil || app.panels.subscribing || app.panels.reviewing != nil)  // would open late, after the sheet on screen
             Button("Previous") { app.openMain?(); app.step(-1) }.keyboardShortcut(.leftArrow, modifiers: [.option, .command])
             Button("Next") { app.openMain?(); app.step(1) }.keyboardShortcut(.rightArrow, modifiers: [.option, .command])
             Divider()
             Button(app.panels.tasksOpen ? "Hide Tasks" : "Show Tasks") { app.openMain?(); app.panels.tasksOpen.toggle() }.keyboardShortcut("r", modifiers: [.option, .command])
             Button("Show Map") { app.openMain?(); app.panels.mapOpen = true }.keyboardShortcut("p", modifiers: [.option, .command])
             Divider()
+            Button(fullScreen.on ? "Exit Full Screen" : "Enter Full Screen") {
+                app.openMain?()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { fullScreen.toggle() }  // shortcut: a reopened window is handed to FullScreen a moment after it appears; fine unless the Mac is very slow
+            }.keyboardShortcut("f", modifiers: [.control, .command])
         }
         CommandMenu("Event") {
             Button("Open Details") { app.openMain?(); app.panels.panelOpen = true }.disabled(app.selected == nil)
@@ -75,6 +91,7 @@ struct AppCommands: Commands {
             Button("Undo Last Change") { app.openMain?(); app.undo() }.disabled(!app.canUndo)
         }
         CommandGroup(replacing: .help) {
+            Button("Dateline Manual") { NSWorkspace.shared.open(URL(string: "https://dateline.app/manual")!) }
             Button("Keyboard Shortcuts") { app.openMain?(); app.panels.showShortcuts = true }.keyboardShortcut("/", modifiers: [.command, .shift])
         }
     }

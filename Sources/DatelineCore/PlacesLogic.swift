@@ -116,6 +116,26 @@ public func moonDay(_ day: Date) -> MoonDay? {
     return nil
 }
 
+// The events the drive planner looks at: the next 7 days' timed events with a spot on the map, soonest first.
+public func tripList(_ all: [Item], now: Date) -> [Item] {
+    all.filter { $0.geo != nil && !$0.allDay && !$0.noTravel && $0.start > now && $0.start < now.addingTimeInterval(7 * 86400) }.sorted { $0.start < $1.start }
+}
+
+@MainActor
+extension Store {
+    // A place typed with no pick gets its spot from Apple Maps once the event is saved; skipped if the place was changed or picked meanwhile,
+    // and never on the sample calendars. An event outside the days read can't be opened in that moment, so it is changed as it was added.
+    public func findSpot(_ it: Item) async -> Failure? {
+        guard access != .sample, it.geo == nil, !it.place.trimmingCharacters(in: .whitespaces).isEmpty, let g = await PlaceSearch.find(it.place) else { return nil }
+        let shown = items.first { $0.id == it.id }
+        var now = shown ?? it
+        guard now.place == it.place, now.geo == nil else { return nil }
+        now.geo = g
+        let f = update(now)
+        return shown == nil ? nil : f  // one out of view may have been undone meanwhile: no "event is gone" box
+    }
+}
+
 @MainActor
 public final class Trips {
     public init() {}
@@ -126,8 +146,9 @@ public final class Trips {
     private var asked = false  // notification permission asked this run
 
     // `list`: the events to plan, soonest first. `all`: every coming event, for "the event before".
+    // `alerts` false: drive times only, the leave alerts are another device's (the watch leaves them to the phone).
     // Returns true when a call came in during this round, so the caller plans again with the newest events.
-    public func run(_ list: [Item], all: [Item], store: Store, done: @escaping ([String: Int]) -> Void) async -> Bool {
+    public func run(_ list: [Item], all: [Item], store: Store, alerts plan: Bool = true, done: @escaping ([String: Int]) -> Void) async -> Bool {
         guard !running else { again = true; return false }
         running = true; again = false; defer { running = false }
         let now = Date()
@@ -157,7 +178,7 @@ public final class Trips {
         var out: [String: Int] = [:]
         for (id, c) in checks { if let m = c.minutes { out[id] = m } }
         done(out)
-        await alerts(list.filter { ($0.leave ?? WorkWeek.leave) && out[$0.id] != nil }, minutes: out)
+        await alerts(plan ? list.filter { ($0.leave ?? WorkWeek.leave) && out[$0.id] != nil } : [], minutes: out)  // an empty list takes back alerts planned before
         return again
     }
 
@@ -197,7 +218,11 @@ public final class Trips {
             let c = UNMutableNotificationContent()
             c.title = "Time to leave for \(it.title)"
             c.body = "\(m) min drive to \(it.place). Leave now to arrive at \(timeText(it.start, short: true))."
+            #if os(macOS)
             c.sound = nil  // Dateline plays the sound picked in Settings, Alerts
+            #else
+            c.sound = .default  // the phone is often closed or in a pocket when it's time to leave
+            #endif
             c.categoryIdentifier = "leave"
             c.userInfo = ["lat": it.geo!.lat, "lon": it.geo!.lon, "place": it.place]
             let t = UNCalendarNotificationTrigger(dateMatching: cal.dateComponents([.year, .month, .day, .hour, .minute], from: at), repeats: false)
@@ -269,6 +294,17 @@ public final class PlaceSearch: NSObject, ObservableObject, MKLocalSearchComplet
         let name = m.name ?? s.title, town = m.placemark.locality ?? ""
         let c = m.placemark.coordinate
         return (town.isEmpty || name.contains(town) ? name : name + ", " + town, Geo(lat: c.latitude, lon: c.longitude))
+    }
+
+    // A place typed with no pick: Apple Maps' best match near where you are, so it still gets a spot on the map.
+    public static func find(_ text: String) async -> Geo? {
+        let q = text.trimmingCharacters(in: .whitespaces)
+        guard q.count >= 2 else { return nil }
+        let r = MKLocalSearch.Request()
+        r.naturalLanguageQuery = q
+        if let g = Here.shared.spot { r.region = MKCoordinateRegion(center: g.coord, latitudinalMeters: 50_000, longitudinalMeters: 50_000) }
+        guard let c = try? await MKLocalSearch(request: r).start().mapItems.first?.placemark.coordinate else { return nil }
+        return Geo(lat: c.latitude, lon: c.longitude)
     }
 }
 

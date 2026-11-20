@@ -22,6 +22,12 @@ public enum DragMath {
         return n
     }
 
+    /// "1 h 45 min", "2 h", "45 min": shown while the bottom edge is pulled (approved mockup 2026-11-17).
+    public static func length(_ it: Item) -> String {
+        let m = Int(it.end.timeIntervalSince(it.start) / 60), h = m / 60, r = m % 60
+        return [h > 0 ? "\(h) h" : nil, r > 0 || h == 0 ? "\(r) min" : nil].compactMap { $0 }.joined(separator: " ")
+    }
+
     /// Where a tap at height `y` in a day column starts a new event: the half hour above it, as on the Mac.
     public static func slot(on day: Date, y: Double, hourH: Double) -> Date {
         let m = min(23 * 60 + 30, max(0, Int(y / hourH * 60) / 30 * 30))

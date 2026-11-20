@@ -12,10 +12,16 @@
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>CFBundleDocumentTypes</key><array><dict>
+        <key>CFBundleTypeName</key><string>Calendar Invite</string>
+        <key>CFBundleTypeRole</key><string>Viewer</string>
+        <key>LSHandlerRank</key><string>Alternate</string>
+        <key>LSItemContentTypes</key><array><string>com.apple.ical.ics</string></array>
+    </dict></array>
     <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
     <key>NSCalendarsFullAccessUsageDescription</key><string>Dateline shows and edits the calendars already set up on this Mac. Nothing leaves your Mac.</string>
     <key>NSRemindersFullAccessUsageDescription</key><string>Dateline shows your Apple Reminders on the calendar and saves your changes back to Reminders. Nothing leaves your Mac.</string>
-    <key>NSContactsUsageDescription</key><string>Dateline reads the home and work address on your own contact card, only when you pick Home or Work for a place reminder.</string>
+    <key>NSContactsUsageDescription</key><string>Dateline reads your contacts' names and birth dates to show ages on the Birthdays calendar, and the home and work address on your own card when you pick Home or Work for a place reminder.</string>
     <key>NSLocationUsageDescription</key><string>Dateline uses your location for drive times to your events and for sunrise and sunset. It stays on your Mac; only Apple Maps sees it, to work out the drive.</string>
     <key>NSLocationWhenInUseUsageDescription</key><string>Dateline uses your location for drive times to your events and for sunrise and sunset. It stays on your Mac; only Apple Maps sees it, to work out the drive.</string>
     <key>NSFocusStatusUsageDescription</key><string>Dateline keeps the full screen alert away while a Focus is on. Nothing leaves your Mac.</string>

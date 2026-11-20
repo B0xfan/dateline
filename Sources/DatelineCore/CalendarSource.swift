@@ -5,6 +5,9 @@ import Foundation
 import EventKit
 import SwiftUI
 import CoreLocation
+#if !os(watchOS)
+import Contacts
+#endif
 @MainActor
 
 public protocol CalendarSource: AnyObject {
@@ -35,6 +38,11 @@ public protocol CalendarSource: AnyObject {
     func deleteReminder(_ t: ToDo) -> Failure?
 }
 
+#if os(watchOS)
+// The watch may read calendars and reminders but never save them (Apple's rule): its changes go to the phone instead.
+private let onPhone = Failure("The watch can't save this; it goes through your iPhone.")
+#endif
+
 @MainActor
 public final class AppleCalendar: CalendarSource {
     private let ek = EKEventStore()
@@ -43,17 +51,32 @@ public final class AppleCalendar: CalendarSource {
     private var observer: Any?
     private var deletedAlarms: [String: [EKAlarm]] = [:]
     public var shownElsewhere: (String, Bool) -> Bool = { _, _ in false }
+    public init() {}  // the watch face pieces read through one of their own
 
     public static var hasEventAccess: Bool { EKEventStore.authorizationStatus(for: .event) == .fullAccess }
 
     public func askForEvents(_ done: @escaping @MainActor (Bool) -> Void) {
-        ek.requestFullAccessToEvents { ok, _ in Task { @MainActor in done(ok) } }
+        ek.requestFullAccessToEvents { ok, _ in Task { @MainActor in
+            #if !os(watchOS)
+            // Birthdays (approved mockup 2026-11-17): Contacts is asked once, only when Apple's Birthdays calendar is there; the ages need it.
+            if ok, CNContactStore.authorizationStatus(for: .contacts) == .notDetermined, self.ek.calendars(for: .event).contains(where: { $0.type == .birthday }) {
+                CNContactStore().requestAccess(for: .contacts) { _, _ in Task { @MainActor in done(ok) } }
+                return
+            }
+            #endif
+            done(ok)
+        } }
     }
     public func askForReminders(_ done: @escaping @MainActor (Bool) -> Void) {
         ek.requestFullAccessToReminders { ok, _ in Task { @MainActor in done(ok) } }
     }
     public func onChange(_ act: @escaping @MainActor () -> Void) {
-        observer = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: ek, queue: .main) { _ in Task { @MainActor in act() } }
+        observer = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: ek, queue: .main) { _ in Task { @MainActor in
+            #if !os(watchOS)
+            Self.forgetPeople()  // a contact edit changes the Birthdays calendar too, so names and ages are read again
+            #endif
+            act()
+        } }
     }
 
     // The Mac tells display and sound alerts from email and program ones; the iPhone has only the first two.
@@ -115,7 +138,38 @@ public final class AppleCalendar: CalendarSource {
         }
     }
 
+    private nonisolated static func shown(_ a: EKAlarm, in e: EKEvent) -> Bool { a.proximity == .none && isShownAlarm(a) && !(e.hasRecurrenceRules && a.absoluteDate != nil) }
+
+    #if !os(watchOS)
+    // Name and birth date per contact, read once per run: Apple's Birthdays calendar only gives the contact's id.
+    private nonisolated static let people = NSLock()
+    private nonisolated(unsafe) static var born: [String: (name: String, date: DateComponents?)?] = [:]  // nil kept too: a contact not shared is not looked up again
+    private nonisolated(unsafe) static let contacts = CNContactStore()  // used only under the people lock
+    private nonisolated static func forgetPeople() { people.lock(); born = [:]; people.unlock() }
+    private nonisolated static func person(_ id: String) -> (name: String, date: DateComponents?)? {
+        let st = CNContactStore.authorizationStatus(for: .contacts)  // the iPhone's "some contacts" answer still reads those
+        guard st != .notDetermined, st != .denied, st != .restricted else { return nil }
+        people.lock(); defer { people.unlock() }
+        if let p = born[id] { return p }
+        let keys = [CNContactGivenNameKey, CNContactFamilyNameKey, CNContactBirthdayKey] as [CNKeyDescriptor]
+        let p = (try? contacts.unifiedContact(withIdentifier: id, keysToFetch: keys)).map { c in ([c.givenName, c.familyName].filter { !$0.isEmpty }.joined(separator: " "), c.birthday) }
+        born[id] = .some(p)
+        return p
+    }
+    #endif
+
     public nonisolated static func item(_ e: EKEvent) -> Item {
+        var it = plainItem(e)
+        if e.calendar.type == .birthday {
+            it.emoji = "🎂"
+            #if !os(watchOS)
+            if let id = e.birthdayContactIdentifier, let p = person(id), let t = birthdayTitle(name: p.name, born: p.date, on: e.startDate) { it.title = t }
+            #endif
+        }
+        return it
+    }
+
+    private nonisolated static func plainItem(_ e: EKEvent) -> Item {
         let s: ShowAs = e.availability == .free ? .free : e.availability == .tentative ? .maybe : .busy
         // A repeating event's occurrences share one identifier; the start date tells them apart. A one-time event keeps its plain identifier so moving it keeps it selected.
         let occ = e.hasRecurrenceRules ? "|" + String(e.occurrenceDate?.timeIntervalSince1970 ?? 0) : ""
@@ -123,7 +177,7 @@ public final class AppleCalendar: CalendarSource {
                     calendarID: e.calendar.calendarIdentifier, title: e.title ?? "", start: e.startDate, end: e.endDate,
                     allDay: e.isAllDay, place: e.location ?? "", notes: e.notes ?? "", showAs: s,
                     geo: e.structuredLocation?.geoLocation.map { Geo(lat: $0.coordinate.latitude, lon: $0.coordinate.longitude) },
-                    alerts: (e.alarms ?? []).filter { $0.proximity == .none && isShownAlarm($0) && !(e.hasRecurrenceRules && $0.absoluteDate != nil) }
+                    alerts: (e.alarms ?? []).filter { shown($0, in: e) }
                         .map { $0.absoluteDate ?? e.startDate.addingTimeInterval($0.relativeOffset) },
                     link: e.url?.absoluteString ?? "", uid: e.calendarItemExternalIdentifier ?? "")
     }
@@ -142,6 +196,9 @@ public final class AppleCalendar: CalendarSource {
     }
 
     public func add(_ it: Item, alertMinutes: Int?, repeats: Repeat?) -> Result<Item, Failure> {
+        #if os(watchOS)
+        return .failure(onPhone)
+        #else
         guard let c = ek.calendar(withIdentifier: it.calendarID) else { return .failure(Failure("That calendar is gone.")) }
         let e = EKEvent(eventStore: ek)
         e.calendar = c
@@ -150,14 +207,23 @@ public final class AppleCalendar: CalendarSource {
         if let r = repeats { e.addRecurrenceRule(r.ek) }
         do { try ek.save(e, span: .thisEvent, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
         return .success(Self.item(e))
+        #endif
     }
 
     public func update(_ it: Item, before: Item?) -> Result<String?, Failure> {
+        #if os(watchOS)
+        return .failure(onPhone)
+        #else
         guard let e = event(it, now: before) else { return .failure(Failure("That event is gone.")) }
         if e.calendar.calendarIdentifier != it.calendarID, let c = ek.calendar(withIdentifier: it.calendarID) { e.calendar = c }
         apply(it, to: e)
+        if let before, alertMinutes(before) != alertMinutes(it) {  // the panel's Alert rows: replace only the alerts Dateline shows
+            (e.alarms ?? []).filter { Self.shown($0, in: e) }.forEach(e.removeAlarm)
+            it.alerts.forEach { e.addAlarm(EKAlarm(relativeOffset: $0.timeIntervalSince(it.start))) }
+        }
         do { try ek.save(e, span: .thisEvent, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
         return .success(e.eventIdentifier)
+        #endif
     }
 
     public func repeats(_ it: Item) -> Bool { event(it)?.hasRecurrenceRules == true }
@@ -166,26 +232,38 @@ public final class AppleCalendar: CalendarSource {
         return Repeat(ek: r).map(RepeatNow.rule) ?? .other
     }
     public func setRepeat(_ it: Item, _ r: Repeat?, all: Bool) -> Failure? {
+        #if os(watchOS)
+        return onPhone
+        #else
         guard let one = event(it) else { return Failure("That event is gone.") }
         // The first time stands for the whole series; Apple Calendar splits the series itself for "this and later".
         let e = all && one.hasRecurrenceRules ? one.eventIdentifier.flatMap(ek.event(withIdentifier:)) ?? one : one
         e.recurrenceRules = r.map { [$0.ek] }
         do { try ek.save(e, span: .futureEvents, commit: true) } catch { return Failure(error.localizedDescription) }
         return nil
+        #endif
     }
     public func delete(_ it: Item, series: Bool) -> Result<Bool, Failure> {
+        #if os(watchOS)
+        return .failure(onPhone)
+        #else
         guard let e = event(it) else { return .failure(Failure("That event is gone.")) }
         let alarms = e.alarms ?? [], oneTime = !e.hasRecurrenceRules
         do { try ek.remove(e, span: series ? .futureEvents : .thisEvent, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
         deletedAlarms[it.id] = alarms  // undo puts them back
         return .success(oneTime)
+        #endif
     }
 
     public func copyAlerts(from old: Item, to new: Item) {
+        #if os(watchOS)
+        return
+        #else
         if let alarms = event(old)?.alarms ?? deletedAlarms[old.id], !alarms.isEmpty, let e = ek.event(withIdentifier: new.id) {
             alarms.forEach { a in e.addAlarm(a.absoluteDate.map(EKAlarm.init(absoluteDate:)) ?? EKAlarm(relativeOffset: a.relativeOffset)) }
             try? ek.save(e, span: .thisEvent)
         }
+        #endif
     }
 
     private func apply(_ it: Item, to e: EKEvent) {
@@ -242,6 +320,9 @@ public final class AppleCalendar: CalendarSource {
     }
 
     public func addReminder(_ t: ToDo, listID: String?) -> Result<ToDo, Failure> {
+        #if os(watchOS)
+        return .failure(onPhone)
+        #else
         guard let c = listID.flatMap(ek.calendar(withIdentifier:)) ?? ek.defaultCalendarForNewReminders() else { return .failure(Failure("No Reminders list on this Mac can take new tasks.")) }
         let r = EKReminder(eventStore: ek)
         r.calendar = c
@@ -251,22 +332,31 @@ public final class AppleCalendar: CalendarSource {
         }
         do { try ek.save(r, commit: true) } catch { return .failure(Failure(error.localizedDescription)) }
         return .success(Self.todo(r))
+        #endif
     }
 
     public func updateReminder(_ t: ToDo, old: ToDo?) -> Failure? {
+        #if os(watchOS)
+        return onPhone
+        #else
         guard let r = ek.calendarItem(withIdentifier: t.id) as? EKReminder else { return Failure("That task is gone.") }
         if r.calendar.calendarIdentifier != t.listID, let c = ek.calendar(withIdentifier: t.listID) { r.calendar = c }
         apply(t, old: old, to: r)
         do { try ek.save(r, commit: true) } catch { return Failure(error.localizedDescription) }
         return nil
+        #endif
     }
 
     public func deleteReminder(_ t: ToDo) -> Failure? {
+        #if os(watchOS)
+        return onPhone
+        #else
         guard let r = ek.calendarItem(withIdentifier: t.id) as? EKReminder else { return Failure("That task is gone.") }
         let keep = (r.recurrenceRules?.map { $0.copy() as! EKRecurrenceRule }, r.alarms?.map { $0.copy() as! EKAlarm }, r.priority, r.url)
         do { try ek.remove(r, commit: true) } catch { return Failure(error.localizedDescription) }
         removed[t.id] = keep
         return nil
+        #endif
     }
 
     private func apply(_ t: ToDo, old: ToDo?, to r: EKReminder) {
@@ -328,6 +418,7 @@ public final class SampleCalendar: CalendarSource {
         ev("work", "Lunch with the team", -27, 12, 0, 60, place: "Office")
         ev("work", "Team standup", 0, 9, 0, 30)
         ev("work", "Write proposal", 0, 10, 0, 120, notes: "Sample notes: outline goals, budget and next steps for the proposal.")
+        made[made.count - 1].alerts = [at(0, 9, 0), at(0, 9, 45)]  // shows the Alert rows in the details picture
         ev("personal", "Lunch with Sam", 0, 12, 30, 60, .maybe, place: "Café Playa")
         ev("family", "School pickup", 0, 15, 0, 30)
         ev("personal", "Gym", 0, 17, 30, 60, .free)

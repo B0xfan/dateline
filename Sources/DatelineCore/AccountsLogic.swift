@@ -261,7 +261,7 @@ private func propName(_ l: String) -> String { String(l.prefix { $0 != ":" && $0
 public func icsNew(uid: String, _ it: Item, link: String, alertMinutes: Int?, rule: String?) -> String {
     var l = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Dateline//EN", "BEGIN:VEVENT", "UID:" + uid, "DTSTAMP:" + icsUTC(Date())] + icsFields(it, link: link)
     if let rule { l.append("RRULE:" + rule) }
-    if let m = alertMinutes { l += ["BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:Reminder", "TRIGGER:-PT\(m)M", "END:VALARM"] }
+    if let m = alertMinutes { l += icsAlarm(m) }
     return icsJoin(l + ["END:VEVENT", "END:VCALENDAR"])
 }
 
@@ -282,13 +282,25 @@ private func vevents(_ lines: [String]) -> [(range: Range<Int>, rid: Date?)] {
 }
 
 // Rewrites what Dateline shows of one event; `occurrence` = one occurrence of a repeating event, which gets (or keeps) its own changed copy.
-public func icsPatch(_ text: String, occurrence: Date?, _ it: Item, link: String) -> String {
+private func icsAlarm(_ m: Int) -> [String] { ["BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:Reminder", "TRIGGER:" + (m < 0 ? "PT\(-m)M" : "-PT\(m)M"), "END:VALARM"] }
+
+// `alerts`: minutes before the start that replace the event's own alarms; nil keeps them.
+public func icsPatch(_ text: String, occurrence: Date?, _ it: Item, link: String, alerts: [Int]? = nil) -> String {
     var lines = icsUnfold(text)
     let evs = vevents(lines)
     func rewrite(_ r: Range<Int>) {
-        var block = Array(lines[r]), depth = 0, keep: [String] = []
+        var block = Array(lines[r]), depth = 0, keep: [String] = [], alarm: [String]?
         for l in block.dropFirst().dropLast() {
             let u = l.uppercased()
+            // Changed alerts replace only the alarms Dateline shows (as ICS.swift reads them); a fixed-time or after-the-end one stays.
+            if alerts != nil, depth == 0, u == "BEGIN:VALARM" { alarm = [l]; continue }
+            if var a = alarm {
+                a.append(l); alarm = a
+                guard u == "END:VALARM" else { continue }
+                let t = a.first { propName($0) == "TRIGGER" }?.uppercased() ?? ""
+                if t.contains("VALUE=DATE-TIME") || t.contains("RELATED=END") { keep += a }
+                alarm = nil; continue
+            }
             if u.hasPrefix("BEGIN:") { depth += 1 } else if u.hasPrefix("END:") { depth -= 1; keep.append(l); continue }
             if depth == 0 && icsOwned.contains(propName(l)) { continue }
             keep.append(l)
@@ -297,6 +309,7 @@ public func icsPatch(_ text: String, occurrence: Date?, _ it: Item, link: String
         // The new fields go before the first alarm, so they stay at the event's own level.
         let at = keep.firstIndex { $0.uppercased().hasPrefix("BEGIN:") } ?? keep.count
         keep.insert(contentsOf: icsFields(it, link: link) + ["DTSTAMP:" + icsUTC(Date()), "SEQUENCE:\(seq)"], at: at)
+        keep += (alerts ?? []).flatMap(icsAlarm)
         block = [block[0]] + keep + [block[block.count - 1]]
         lines.replaceSubrange(r, with: block)
     }
@@ -392,7 +405,7 @@ public func googleItem(_ c: AccCal, _ j: [String: Any]) -> GEv? {
     let master = j["recurringEventId"] as? String
     let orig = (j["originalStartTime"] as? [String: Any]).flatMap { o in (o["dateTime"] as? String).flatMap(iso.date) ?? (o["date"] as? String).flatMap(day) } ?? a
     let rem = j["reminders"] as? [String: Any]
-    let mins = (rem?["useDefault"] as? Bool ?? true) ? c.defaultAlerts : ((rem?["overrides"] as? [[String: Any]]) ?? []).compactMap { $0["minutes"] as? Int }
+    let mins = (rem?["useDefault"] as? Bool ?? true) ? (allDay ? [] : c.defaultAlerts) : ((rem?["overrides"] as? [[String: Any]]) ?? []).compactMap { $0["minutes"] as? Int }
     let link = (j["hangoutLink"] as? String) ?? ""
     let files = (j["attachments"] as? [[String: Any]] ?? []).compactMap { f -> Attach? in
         guard let u = f["fileUrl"] as? String else { return nil }
@@ -402,7 +415,7 @@ public func googleItem(_ c: AccCal, _ j: [String: Any]) -> GEv? {
     return GEv(iid: iid, master: master, etag: j["etag"] as? String,
                item: Item(id: id, calendarID: c.id, title: j["summary"] as? String ?? "", start: a, end: b, allDay: allDay, place: j["location"] as? String ?? "",
                           notes: j["description"] as? String ?? "", showAs: (j["transparency"] as? String) == "transparent" ? .free : .busy,
-                          alerts: allDay ? [] : mins.map { a.addingTimeInterval(-Double($0 * 60)) }, link: link, files: files, uid: master ?? iid))
+                          alerts: mins.map { a.addingTimeInterval(-Double($0 * 60)) }, link: link, files: files, uid: master ?? iid))
 }
 
 // `known`: the link the event already had from Google (its Meet link), which is never copied into the notes.
@@ -626,7 +639,7 @@ extension Store {
     }
 
     public func accountsChanged() {
-        if canRead { reloadCalendars() } else { calendars = accInfos + subInfos; refetch() }
+        if canRead { reloadCalendars() } else { calendars = accInfos + subInfos + blocksInfos; refetch() }
     }
 
     private func googleToken(_ a: Account) async throws -> String {
@@ -897,13 +910,16 @@ extension Store {
         guard let (a, c) = accCal(it.calendarID) else { return Failure("That calendar is gone.") }
         guard c.writable else { return Failure("\(c.title) is read-only.") }
         let link = callLink(in: [it.link])?.url.absoluteString ?? it.link.trimmingCharacters(in: .whitespacesAndNewlines)
+        let alerts = old.map { alertMinutes($0) != alertMinutes(it) } == true ? alertMinutes(it) : nil  // only when the panel changed them
         if a.kind == "google" {
             guard let i = accData.google[c.id]?.firstIndex(where: { $0.item.id == it.id }), let ev = accData.google[c.id]?[i] else { return Failure("That event is gone.") }
             accData.google[c.id]?[i].item = it
-            gSend(a, c, "PATCH", "/" + pathPart(ev.iid), googleBody(it, link: link, known: ev.item.link))
+            var body = googleBody(it, link: link, known: ev.item.link)
+            if let alerts { body["reminders"] = ["useDefault": false, "overrides": alerts.map { ["method": "popup", "minutes": $0] }] }
+            gSend(a, c, "PATCH", "/" + pathPart(ev.iid), body)
         } else {
             guard let ref = davRef(it), let res = accData.dav[c.id]?[ref.href] else { return Failure("That event is gone.") }
-            let text = icsPatch(res.text, occurrence: ref.occ, it, link: link)
+            let text = icsPatch(res.text, occurrence: ref.occ, it, link: link, alerts: alerts)
             accData.dav[c.id]?[ref.href] = DavRes(etag: res.etag, text: text, events: parseICS(text))
             davSend(a, c, href: ref.href)
         }
@@ -1189,6 +1205,14 @@ public func accountsSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, In
     let p = parseICS(patched).first
     expect(p?.title == "Dinner moved" && p?.start == moved.start && p?.free == true && p?.url == "" && p?.alarms == [-900], "accounts: an edit rewrites what changed and keeps the alert")
     expect(patched.contains("ATTENDEE;CN=Ana") && patched.contains("SEQUENCE:1"), "accounts: an edit keeps the guests and counts up")
+    let twoAlerts = parseICS(icsPatch(guest, occurrence: nil, moved, link: "", alerts: [60, 5])).first
+    let dayOf = parseICS(icsPatch(guest, occurrence: nil, moved, link: "", alerts: [-540])).first
+    let noAlerts = icsPatch(guest, occurrence: nil, moved, link: "", alerts: [])
+    expect(twoAlerts?.alarms == [-3600, -300] && dayOf?.alarms == [32400] && !noAlerts.contains("VALARM") && noAlerts.contains("ATTENDEE;CN=Ana"),
+           "accounts: the panel's alerts replace the file's alarms, and none removes them")
+    let fixed = guest.replacingOccurrences(of: "END:VEVENT", with: "BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER;VALUE=DATE-TIME:20261030T100000Z\r\nEND:VALARM\r\nEND:VEVENT")
+    let keptFixed = icsPatch(fixed, occurrence: nil, moved, link: "", alerts: [5])
+    expect(keptFixed.contains("TRIGGER;VALUE=DATE-TIME:20261030T100000Z") && parseICS(keptFixed).first?.alarms == [-300], "accounts: a fixed-time alarm the panel doesn't show is kept")
     let weekly = icsNew(uid: "w1", base, link: "", alertMinutes: nil, rule: "FREQ=WEEKLY")
     let occ = addDays(base.start, 7)
     var one = base; one.title = "Just this week"; one.start = occ.addingTimeInterval(3600); one.end = occ.addingTimeInterval(7200)

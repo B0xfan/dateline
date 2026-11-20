@@ -47,11 +47,21 @@ if let i = args.firstIndex(of: "--render"), i + 1 < args.count {
 final class Delegate: NSObject, NSApplicationDelegate {
     // Before launch ends, so a click on a leave alert that started the app is still handled.
     // Only inside the app bundle: the bare built program has no bundle and alerts would stop it.
-    func applicationWillFinishLaunching(_ n: Notification) { if Bundle.main.bundleIdentifier != nil { LeaveAlerts.shared.install() } }
+    func applicationWillFinishLaunching(_ n: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false  // no tabs, so Show Tab Bar never claims Shift Command T (Go to Date)
+        if Bundle.main.bundleIdentifier != nil { LeaveAlerts.shared.install() }
+    }
     // Keeps running with the window closed, so quick add from any app still works; the Dock icon brings the window back.
     // Phase 8: the daily update check, only for the real app (never --sample).
     func applicationDidFinishLaunching(_ n: Notification) { if !CommandLine.arguments.contains("--sample") { Updater.shared.start() } }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    // An invite file opened with Dateline (double-click, Open With, a mail app's attachment). Held until the window is up when it started the app.
+    @MainActor static var openFiles: (([URL]) -> Void)? { didSet { if let f = openFiles, !waiting.isEmpty { f(waiting); waiting = [] } } }
+    @MainActor static var waiting: [URL] = []
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let ics = urls.filter { $0.isFileURL && $0.pathExtension.lowercased() == "ics" }
+        MainActor.assumeIsolated { if let f = Self.openFiles { f(ics) } else { Self.waiting += ics } }
+    }
 }
 
 struct DatelineApp: App {
@@ -61,7 +71,15 @@ struct DatelineApp: App {
         Window("Dateline", id: "main") {
             MainView(app: app, store: app.store, panels: app.panels)
                 .frame(minWidth: 980, minHeight: 600)
-                .onAppear { Look.apply(); app.startKeys() }
+                .onAppear {
+                    Look.apply(); app.startKeys()
+                    Delegate.openFiles = { urls in  // each invite joins the From email list; a single one opens for review
+                        let ids = urls.compactMap(app.emails.importFile)
+                        app.openMain?()
+                        if ids.count == 1 { app.panels.reviewing = ids[0] }
+                    }
+                    DispatchQueue.main.async { if let w = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) { FullScreen.shared.adopt(w) } }  // the window is attached a moment after it appears
+                }
         }
         .defaultSize(width: 1380, height: 800)
         .windowToolbarStyle(.unified(showsTitle: true))
@@ -70,4 +88,5 @@ struct DatelineApp: App {
     }
 }
 
+UserDefaults.standard.register(defaults: ["NSFullScreenMenuItemEverywhere": false])  // no Apple full screen menu item: View > Enter Full Screen is Dateline's own
 DatelineApp.main()

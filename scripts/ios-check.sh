@@ -19,6 +19,12 @@ xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --ba
 xcrun simctl install "$UDID" "$APP"
 BID=com.johnhesch.dateline
 rc=0
+echo "== touch checks (swipes on the sample day) =="
+# Ad hoc signed for the simulator only; it builds its own copy of the app next to the test.
+perl -e 'alarm 900; exec @ARGV' xcodebuild test -project iPhone/Dateline.xcodeproj -scheme DatelinePhoneUITests -destination "id=$UDID" -derivedDataPath dd-uitests \
+  ONLY_ACTIVE_ARCH=YES CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= -resultBundlePath "$OUT/touch-checks.xcresult" > "$OUT/touch-checks.txt" 2>&1 || rc=1
+grep -E "error:|Test Case|XCTAssert|failed|passed|TEST (SUCCEEDED|FAILED)|\*\* " "$OUT/touch-checks.txt" | tail -40
+xcrun simctl install "$UDID" "$APP"   # the pictures below use the cloud build, not the test's own copy
 echo "== built-in checks =="
 for try in 1 2; do
   perl -e 'alarm 300; exec @ARGV' xcrun simctl launch --console --terminate-running-process "$UDID" $BID --selftest > "$OUT/selftest.txt" 2>&1 || true
@@ -31,7 +37,7 @@ done
 grep -q "^DONE failures=0" "$OUT/selftest.txt" || rc=1
 for mode in light dark; do
   xcrun simctl ui "$UDID" appearance $mode
-  for s in list list-scrolled week week-sideways day month quarter year add search details details2 edit edit-invite drag resize undo-toast tap-new tasks task-edit task-edit-place task-new task-lists places email settings settings-accounts settings-accounts+icloud settings-sets settings-look settings-week settings-alerts settings-weather settings-subscribe settings-accounts+Subscribed+sub-sample unlock unlock-start widgets; do
+  for s in list list-scrolled week week-sideways day month quarter year add search details details2 edit edit-invite edit-place drag resize undo-toast tap-new tasks task-edit task-edit-place task-new task-lists places email settings settings-accounts settings-accounts+icloud settings-sets settings-look settings-week settings-alerts settings-weather settings-subscribe settings-accounts+Subscribed+sub-sample unlock unlock-start widgets; do
     xcrun simctl terminate "$UDID" $BID >/dev/null 2>&1 || true
     xcrun simctl launch "$UDID" $BID --sample -demo $s >/dev/null || rc=1
     case $s in places) sleep 12;; *) sleep 6;; esac   # the map needs its tiles
@@ -79,5 +85,31 @@ if [ -n "$BIG" ]; then
   done
   xcrun simctl shutdown "$BIG" || true
 else echo "no Pro Max simulator: no App Store pictures"; rc=1; fi
-ls -la "$OUT"; [ -d "$OUT/store" ] && ls -la "$OUT/store"
+# The iPad (approved pictures 2026-11-18): the newest 13 inch iPad Pro, upright and sideways, light and dark. These are also its App Store pictures (2064 x 2752).
+PAD=$(xcrun simctl list devices available -j | python3 -c '
+import json,sys
+d=json.load(sys.stdin)["devices"]
+c=sorted(([int(n) for n in k.split("iOS-")[-1].split("-")],x["name"],x["udid"]) for k,v in d.items() if "iOS" in k for x in v if "iPad Pro" in x["name"] and "13" in x["name"])
+print(c[-1][2] if c else "")')
+if [ -n "$PAD" ]; then
+  mkdir -p "$OUT/ipad"
+  xcrun simctl boot "$PAD" || true; xcrun simctl bootstatus "$PAD" -b
+  xcrun simctl status_bar "$PAD" override --time 9:41 --batteryState charged --batteryLevel 100 || true
+  xcrun simctl install "$PAD" "$APP" || rc=1
+  for mode in light dark; do
+    xcrun simctl ui "$PAD" appearance $mode
+    for s in week day month year tasks settings settings-week settings-weather add details week-sideways; do  # sideways last: the phone turns itself, the iPad draws it turned
+      [ $mode = dark ] && case $s in week|year|week-sideways) ;; *) continue;; esac
+      xcrun simctl terminate "$PAD" $BID >/dev/null 2>&1 || true
+      xcrun simctl launch "$PAD" $BID --sample -demo $s >/dev/null || rc=1
+      sleep 6
+      xcrun simctl io "$PAD" screenshot "$OUT/ipad/$s-$mode.png" >/dev/null 2>&1 || rc=1
+      [ $s = week-sideways ] && { sips -r 270 "$OUT/ipad/$s-$mode.png" >/dev/null || rc=1; }  # drawn turned: turn it back
+    done
+  done
+  w=$(sips -g pixelWidth "$OUT/ipad/week-light.png" 2>/dev/null | awk '/pixelWidth/{print $2}')
+  [ "$w" = 2064 ] || { echo "iPad picture is not 13 inch (2064 wide, got $w)"; rc=1; }
+  xcrun simctl shutdown "$PAD" || true
+else echo "no 13 inch iPad Pro simulator: no iPad pictures"; rc=1; fi
+ls -la "$OUT"; [ -d "$OUT/store" ] && ls -la "$OUT/store"; [ -d "$OUT/ipad" ] && ls -la "$OUT/ipad"
 exit $rc

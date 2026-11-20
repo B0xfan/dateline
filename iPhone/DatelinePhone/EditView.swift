@@ -41,6 +41,10 @@ struct EditSheet: View {
     @State private var repeatPick: Repeat?
     @State private var repeatTouched = false
     @State private var askSpan = false
+    @State private var saving = false
+    @State private var mins: [Int]?  // the alerts, in minutes before the start, once changed here; applied to the final start on Done
+    @State private var added: (emoji: String, before: [Item])?  // what "Add to all" just did, for its Undo
+    @StateObject private var search = PlaceSearch()
 
     init(_ it: Item, duplicate: Bool = false) {
         original = it; self.duplicate = duplicate
@@ -71,13 +75,32 @@ struct EditSheet: View {
                 }
                 if locked && !duplicate { Section { Text("This calendar is read only. You can still add an emoji, a color, tags and travel.").font(.footnote).foregroundStyle(T.text2) } }
                 when
+                alerts
                 Section("Show as") {
                     Picker("Show as", selection: $item.showAs) { ForEach(ShowAs.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                         .pickerStyle(.segmented).disabled(locked)
                 }
                 Section("Place") {
                     if locked { Text(item.place.isEmpty ? "No place" : item.place).foregroundStyle(item.place.isEmpty ? T.text2 : T.text) }
-                    else { TextField("Place", text: $item.place) }
+                    else {
+                        // Apple Maps suggestions as you type, as on the Mac; a typed place with no pick is looked up on Done.
+                        TextField("Place or address", text: Binding(get: { item.place }, set: { v in
+                            guard v != item.place else { return }
+                            item.place = v; item.geo = nil
+                            search.query(v)
+                        })).textContentType(.fullStreetAddress)
+                        ForEach(search.results, id: \.self) { s in
+                            Button {
+                                saving = true  // Done waits for the pick
+                                Task { if let (name, g) = await search.pick(s) { item.place = name; item.geo = g }; saving = false }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(s.title).foregroundStyle(T.text)
+                                    if !s.subtitle.isEmpty { Text(s.subtitle).font(.footnote).foregroundStyle(T.text2) }
+                                }
+                            }
+                        }
+                    }
                 }
                 if item.geo != nil, !item.allDay { travel }
                 videoCall
@@ -88,9 +111,11 @@ struct EditSheet: View {
             }
             .navigationTitle(duplicate ? "Duplicate" : "Edit event").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button(duplicate ? "Add" : "Done", action: save).fontWeight(.semibold) }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
+                ToolbarItem(placement: .confirmationAction) { Button(duplicate ? "Add" : "Done", action: save).fontWeight(.semibold).disabled(saving) }
             }
+            .interactiveDismissDisabled(saving)
+            .onAppear { if let q = app.demoPlace { app.demoPlace = nil; item.place = q; item.geo = nil; search.query(q) } }
             .task {
                 // A copy of a read-only event goes to one of your own calendars.
                 if duplicate, store.calendar(item.calendarID)?.writable != true, let c = store.calendars.first(where: { $0.id == store.defaultCalendarID && $0.writable }) ?? writable.first { item.calendarID = c.id }
@@ -100,12 +125,14 @@ struct EditSheet: View {
                 if case .rule(let r) = now { repeatPick = r.normal(original.start) }
             }
             .confirmationDialog("Change the repeat?", isPresented: $askSpan, titleVisibility: .visible) {
-                Button("This and future events") { commit(all: false) }
-                Button("All events") { commit(all: true) }
+                Button("This and future events") { run(all: false) }
+                Button("All events") { run(all: true) }
                 Button("Cancel", role: .cancel) {}
             } message: { Text("This is a repeating event.") }
             .alert(problem ?? "", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) { Button("OK") {} }
         }
+        // On the whole sheet, not the form (a picker page hides the form): still applied when the sheet closes, shake to undo takes all of them back.
+        .onDisappear { if let a = added { app.undo.push { [weak store] in store?.saveEmoji(a.before) } } }
     }
 
     private var when: some View {
@@ -116,7 +143,7 @@ struct EditSheet: View {
                 DatePicker("Starts", selection: Binding(get: { item.start }, set: { item = EventEdit.start(item, $0) }), displayedComponents: .hourAndMinute).disabled(locked)
                 DatePicker("Ends", selection: Binding(get: { item.end }, set: { item = EventEdit.end(item, $0) }), displayedComponents: .hourAndMinute).disabled(locked)
             }
-            if let now = repeatNow {
+            if let now = repeatNow, !isBlocks(item.calendarID) {  // the Planner's time blocks don't repeat
                 NavigationLink {
                     RepeatPicker(r: Binding(get: { repeatPick }, set: { repeatPick = $0; repeatTouched = true }), start: item.start)
                 } label: {
@@ -126,6 +153,34 @@ struct EditSheet: View {
                     RepeatEnds(r: Binding(get: { r }, set: { repeatPick = $0; repeatTouched = true }), start: item.start).disabled(locked)
                 }
             }
+        }
+    }
+
+    /// Alerts (approved mockup 2026-11-17): the Mac's choices, up to five, swipe left to remove. Saved on the event, so they ring everywhere.
+    @ViewBuilder private var alerts: some View {
+        if !locked {
+            let cur = mins ?? alertMinutes(item)
+            let google = store.accCal(item.calendarID)?.0.kind == "google"  // Google takes only alerts before the start
+            let choices = (item.allDay ? allDayAlertChoices : alertChoices).filter { !(google && $0 < 0) }
+            Section("Alerts") {
+                ForEach(Array(cur.enumerated()), id: \.offset) { i, m in alertPicker(i, m, cur, choices) }
+                .onDelete { (gone: IndexSet) in mins = cur.enumerated().filter { !gone.contains($0.offset) }.map(\.element) }
+                if cur.count < maxAlerts, let next = nextAlert(cur, choices) {
+                    Button("Add alert") { mins = cur + [next] }
+                }
+            }
+        }
+    }
+    private static let names = ["Alert", "Second alert", "Third alert", "Fourth alert", "Fifth alert"]
+    private func nextAlert(_ cur: [Int], _ choices: [Int]) -> Int? {
+        let first: Int = item.allDay ? 900 : 15
+        return ([first] + choices).first { (m: Int) in choices.contains(m) && !cur.contains(m) }
+    }
+    private func alertPicker(_ i: Int, _ m: Int, _ cur: [Int], _ choices: [Int]) -> some View {
+        let set = Binding<Int>(get: { m }, set: { v in var a = cur; a[i] = v; mins = a })
+        let list: [Int] = choices.contains(m) ? choices : [m] + choices
+        return Picker(i < Self.names.count ? Self.names[i] : "Alert", selection: set) {
+            ForEach(list, id: \.self) { (v: Int) in Text(alertText(v, allDay: item.allDay)).tag(v) }
         }
     }
 
@@ -166,6 +221,7 @@ struct EditSheet: View {
         Section {
             TextField("Emoji", text: Binding(get: { item.emoji }, set: { item.emoji = String($0.filter(\.isEmoji).prefix(1)) }))
                 .accessibilityLabel("Emoji")
+            emojiToAll
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 4)], spacing: 4) {
                 swatch(nil, store.calendar(item.calendarID)?.color ?? .gray, "Calendar color")
                 ForEach(Palette.tags.indices, id: \.self) { swatch($0, Palette.tags[$0], "Color \($0 + 1)") }
@@ -179,6 +235,24 @@ struct EditSheet: View {
             TextField("New tag", text: $newTag).submitLabel(.done).onSubmit(addTag)
         } header: { Text("Emoji, color and tags") } footer: {
             Text("Dateline keeps these. They also work on invites. They don't show in Apple Calendar.")
+        }
+    }
+
+    // Approved picture (John 2026-11-17): the emoji to every loaded event with the same name on this calendar, with Undo.
+    @ViewBuilder private var emojiToAll: some View {
+        let same = store.sameName(as: original)
+        if let a = added {
+            HStack {
+                Text("Added \(a.emoji) to \(a.before.count) events").foregroundStyle(T.text2)
+                Spacer()
+                Button("Undo") { if let f = store.saveEmoji(a.before) { problem = f.message }; added = nil }.buttonStyle(.borderless)
+            }
+        } else if !item.emoji.isEmpty, same.count > 1, same.contains(where: { $0.emoji != item.emoji }) {
+            Button("Add \(item.emoji) to all \(same.count) \u{201C}\(original.title)\u{201D} events") {
+                if let f = store.saveEmoji(same.map { var x = $0; x.emoji = item.emoji; return x }) { problem = f.message; return }
+                added = (item.emoji, same)
+                UIAccessibility.post(notification: .announcement, argument: "Added \(item.emoji) to \(same.count) events")
+            }
         }
     }
 
@@ -204,16 +278,23 @@ struct EditSheet: View {
 
     /// A repeat change on a repeating event asks which times it is for, as delete does.
     private func save() {
-        if repeatChanged, repeatNow != .never { askSpan = true } else { commit(all: true) }
+        if repeatChanged, repeatNow != .never { askSpan = true } else { run(all: true) }
     }
 
+    private func run(all: Bool) { saving = true; Task { await commit(all: all); saving = false } }
+
     /// The Mac's commit(): a read-only calendar takes only the extras; an ended trial changes nothing.
-    private func commit(all: Bool) {
+    private func commit(all: Bool) async {
         addTag()
         var n = item
         n.title = item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? original.title : item.title.trimmingCharacters(in: .whitespacesAndNewlines)
         n.place = item.place.trimmingCharacters(in: .whitespaces)
-        if n.place != original.place { n.geo = nil }  // a typed place has no spot on the map until it is looked up
+        if let m = mins {  // counted from the final start, so a start changed after the alerts keeps them the same time before
+            var seen = Set<Int>()
+            n.alerts = m.filter { seen.insert($0).inserted }.map { n.start.addingTimeInterval(-Double($0 * 60)) }
+        }
+        if n.place.isEmpty { n.geo = nil } else if n.geo == nil, n.place != original.place { n.geo = await PlaceSearch.find(n.place) }  // typed, not picked: look it up
+        if let a = added { added = nil; app.undo.push { [weak store] in store?.saveEmoji(a.before) } }  // before the edit's own step, so shakes undo newest first
         if duplicate {
             if let f = app.duplicate(n) { if store.trialOver { app.unlockNext = true } else { problem = f.message; return } }
             dismiss(); return
