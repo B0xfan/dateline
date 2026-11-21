@@ -94,6 +94,21 @@ import DatelineCore
     settle()
     expect(values().contains("Write proposal"), "event details open")
     expect((titleEdge() ?? .infinity) <= w.frame.width, "event details slide fully into the window")
+    // John 2026-11-07: a click in the event's Notes box did not put the cursor there.
+    func notesView(_ v: NSView?) -> NotesTextView? { guard let v else { return nil }; return (v as? NotesTextView) ?? v.subviews.lazy.compactMap(notesView).first }
+    if let n = notesView(w.contentView), let scroll = n.enclosingScrollView {
+        scroll.scrollToVisible(scroll.bounds); settle()  // the panel scrolls down to the box, as a person would
+        let box = scroll.convert(scroll.bounds, to: nil), spot = NSPoint(x: box.midX, y: box.minY + 20)  // low in the box, under any text
+        let hit = w.contentView?.superview?.hitTest(w.contentView!.superview!.convert(spot, from: nil))
+        expect(hit === n, "a click in the Notes box lands on the notes (hit \(hit.map { String(describing: type(of: $0)) } ?? "nothing"), box \(box))")
+        w.makeKey()
+        func mouse(_ t: NSEvent.EventType) -> NSEvent { NSEvent.mouseEvent(with: t, location: spot, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)! }
+        NSApp.postEvent(mouse(.leftMouseUp), atStart: false)  // queued first: the text view's click loop waits for the release
+        w.sendEvent(mouse(.leftMouseDown))
+        settle()
+        expect(w.firstResponder === n, "a click in the Notes box puts the cursor there")
+        w.makeFirstResponder(nil); settle()
+    } else { expect(false, "the Notes box is in the event details") }
     app.panels.panelOpen = false; settle()
     expect(!values().contains("Write proposal"), "event details close")
     app.panels.tasksOpen = true; settle()

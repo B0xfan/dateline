@@ -23,26 +23,37 @@ struct MoonDot: View {
 }
 
 // The line under a day's name: "☀ 5:32 AM · 5:21 PM · Full moon". Narrow columns drop words first.
+/// One line under a day's name (John 2026-11-21: "all weather elements on 1 line and make them larger"): the weather,
+/// then sunrise and sunset and the moon. nil `sun` or `wxAt` = that part is switched off. A narrow column drops words first.
 struct SunRow: View {
-    let day: Date, at: Geo
+    let day: Date, sun: Geo?, wxAt: Geo?
+    @ObservedObject private var store = WeatherStore.shared
     var body: some View {
-        if let s = sunTimes(day, at: at) {
-            let moon = moonDay(day)
-            ViewThatFits(in: .horizontal) {
-                line(timeText(s.rise, short: false) + " · " + timeText(s.set, short: false), moon, words: true)
-                line(timeText(s.rise, short: false) + " · " + timeText(s.set, short: false), moon, words: false)
-                line(clock(s.rise) + " · " + clock(s.set), moon, words: false)
-                Color.clear.frame(height: 0)  // no room: left out
+        let s = sun.flatMap { sunTimes(day, at: $0) }
+        let moon = s == nil ? nil : moonDay(day)
+        let hasWx = wxAt.flatMap { store.forecast($0)?.days[wxDayKey(day)] } != nil
+        ViewThatFits(in: .horizontal) {
+            if let s {
+                line(timeText(s.rise, short: false) + " · " + timeText(s.set, short: false), moon, words: true, wx: hasWx)
+                line(timeText(s.rise, short: false) + " · " + timeText(s.set, short: false), moon, words: false, wx: hasWx)
+                line(clock(s.rise) + " · " + clock(s.set), moon, words: false, wx: hasWx)
+                line(clock(s.rise) + " · " + clock(s.set), nil, words: false, wx: hasWx)
             }
-            .font(.ui(11)).foregroundStyle(Palette.text3)
+            if hasWx { line(nil, nil, words: false, wx: true) }  // the weather alone
+            Color.clear.frame(height: 0)  // no room: left out
         }
+        .font(.ui(13)).foregroundStyle(Palette.text3)
     }
-    func line(_ t: String, _ moon: MoonDay?, words: Bool) -> some View {
+    func line(_ t: String?, _ moon: MoonDay?, words: Bool, wx: Bool) -> some View {
         HStack(spacing: 4) {
-            Text("☀ " + t).fixedSize()
+            if wx, let wxAt { WxChip(day: day, at: wxAt).padding(.leading, -4) }  // its hover pad: the icon lines up with the day name
+            if let t {
+                if wx { Text("·").fixedSize() }
+                Text("☀ " + t).fixedSize()
+            }
             if let moon {
                 Text("·").fixedSize()
-                MoonDot(phase: moon).frame(width: 12, height: 12).help(moon.name)
+                MoonDot(phase: moon).frame(width: 14, height: 14).help(moon.name)
                 if words { Text(moon.name).fixedSize() }
             }
         }

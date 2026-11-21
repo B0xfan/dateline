@@ -13,6 +13,7 @@ func weekDayNames() -> [String] {
 struct MonthView: View {
     @EnvironmentObject var app: PhoneState
     @EnvironmentObject var store: Store
+    @ObservedObject private var weather = WeatherStore.shared  // the day row shows the picked day's forecast
 
     var body: some View {
         let grid = monthGrid(app.anchor), month = cal.component(.month, from: app.anchor)
@@ -54,11 +55,24 @@ struct MonthView: View {
                 }
             }
             .background(T.bg)
-            (Text(dateText(sel, "EEEE, MMMM d")).foregroundColor(T.text).fontWeight(.semibold)
-             + Text("  " + (list.isEmpty ? "No events" : list.count == 1 ? "1 event" : "\(list.count) events")))
-                .font(.footnote).foregroundStyle(T.text2)
-                .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 6)
-                .accessibilityAddTraits(.isHeader)
+            HStack(spacing: 6) {
+                (Text(dateText(sel, "EEEE, MMMM d")).foregroundColor(T.text).fontWeight(.semibold)
+                 + Text("  " + (list.isEmpty ? "No events" : list.count == 1 ? "1 event" : "\(list.count) events")))
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                // Approved mockup (John 2026-11-18): the picked day's icon, high and low on the right, as on the Mac's day headers
+                if let w = app.wx(sel) {
+                    HStack(spacing: 4) {
+                        WxIcon(code: w.code, grey: T.text2)
+                        Text(degrees(w.hi)).foregroundStyle(T.text2)
+                        Text(degrees(w.lo)).foregroundStyle(T.text2.opacity(0.7))
+                    }
+                    .monospacedDigit().fixedSize()
+                    .accessibilityElement(children: .ignore).accessibilityLabel("\(wxLook(w.code).words), high \(degrees(w.hi)), low \(degrees(w.lo))")
+                }
+            }
+            .font(.footnote).foregroundStyle(T.text2)
+            .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 6)
             ScrollView {
                 DayCard(day: sel, rows: agendaRows(store, sel, now: app.today).filter { if case .event(let it) = $0 { !it.allDay } else { true } },
                         allDay: list.filter(\.allDay))

@@ -5,7 +5,7 @@ import SwiftUI
 import CoreLocation
 import DatelineCore
 
-/// The icon with the high and low under a day's name. Hover for the day hour by hour.
+/// The icon with the high and low, at the start of the line under a day's name. Hover for the day hour by hour.
 struct WxChip: View {
     let day: Date, at: Geo
     @ObservedObject private var wx = WeatherStore.shared
@@ -13,11 +13,11 @@ struct WxChip: View {
     var body: some View {
         if let f = wx.forecast(at), let d = f.days[wxDayKey(day)] {
             HStack(spacing: 4) {
-                WxIcon(code: d.code).font(.ui(11))
+                WxIcon(code: d.code)
                 Text(degrees(d.hi)).foregroundStyle(Palette.text2)
                 Text(degrees(d.lo)).foregroundStyle(Palette.text3)
             }
-            .font(.ui(11)).monospacedDigit().fixedSize()
+            .monospacedDigit().fixedSize()
             .padding(.horizontal, 4).background(RoundedRectangle(cornerRadius: 4).fill(hover ? Palette.accentSoft : .clear))
             .onHover { hover = $0 }
             .popover(isPresented: $hover, arrowEdge: .bottom) { WxHours(day: day, f: f, d: d) }

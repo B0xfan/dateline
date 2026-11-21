@@ -6,7 +6,7 @@ import CoreGraphics
 import Sparkle
 import DatelineCore
 
-final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
+final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate {
     static let shared = Updater()
     private var controller: SPUStandardUpdaterController?
     private var bag = Set<AnyCancellable>()
@@ -18,7 +18,7 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
     /// Starts the updater once, only in the real app bundle: --sample, --render and the bare built program never reach the network.
     func start() {
         guard controller == nil, Bundle.main.bundleIdentifier != nil else { return }
-        let c = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
+        let c = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: self)
         controller = c
         c.updater.publisher(for: \.canCheckForUpdates).receive(on: DispatchQueue.main).sink { [weak self] in self?.canCheck = $0 }.store(in: &bag)
         lastChecked = c.updater.lastUpdateCheckDate
@@ -55,6 +55,19 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
             }
         }
         return true
+    }
+
+    /// Sparkle's boxes ("You're up to date" and the rest) open as modal alerts. One opened on another desktop and its OK did nothing
+    /// (John 2026-11-21). So Dateline comes to the front, and the box shows on the desktop in use, above a full-screen window.
+    func standardUserDriverWillShowModalAlert() {
+        MainActor.assumeIsolated { NSApp.activate(ignoringOtherApps: true) }  // Sparkle calls this on the main thread
+        DispatchQueue.main.async {  // runs inside the alert's modal loop, once its window exists
+            MainActor.assumeIsolated {
+                guard let w = NSApp.modalWindow else { return }
+                w.collectionBehavior.formUnion([.moveToActiveSpace, .fullScreenAuxiliary])
+                w.makeKeyAndOrderFront(nil)
+            }
+        }
     }
 
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) { DispatchQueue.main.async { self.newerFound = true; self.lastChecked = updater.lastUpdateCheckDate } }

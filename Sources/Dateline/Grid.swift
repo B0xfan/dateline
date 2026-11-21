@@ -15,7 +15,8 @@ struct TimeGrid: View {
     var body: some View {
         let days = app.visibleDays
         let sun = WorkWeek.sun ? here.spot : nil  // Phase 5: sunrise and sunset under each day's name
-        let headH: CGFloat = sun == nil ? 44 : 56
+        let wx = WeatherPrefs.on ? headerSpot() : nil  // Phase 8: the weather, on the same line
+        let headH: CGFloat = sun == nil && wx == nil ? 44 : 62
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Color.clear.frame(width: gutter)
@@ -28,11 +29,9 @@ struct TimeGrid: View {
                                 HStack(spacing: 4) { dayName(d); dayNumber(d, today: today) }
                                 VStack(alignment: .leading, spacing: 0) { dayName(d); dayNumber(d, today: today) }
                             }.layoutPriority(1)
-                            // Phase 8: the weather, only when the column has room for it
-                            if WeatherPrefs.on, let g = headerSpot() { ViewThatFits(in: .horizontal) { HStack { WxChip(day: d, at: g); Spacer(minLength: 0) }; Spacer(minLength: 0) } }
-                            else { Spacer(minLength: 0) }
+                            Spacer(minLength: 0)
                         }
-                        if let sun { SunRow(day: d, at: sun) }
+                        if sun != nil || wx != nil { SunRow(day: d, sun: sun, wxAt: wx) }
                     }
                     .padding(.horizontal, 8).frame(height: headH).frame(minWidth: 0, maxWidth: .infinity)
                     .overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) }
