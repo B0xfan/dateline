@@ -46,15 +46,12 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
     /// Sparkle installs a background download only when Dateline quits, and until then every check (even Check for Updates) offers that
     /// saved copy instead of reading the feed again. Dateline stays open for days, so the copy went stale and each newer version needed
     /// its own round (John 2026-11-21: three updates in a row). So the saved copy installs once the Mac has been left alone for a while.
-    private var installWaiting: (() -> Void)?
     private var awayTimer: Timer?
     func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem, immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
-        DispatchQueue.main.async {
-            self.installWaiting = immediateInstallHandler
-            self.awayTimer?.invalidate()
-            self.awayTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-                guard let self, macIsAway(idle: CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)) else { return }
-                self.installWaiting?()  // Sparkle 2.3+: safe to call again if a quit was cancelled
+        awayTimer?.invalidate()  // Sparkle calls this on the main thread
+        awayTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
+            if macIsAway(idle: CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)) {
+                immediateInstallHandler()  // Sparkle 2.3+: safe to call again if a quit was cancelled
             }
         }
         return true
