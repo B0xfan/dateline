@@ -331,14 +331,15 @@ struct ForwardSettings: View {
                 }.padding(8).frame(maxWidth: .infinity, alignment: .leading).background(Palette.text3.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
                 Text("EMAILS ARE ACCEPTED FROM (UP TO \(Forward.maxAddresses))").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.text3)
                 ForEach(fwd.senders) { s in
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 2) {
+                    // The how-to-confirm line spans the full width under the buttons, so it never squeezes into a narrow column.
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(alignment: .top) {
                             Text(s.address).font(.system(size: 13))
-                            Text(s.confirmed ? "✓ Confirmed" : forwardStatus(s)).font(.system(size: 11)).foregroundStyle(s.confirmed ? .green : Palette.text3).fixedSize(horizontal: false, vertical: true)
+                            Spacer()
+                            if let u = Forward.confirmLink(s) { Button("Send the email") { NSWorkspace.shared.open(u) }.controlSize(.small) }
+                            Button("Remove") { Task { await fwd.remove(s.address) } }.controlSize(.small)
                         }
-                        Spacer()
-                        if let u = Forward.confirmLink(s) { Button("Send the email") { NSWorkspace.shared.open(u) }.controlSize(.small) }
-                        Button("Remove") { Task { await fwd.remove(s.address) } }.controlSize(.small)
+                        Text(s.confirmed ? "✓ Confirmed" : forwardStatus(s)).font(.system(size: 11)).foregroundStyle(s.confirmed ? .green : Palette.text3).fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 if fwd.senders.count < Forward.maxAddresses {
