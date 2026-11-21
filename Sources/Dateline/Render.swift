@@ -79,6 +79,7 @@ private final class ShotWindow: NSWindow {
             }
         }
         // The free trial (approved mockup trial-mockups.html): days left, the last day, and ended (calendar to look at only).
+        shot("forward-strip") { $0.mode = .week; $0.days = 7; var p = $0.emails.items[0]; p = Pending(id: "fwd-1", mail: p.mail, draft: p.draft); $0.emails.items.insert(p, at: 0) }
         shot("trial-days") { $0.mode = .week; $0.days = 7; License.shared.test = .trial(daysLeft: 5) }
         shot("trial-last") { $0.mode = .week; $0.days = 7; License.shared.test = .trial(daysLeft: 1) }
         shot("trial-ended") { $0.mode = .week; $0.days = 7; License.shared.test = .ended }
@@ -168,6 +169,9 @@ private final class ShotWindow: NSWindow {
             ok = save(AccountSettings(store: a.store, picked: "mac").background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-mac-\(tag).png") && ok
             ok = save(AccountSettings(store: a.store, adding: "icloud").background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-add-\(tag).png") && ok
             ok = save(AccountSettings(store: a.store, adding: "google").background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-google-\(tag).png") && ok
+            Forward.shared.senders = [.init(address: "sam@example.com", confirmed: true), .init(address: "sam@work-example.com", confirmed: false, code: "K7Q2LP")]
+            ok = save(AccountSettings(store: a.store, picked: "fwd").background(Palette.pop).frame(width: 1380, height: 800).background(Palette.side), dark: dark, to: "\(dir)/accounts-forward-\(tag).png") && ok
+            Forward.shared.senders = []
             // Phase 8 attachments (approved mockup section 2): files on an iCloud event, and the hint on a calendar from the Mac's settings.
             let macCals = a.store.calendars
             a.store.calendars = a.store.accInfos + macCals

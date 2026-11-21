@@ -1,6 +1,6 @@
 // Phase 9 email to event (approved mockup section 1): emails waiting in Dateline's "From Email" folder are read by Apple's on-device AI
 // into an event draft, listed under "From email" in the sidebar, and added only after John reviews them.
-// The folder is filled by File > Make Event from Email File… for now; the dateline@audreypka.com receiver comes later (task "Set up the Dateline email address").
+// The folder is filled by File > Make Event from Email File…, and by emails forwarded to add@dateline.app (ForwardLogic.swift), saved as "fwd-<n>.eml".
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
@@ -25,6 +25,7 @@ final class EmailInbox: ObservableObject {
     private var queue: Task<Void, Never>?  // one email at a time, so the AI isn't asked for several at once
     private var watcher: DispatchSourceFileSystemObject?
     private let sample: Bool  // sample, render and self-check runs never touch the real folder
+    private var fwdTimer: Timer?, fwdActive: Any?
 
     init(sample: Bool) {
         self.sample = sample
@@ -41,6 +42,22 @@ final class EmailInbox: ObservableObject {
         w.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.scan() } }
         w.setCancelHandler { close(fd) }
         w.resume(); watcher = w
+        // Forwarded emails: picked up every 5 minutes and each time Dateline comes to the front (John 2026-11-21).
+        Forward.shared.deliver = { mails in mails.compactMap { m in EmailInbox.keep(m) ? m.id : nil } }
+        let pick = { Task { @MainActor in await Forward.shared.refresh() } }
+        fwdTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in _ = pick() }
+        fwdActive = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in _ = pick() }
+        _ = pick()
+    }
+
+    /// One picked-up email into the folder (hidden name first, so scan() never reads half of it). True once it is safely there.
+    static func keep(_ m: Forward.Waiting) -> Bool {
+        let name = "fwd-\(m.id).eml", dest = folder.appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: dest.path) { return true }  // picked up before, the server's delete didn't arrive
+        guard let data = Data(base64Encoded: m.eml) else { return true }  // unreadable: nothing to keep, let the server delete it
+        let tmp = folder.appendingPathComponent("." + name + ".tmp")
+        do { try data.write(to: tmp); try FileManager.default.moveItem(at: tmp, to: dest); return true }
+        catch { try? FileManager.default.removeItem(at: tmp); return false }
     }
 
     private func side(_ url: URL) -> URL { url.deletingPathExtension().appendingPathExtension("json") }
@@ -167,6 +184,29 @@ struct FromEmailList: View {
                 }.buttonStyle(.plain).disabled(p.draft == nil)
             }
             Color.clear.frame(height: 8)
+        }
+    }
+}
+
+// Approved design part 3: the newest forwarded email not yet looked at, over the calendar. Add opens the usual review first.
+struct ForwardStrip: View {
+    @ObservedObject var app: AppState
+    @ObservedObject var inbox: EmailInbox
+    var body: some View {
+        if let p = inbox.items.first(where: { $0.id.hasPrefix("fwd-") && !$0.seen && $0.draft?.start != nil }), let d = p.draft, let start = d.start {
+            HStack(spacing: 10) {
+                Image(systemName: "envelope.fill").foregroundStyle(Palette.accent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(d.title.isEmpty ? p.mail.subject : d.title).font(.ui(13, weight: .semibold)).lineLimit(1)
+                    Text([dateText(start, d.allDay ? "EEE d MMM" : "EEE d MMM, h:mm a"), d.place, "from " + p.mail.fromName].filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.ui(12)).foregroundStyle(Palette.text2).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Button("Not now") { inbox.set(p.id) { $0.seen = true } }
+                Button("Add") { inbox.set(p.id) { $0.seen = true }; app.panels.reviewing = p.id }.keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8).background(Palette.accent.opacity(0.08))
+            .overlay(alignment: .bottom) { Divider().overlay(Palette.line) }
         }
     }
 }

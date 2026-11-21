@@ -41,6 +41,13 @@ struct DatelineApp: App {
                 if !app.sample, phase == .active { Task { await DateBadge.update(ask: true) } }
                 if !app.sample, phase == .background { Task { await DateBadge.setToday() } }  // only the number: no re-plan while iOS may suspend us mid-way
                 if phase == .active { app.store.refreshSubs(); app.planTravel() }  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
+                if !app.sample, phase == .active {  // forwarded emails are picked up on opening (John 2026-11-21)
+                    Forward.shared.deliver = { [app] mails in
+                        Task { await app.readForwarded(mails.compactMap { Data(base64Encoded: $0.eml) }) }
+                        return mails.map(\.id)  // shortcut: deleted on the server once handed over, so one lost if Dateline is closed mid-read; it is still in the buyer's own mailbox
+                    }
+                    Task { await Forward.shared.refresh() }
+                }
             }
     }
 }
@@ -250,6 +257,18 @@ final class PhoneState: ObservableObject {
         readingEmail = true; defer { readingEmail = false }
         say("Reading the email…"); defer { if toast?.text == "Reading the email…" { toast = nil } }  // cleared on every way out, failures too
         let read = await Self.openedFile(url)
+        await readMailData(read.0, read.1)
+    }
+
+    /// Forwarded emails picked up from add@dateline.app, read one after another exactly like an opened email file.
+    func readForwarded(_ mails: [Data]) async {
+        while readingEmail { try? await Task.sleep(for: .seconds(1)) }
+        readingEmail = true; defer { readingEmail = false }
+        for d in mails { await readMailData(d.count, d) }
+    }
+
+    private func readMailData(_ size: Int, _ data: Data?) async {
+        let read = (size, data)
         guard let m = await Task.detached(operation: { read.1.map(readMail) }).value else { problem = read.0 >= 30_000_000 ? "This email is too big to read (over 30 MB)." : "Dateline couldn't open that email file."; return }
         let d = await readEvent(m, now: today)
         guard d.problem.isEmpty, let s = d.start else { problem = d.problem.isEmpty ? "Dateline couldn't find a date in that email." : d.problem; return }

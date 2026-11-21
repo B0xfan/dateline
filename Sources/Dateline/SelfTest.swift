@@ -384,6 +384,12 @@ func selftest() -> Int32 {
     MainActor.assumeIsolated { repeatSelfTest(expect) }
     subSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     inviteSelftest(expect)
+    // Forward an email: the confirming email's link, and an email as dateline.app hands it over (text parts only, from a real Gmail test 2026-11-21).
+    let fl = Forward.confirmLink(.init(address: "sam@example.com", confirmed: false, code: "K7Q2LP"))?.absoluteString ?? ""
+    expect(fl.hasPrefix("mailto:add@dateline.app?subject=Dateline%20K7Q2LP"), "forward: confirm link \(fl)")
+    expect(Forward.confirmLink(.init(address: "sam@example.com", confirmed: true)) == nil, "forward: no confirm link once confirmed")
+    let fm = readMail(Data("MIME-Version: 1.0\r\nFrom: John Hesch <jhesch@gmail.com>\r\nSubject: Fwd: Dinner at Lola's\r\nContent-Type: multipart/alternative; boundary=\"00b\"\r\n\r\n--00b\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\nYour table for 2 is booked for Friday 28 November at 7:00 PM, Playa\r\nAvellanas.\r\n--00b\r\nContent-Type: text/html; charset=\"UTF-8\"\r\n\r\n<p>Your table</p>\r\n--00b--\r\n".utf8))
+    expect(fm.subject == "Fwd: Dinner at Lola's" && fm.fromName == "John Hesch" && fm.body.contains("7:00 PM, Playa") && !fm.body.contains("<p>"), "forward: a picked-up email reads as an email file (\(fm.subject) / \(fm.body.prefix(60)))")
     emailSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     accountsSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     print(fails == 0 ? "selftest: all passed" : "selftest: \(fails) failed")

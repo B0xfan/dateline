@@ -160,6 +160,7 @@ struct AccountSettings: View {
     @State private var password = ""
     @State private var busy = false
     @State private var note = ""
+    @ObservedObject var fwd = Forward.shared
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -171,6 +172,7 @@ struct AccountSettings: View {
                             row(a.id, a.kind, a.email, a.problem == nil ? "\(a.name), \(a.cals.count) calendar\(a.cals.count == 1 ? "" : "s")" : "Not syncing", bad: a.problem != nil)
                         }
                         row("mac", "mac", "On this Mac", "From the Mac's settings")
+                        row("fwd", "fwd", "Forward emails", fwd.senders.isEmpty ? "Not set up" : "\(fwd.senders.count) address\(fwd.senders.count == 1 ? "" : "es")")
                     }.padding(4)
                 }
                 .background(Palette.win).overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.text3.opacity(0.3)))
@@ -178,8 +180,8 @@ struct AccountSettings: View {
                     // Plain button back to the add choices; a Menu here was easy to miss.
                     Button { picked = nil; adding = nil; note = "" } label: { Image(systemName: "plus") }.accessibilityLabel("Add an account")
                         .buttonStyle(.borderless).frame(width: 28, height: 20).help("Add an account")
-                    Button { if let p = picked, p != "mac" { store.removeAccount(p); picked = nil } } label: { Image(systemName: "minus") }.accessibilityLabel("Remove this account")
-                        .buttonStyle(.borderless).frame(width: 28, height: 20).disabled(picked == nil || picked == "mac")
+                    Button { if let p = picked, p != "mac", p != "fwd" { store.removeAccount(p); picked = nil } } label: { Image(systemName: "minus") }.accessibilityLabel("Remove this account")
+                        .buttonStyle(.borderless).frame(width: 28, height: 20).disabled(picked == nil || picked == "mac" || picked == "fwd")
                     Spacer()
                 }.padding(.top, 4)
             }.frame(width: 220)
@@ -188,6 +190,7 @@ struct AccountSettings: View {
                 if adding == "icloud" { icloudForm }
                 else if adding == "google" { googleSteps }
                 else if let p = picked, let a = store.accounts.first(where: { $0.id == p }) { detail(a) }
+                else if picked == "fwd" { ForwardSettings(fwd: fwd) }
                 else if picked == "mac" {
                     Text("Calendars set up in the Mac's own settings keep working as before. If an account is also signed in here, Dateline shows its calendars once, from here.")
                         .font(.system(size: 12)).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)
@@ -215,7 +218,7 @@ struct AccountSettings: View {
     }
 
     func badge(_ kind: String) -> some View {
-        let (t, c): (String, Color) = kind == "google" ? ("G", Color(red: 0.26, green: 0.52, blue: 0.96)) : kind == "icloud" ? ("☁", Color(red: 0.2, green: 0.6, blue: 0.95)) : ("⌘", Palette.text3)
+        let (t, c): (String, Color) = kind == "google" ? ("G", Color(red: 0.26, green: 0.52, blue: 0.96)) : kind == "icloud" ? ("☁", Color(red: 0.2, green: 0.6, blue: 0.95)) : kind == "fwd" ? ("@", Palette.accent) : ("⌘", Palette.text3)
         return Text(t).font(.system(size: 12, weight: .bold)).foregroundStyle(.white).frame(width: 24, height: 24).background(c, in: RoundedRectangle(cornerRadius: 4))
     }
 
@@ -310,6 +313,48 @@ struct AccountSettings: View {
             if f == nil { picked = store.accounts.last?.id }
         }
     }
+}
+
+// Approved design part 1 (2026-11-21): the shared address, the buyer's up to 3 sending addresses, and how to confirm one.
+struct ForwardSettings: View {
+    @ObservedObject var fwd: Forward
+    @State private var typed = ""
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Forward an email to make an event").font(.system(size: 13, weight: .semibold))
+                Text("Forward a booking, invite or reminder email to this address. Dateline reads the title, time and place and asks you before adding it.")
+                    .font(.system(size: 12)).foregroundStyle(Palette.text2).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Text(Forward.address).font(.system(size: 13, weight: .medium)).textSelection(.enabled)
+                    Button("Copy") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(Forward.address, forType: .string) }.controlSize(.small)
+                }.padding(8).frame(maxWidth: .infinity, alignment: .leading).background(Palette.text3.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                Text("EMAILS ARE ACCEPTED FROM (UP TO \(Forward.maxAddresses))").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.text3)
+                ForEach(fwd.senders) { s in
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(s.address).font(.system(size: 13))
+                            Text(s.confirmed ? "✓ Confirmed" : forwardStatus(s)).font(.system(size: 11)).foregroundStyle(s.confirmed ? .green : Palette.text3).fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        if let u = Forward.confirmLink(s) { Button("Send the email") { NSWorkspace.shared.open(u) }.controlSize(.small) }
+                        Button("Remove") { Task { await fwd.remove(s.address) } }.controlSize(.small)
+                    }
+                }
+                if fwd.senders.count < Forward.maxAddresses {
+                    HStack {
+                        TextField("Email address to add", text: $typed).textFieldStyle(.roundedBorder).frame(width: 240).onSubmit(add)
+                        Button("Add", action: add).disabled(typed.trimmingCharacters(in: .whitespaces).isEmpty || fwd.working)
+                    }
+                }
+                if let p = fwd.problem { Text(p).font(.system(size: 12)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
+                Text("Emails from any other address are turned away. Each email is deleted from Dateline's server as soon as your Dateline picks it up, or after one day. Attachments are never kept.")
+                    .font(.system(size: 11)).foregroundStyle(Palette.text3).fixedSize(horizontal: false, vertical: true)
+            }.padding(.trailing, 8)
+        }
+        .task { await fwd.refresh() }
+    }
+    func add() { let a = typed; Task { if await fwd.add(a) { typed = "" } } }
 }
 
 // MARK: checks

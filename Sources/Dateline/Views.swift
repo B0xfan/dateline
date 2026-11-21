@@ -43,6 +43,7 @@ struct MainView: View {
             VStack(spacing: 0) {
                 if width < 700 { AddBox(app: app, box: app.addBox).frame(height: 32).padding(.horizontal, 8); Divider().overlay(Palette.line) }
                 TrialEndedStrip()
+                ForwardStrip(app: app, inbox: app.emails)
                 ZStack(alignment: .bottom) {
                     Group {
                         switch store.access {

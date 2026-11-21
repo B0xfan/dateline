@@ -145,6 +145,7 @@ struct AccountsPage: View {
                     }
                 }
             } footer: { Text("Tap an account to show or hide each of its calendars.") }
+            ForwardSection()
             Section {
                 NavigationLink(value: "subscribe") { Text("Subscribe to a calendar…").foregroundStyle(T.tint) }
             } footer: { Text("A calendar from a web address (a school, a team, holidays), kept on this \(thisDevice). You can't change its events.") }
@@ -153,6 +154,38 @@ struct AccountsPage: View {
             } footer: { Text("On the \(thisDevice), accounts live in Settings › Apps › Calendar › Calendar Accounts. Dateline shows every calendar added there.") }
         }
         .navigationTitle("Accounts")
+    }
+}
+
+// Approved design part 2 (2026-11-21): the same list as the Mac's Forward emails, under the calendar accounts.
+struct ForwardSection: View {
+    @ObservedObject var fwd = Forward.shared
+    @State private var typed = ""
+    var body: some View {
+        Section {
+            HStack {
+                Text(Forward.address).foregroundStyle(T.text)
+                Spacer()
+                Button("Copy") { UIPasteboard.general.string = Forward.address }.buttonStyle(.borderless)
+            }
+            ForEach(fwd.senders) { s in
+                Button { if let u = Forward.confirmLink(s) { UIApplication.shared.open(u) } } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(s.address).foregroundStyle(T.text)
+                        Text(s.confirmed ? "✓ Confirmed" : forwardStatus(s) + ". Tap to write it.").font(.footnote).foregroundStyle(s.confirmed ? .green : T.text2)
+                    }
+                }.disabled(s.confirmed)
+            }
+            .onDelete { i in for s in i.map({ fwd.senders[$0] }) { Task { await fwd.remove(s.address) } } }
+            if fwd.senders.count < Forward.maxAddresses {
+                TextField("Add an email address… (\(Forward.maxAddresses - fwd.senders.count) left)", text: $typed)
+                    .keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.done)
+                    .onSubmit { let a = typed; Task { if await fwd.add(a) { typed = "" } } }
+            }
+            if let p = fwd.problem { Text(p).font(.footnote).foregroundStyle(.red) }
+        } header: { Text("Forward an email to make an event (up to \(Forward.maxAddresses))") }
+        footer: { Text("Swipe left on an address to remove it. Only emails from these addresses are read, and each is deleted within a day. Same list as on the Mac.") }
+        .task { await fwd.refresh() }
     }
 }
 
