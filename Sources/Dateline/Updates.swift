@@ -2,6 +2,7 @@
 // GitHub Releases (scripts/release.sh publishes them); every download is checked against SUPublicEDKey in Info.plist before it installs.
 import SwiftUI
 import Combine
+import CoreGraphics
 import Sparkle
 import DatelineCore
 
@@ -21,6 +22,12 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
         controller = c
         c.updater.publisher(for: \.canCheckForUpdates).receive(on: DispatchQueue.main).sink { [weak self] in self?.canCheck = $0 }.store(in: &bag)
         lastChecked = c.updater.lastUpdateCheckDate
+        // Just updated: look again now, so a version that came out after the one just installed follows in the same go.
+        let last = UserDefaults.standard.string(forKey: "lastLaunchedVersion")
+        UserDefaults.standard.set(Self.version, forKey: "lastLaunchedVersion")
+        if justUpdated(last: last, now: Self.version), c.updater.automaticallyChecksForUpdates {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { if c.updater.canCheckForUpdates { c.updater.checkForUpdatesInBackground() } }
+        }
     }
 
     func check() { controller?.checkForUpdates(nil) }
@@ -30,10 +37,27 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
         get { controller?.updater.automaticallyChecksForUpdates ?? true }
         set { controller?.updater.automaticallyChecksForUpdates = newValue; objectWillChange.send() }
     }
-    /// "Install them without asking": download in the background and install when Dateline quits.
+    /// "Install them without asking": download in the background, install when Dateline quits or the Mac has been left alone a while.
     var silent: Bool {
         get { controller?.updater.automaticallyDownloadsUpdates ?? false }
         set { controller?.updater.automaticallyDownloadsUpdates = newValue; objectWillChange.send() }
+    }
+
+    /// Sparkle installs a background download only when Dateline quits, and until then every check (even Check for Updates) offers that
+    /// saved copy instead of reading the feed again. Dateline stays open for days, so the copy went stale and each newer version needed
+    /// its own round (John 2026-11-21: three updates in a row). So the saved copy installs once the Mac has been left alone for a while.
+    private var installWaiting: (() -> Void)?
+    private var awayTimer: Timer?
+    func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem, immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
+        DispatchQueue.main.async {
+            self.installWaiting = immediateInstallHandler
+            self.awayTimer?.invalidate()
+            self.awayTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                guard let self, macIsAway(idle: CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)) else { return }
+                self.installWaiting?()  // Sparkle 2.3+: safe to call again if a quit was cancelled
+            }
+        }
+        return true
     }
 
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) { DispatchQueue.main.async { self.newerFound = true; self.lastChecked = updater.lastUpdateCheckDate } }
@@ -68,6 +92,11 @@ struct UpdateSettings: View {
         .padding(.horizontal, 24).padding(.vertical, 20).frame(width: 620)
     }
 }
+
+/// Ten minutes with no key, mouse or trackpad use: a restart for an update will not get in the way.
+func macIsAway(idle: TimeInterval) -> Bool { idle >= 600 }
+/// This launch is the first one on a new version (not the very first launch).
+func justUpdated(last: String?, now: String) -> Bool { last != nil && last != now }
 
 /// The status line under the switches. Pure, so the self-test can check it.
 func updateStatus(version: String, last: Date?, newer: Bool?, now: Date) -> String {

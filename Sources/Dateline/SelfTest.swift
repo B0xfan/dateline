@@ -375,6 +375,8 @@ func selftest() -> Int32 {
     expect(updateStatus(version: "0.8", last: nil, newer: nil, now: checked) == "Dateline 0.8 · not checked yet"
            && updateStatus(version: "0.8", last: checked, newer: false, now: checked.addingTimeInterval(60)).hasSuffix("you're up to date")
            && updateStatus(version: "0.8", last: checked, newer: true, now: addDays(checked, 2)).hasPrefix("Last checked Oct 30"), "updates: the status line")
+    expect(!macIsAway(idle: 599) && macIsAway(idle: 600), "updates: a waiting update installs only after ten idle minutes")
+    expect(!justUpdated(last: nil, now: "0.1.55") && !justUpdated(last: "0.1.55", now: "0.1.55") && justUpdated(last: "0.1.53", now: "0.1.55"), "updates: a look right after updating, not on first launch")
     MainActor.assumeIsolated { assistantSelftest(expect) }
     MainActor.assumeIsolated { calendarSourceSelftest(expect) }
     MainActor.assumeIsolated { syncSelftest(expect) }
