@@ -11,7 +11,7 @@ struct GoToDate: View {
     @State private var wrong = false
     @FocusState private var typing: Bool
     private static let shown: DateFormatter = { let f = DateFormatter(); f.calendar = cal; f.locale = cal.locale; f.dateFormat = "MMM d, yyyy"; return f }()
-    private static let title: DateFormatter = { let f = DateFormatter(); f.calendar = cal; f.locale = cal.locale; f.setLocalizedDateFormatFromTemplate("MMMMyyyy"); return f }()
+    fileprivate static let title: DateFormatter = { let f = DateFormatter(); f.calendar = cal; f.locale = cal.locale; f.setLocalizedDateFormatFromTemplate("MMMMyyyy"); return f }()
 
     init(app: AppState) {
         self.app = app
@@ -44,7 +44,7 @@ struct GoToDate: View {
         HStack(spacing: 8) {
             Image(systemName: "calendar").foregroundStyle(Palette.text3)
             TextField("March 19, next friday…", text: $text).textFieldStyle(.plain).focused($typing)
-                .onSubmit(go).onChange(of: text) { _, _ in wrong = false }
+                .onChange(of: text) { _, _ in wrong = false }
         }
         .padding(.horizontal, 10).frame(height: 32)
         .background(Palette.field, in: RoundedRectangle(cornerRadius: 8))
@@ -62,8 +62,6 @@ struct GoToDate: View {
         if let d = Self.shown.date(from: typed) ?? jumpDay(typed, now: Date()) { jump(d) } else { wrong = true }
     }
     private func jump(_ d: Date) { app.anchor = cal.startOfDay(for: d); dismiss() }
-
-    fileprivate static func monthTitle(_ d: Date) -> String { title.string(from: d) }
 }
 
 private struct Chip: ButtonStyle {
@@ -89,19 +87,19 @@ private struct MonthGrid: View {
     let choose: (Date) -> Void
 
     private var days: [Date] {
-        let lead = (cal.component(.weekday, from: month) - cal.firstWeekday + 7) % 7
+        let lead = (cal.component(.weekday, from: month) - WorkWeek.firstWeekday + 7) % 7
         let start = cal.date(byAdding: .day, value: -lead, to: month) ?? month
         return (0..<42).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
     }
     private var letters: [String] {
-        let s = cal.veryShortStandaloneWeekdaySymbols, f = cal.firstWeekday - 1
+        let s = cal.veryShortStandaloneWeekdaySymbols, f = WorkWeek.firstWeekday - 1  // the "Week starts on" setting, as in Week view
         return Array(s[f...] + s[..<f])
     }
 
     var body: some View {
         VStack(spacing: 6) {
             HStack {
-                Text(GoToDate.monthTitle(month)).font(.system(size: 14, weight: .semibold))
+                Text(GoToDate.title.string(from: month)).font(.system(size: 14, weight: .semibold))
                 Spacer()
                 arrow("chevron.left", -1, "Previous month"); arrow("chevron.right", 1, "Next month")
             }
@@ -122,7 +120,7 @@ private struct MonthGrid: View {
         Button { month = cal.date(byAdding: .month, value: step, to: month) ?? month } label: {
             Image(systemName: icon).font(.system(size: 12, weight: .semibold)).frame(width: 26, height: 26).contentShape(Rectangle())
         }
-        .buttonStyle(.borderless).foregroundStyle(Palette.text2).help(help)
+        .buttonStyle(.borderless).foregroundStyle(Palette.text2).help(help).accessibilityLabel(help)
     }
 }
 
@@ -136,7 +134,6 @@ private struct DayCell: View {
             Text(cal.component(.day, from: day), format: .number)
                 .font(.system(size: 13, weight: isToday || isSelected ? .bold : .regular)).monospacedDigit()
                 .foregroundStyle(isSelected ? Color.white : isToday ? Palette.now : inMonth ? Palette.text : Palette.text3)
-                .opacity(inMonth || isSelected ? 1 : 0.6)
                 .frame(maxWidth: .infinity).frame(height: 32)
                 .background(isSelected ? Palette.accent : hover ? Palette.side : .clear, in: RoundedRectangle(cornerRadius: 8))
                 .overlay(alignment: .bottom) {
@@ -145,5 +142,7 @@ private struct DayCell: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain).onHover { hover = $0 }
+        .accessibilityLabel(Text(day, format: .dateTime.weekday(.wide).month(.wide).day()) + Text(isToday ? ", today" : ""))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
