@@ -112,8 +112,10 @@ final class Assistant: ObservableObject {
     /// The first time an app connects, John says whether it may. A yes is kept for an app signed by its maker; an unsigned app, or one of Apple's, is asked every time, and a no is never kept.
     func admit(_ who: Caller) -> Bool {
         if let k = who.key, apps[k] != nil { return true }
-        guard ask("\(who.name) wants to use your calendar", "It can do only what Dateline's Assistant settings allow. " +
-                  (who.key == nil ? "Dateline will ask each time this app connects." : "Dateline won't ask again for this app.")) else {
+        // An unsigned program picks its own name (any folder called Claude.app), so the prompt says so and shows where it lives.
+        let title = who.key == nil ? "An unsigned program called \(who.name) wants to use your calendar" : "\(who.name) wants to use your calendar"
+        guard ask(title, "It can do only what Dateline's Assistant settings allow. " +
+                  (who.key == nil ? "Its name can't be checked, so allow it only if you started it yourself.\(who.path.isEmpty ? "" : "\n\(who.path)")\nDateline will ask each time this program connects." : "Dateline won't ask again for this app.")) else {
             note("Turned away \(who.name)"); return false
         }
         if let k = who.key { apps[k] = who.name }
@@ -341,7 +343,7 @@ func writeAll(_ fd: Int32, _ d: Data) -> Bool {
 
 /// key is the app's code signature (its maker's team and its name), so a copy that only calls itself "Claude" is a different app.
 /// nil when the app isn't properly signed: it is asked about every time.
-struct Caller: Equatable { var name: String; var key: String? }
+struct Caller: Equatable { var name: String; var key: String?; var path = "" }
 
 /// Walks up from the process on the other end of the socket, past Dateline's own relay and Apple's command-line tools (a shell, for one), to the app that started it.
 // shortcut: a parent is found by its process number, which a quitting app could hand on in the moment between; use audit tokens if that ever matters.
@@ -360,7 +362,7 @@ nonisolated func callerApp(_ fd: Int32) -> Caller {
             let app = path.split(separator: "/").first { $0.hasSuffix(".app") }  // the outermost app: Claude, not its helper inside
             // A bare program is named by its signature (claude-code), since its file name can be a version number.
             let name = app.map { String($0.dropLast(4)) } ?? key?.split(separator: ".").last.map(String.init) ?? (path as NSString).lastPathComponent
-            return Caller(name: name, key: key)
+            return Caller(name: name, key: key, path: path)
         }
         var info = proc_bsdinfo()
         guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0 else { break }

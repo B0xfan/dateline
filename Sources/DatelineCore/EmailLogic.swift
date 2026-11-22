@@ -139,10 +139,15 @@ public func plainFromHTML(_ h: String) -> String {
     s = s.replacingOccurrences(of: "</t[dh]>", with: " ", options: [.regularExpression, .caseInsensitive])  // table cells stay apart
     s = s.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
     for (a, b) in [("&rarr;", "→"), ("&larr;", "←"), ("&ndash;", "–"), ("&mdash;", "—"), ("&hellip;", "…"), ("&middot;", "·"), ("&bull;", "•"), ("&euro;", "€"), ("&copy;", "©"), ("&reg;", "®"), ("&nbsp;", " "), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'"), ("&apos;", "'"), ("&amp;", "&")] { s = s.replacingOccurrences(of: a, with: b) }
-    while let r = s.range(of: "&#[xX]?[0-9a-fA-F]+;", options: .regularExpression) {
-        let n = s[r].dropFirst(2).dropLast(), hex = n.first == "x" || n.first == "X"
-        s.replaceSubrange(r, with: UInt32(hex ? String(n.dropFirst()) : String(n), radix: hex ? 16 : 10).flatMap(Unicode.Scalar.init).map { String($0) } ?? "")
+    // One pass from left to right: restarting at the top after each "&#...;" made a hostile email full of them freeze the app.
+    var out = "", rest = s[...]
+    while let r = rest.range(of: "&#[xX]?[0-9a-fA-F]+;", options: .regularExpression) {
+        let n = rest[r].dropFirst(2).dropLast(), hex = n.first == "x" || n.first == "X"
+        out += rest[..<r.lowerBound]
+        out += UInt32(hex ? String(n.dropFirst()) : String(n), radix: hex ? 16 : 10).flatMap(Unicode.Scalar.init).map { String($0) } ?? ""
+        rest = rest[r.upperBound...]
     }
+    s = out + rest
     return s.replacingOccurrences(of: "[ \t]+\n", with: "\n", options: .regularExpression)
 }
 
