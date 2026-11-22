@@ -103,6 +103,10 @@ private final class ShotWindow: NSWindow {
             ok = save(NewEventBubble(app: app, store: app.store, start: cal.date(byAdding: .hour, value: 19, to: addDays(cal.startOfDay(for: today), 4))!)
                 .background(Palette.pop).frame(width: 380, height: 420).background(Palette.side), dark: dark, to: "\(dir)/bubble-\(tag).png") && ok
         }
+        if only.isEmpty || only.contains("gotodate") {  // a sheet, so drawn on its own like the bubble
+            let app = AppState(store: Store(sample: true), today: today)
+            ok = save(GoToDate(app: app).background(Palette.win).frame(width: 380, height: 520).background(Palette.side), dark: dark, to: "\(dir)/gotodate-\(tag).png") && ok
+        }
         shot("week") { $0.mode = .week; $0.days = 7 }
         shot("week5") { $0.mode = .week; $0.days = 5 }
         shot("month") { $0.mode = .month }
