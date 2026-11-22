@@ -97,7 +97,7 @@ final class AppState: ObservableObject {
     }
     @Published private var undoStack: [() -> Failure?] = []  // published: the Undo menu item greys out from it
     private var monitor: Any?
-    private var timer: Timer?
+    private var timer: Timer?, ticks = 0
 
     struct Toast: Equatable { let text: String; let calendar: String; let id = UUID() }
 
@@ -425,7 +425,12 @@ final class AppState: ObservableObject {
     func startKeys() {
         guard monitor == nil else { return }  // the window can appear again after being closed
         registerQuick()
-        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in if let self { self.tick(Date()); MenuBar.shared.update(self); self.store.reloadA4() } } }
+        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in
+            guard let self else { return }
+            self.tick(Date()); MenuBar.shared.update(self)
+            // A4's notes every 2 minutes, not every 30 seconds (each read opens every task note); coming back to Dateline reads them at once.
+            self.ticks += 1; if self.ticks % 4 == 0 { self.store.reloadA4() }
+        } }
         timer?.tolerance = 5  // slack lets the Mac bundle wake-ups
         if store.access != .sample { Here.shared.start() }
         travelTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in Task { @MainActor in Here.shared.refresh(); self?.planTravel(); self?.store.refreshSubs(); self?.store.refreshAccounts() } }

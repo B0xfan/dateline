@@ -266,16 +266,7 @@ final class PhoneState: ObservableObject {
     /// Forwarded emails picked up from add@dateline.app wait here until read, so closing Dateline mid-read loses none (the Mac keeps them the same way).
     nonisolated static let forwardFolder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Forwarded", isDirectory: true)
 
-    /// True once the email is safely saved (or unreadable, so there is nothing to keep and the server may delete it).
-    nonisolated static func keepForwarded(_ m: Forward.Waiting) -> Bool {
-        let dest = forwardFolder.appendingPathComponent("fwd-\(m.id).eml")
-        if FileManager.default.fileExists(atPath: dest.path) { return true }
-        guard let data = Data(base64Encoded: m.eml, options: .ignoreUnknownCharacters) else { return true }
-        do {
-            try FileManager.default.createDirectory(at: forwardFolder, withIntermediateDirectories: true)
-            try data.write(to: dest, options: .atomic); return true
-        } catch { return false }
-    }
+    nonisolated static func keepForwarded(_ m: Forward.Waiting) -> Bool { m.save(in: forwardFolder) }
 
     private var readingForwarded = false, forwardedAgain = false
     /// Reads the saved forwarded emails one after another exactly like an opened email file. A file goes once it is read, or when

@@ -324,13 +324,25 @@ public final class Store: ObservableObject {
 
     // Loads the events between two dates (the visible view plus a margin).
     public func show(from: Date, to: Date) {
-        range = (from, to)
+        range = (from, to); fetchRun += 1  // a reload still reading the old range must not replace these
         items = between(from, to)  // "coming up" stays: it doesn't depend on where the view is
     }
 
+    // A reload after a calendar change reads off the main thread: an iCloud sync sends a burst of changes, and reading
+    // Year view's 365 days on the main thread each time froze the window. Made-up calendars (the checks) stay immediate.
+    private var fetchRun = 0
+    /// Goes up when the calendars themselves changed, not when the view only moved: the Mac search reads its two years again on this.
+    @Published public private(set) var revision = 0
     private func fetch() {
-        items = between(range.0, range.1)
-        refreshSoon()
+        guard access != .sample else { items = between(range.0, range.1); revision += 1; refreshSoon(); return }
+        fetchRun += 1
+        let run = fetchRun, (a, b) = range
+        Task {
+            let read = await betweenInBackground(a, b)
+            guard run == fetchRun else { return }  // a newer reload or a move to another range came first
+            items = read; revision += 1
+            refreshSoon()
+        }
     }
 
     public func refreshSoon() {

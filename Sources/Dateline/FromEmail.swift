@@ -50,15 +50,7 @@ final class EmailInbox: ObservableObject {
         _ = pick()
     }
 
-    /// One picked-up email into the folder (hidden name first, so scan() never reads half of it). True once it is safely there.
-    static func keep(_ m: Forward.Waiting) -> Bool {
-        let name = "fwd-\(m.id).eml", dest = folder.appendingPathComponent(name)
-        if FileManager.default.fileExists(atPath: dest.path) { return true }  // picked up before, the server's delete didn't arrive
-        guard let data = Data(base64Encoded: m.eml, options: .ignoreUnknownCharacters) else { return true }  // unreadable: nothing to keep, let the server delete it
-        let tmp = folder.appendingPathComponent("." + name + ".tmp")
-        do { try data.write(to: tmp); try FileManager.default.moveItem(at: tmp, to: dest); return true }
-        catch { try? FileManager.default.removeItem(at: tmp); return false }
-    }
+    static func keep(_ m: Forward.Waiting) -> Bool { m.save(in: folder) }
 
     private func side(_ url: URL) -> URL { url.deletingPathExtension().appendingPathExtension("json") }
 
@@ -427,6 +419,12 @@ func emailSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, Int, Int, In
     expect(plainFromHTML("<td>AV 584</td><td>SJO &rarr; MIA &#x2013; ok</td>") == "AV 584 SJO → MIA – ok ", "email: table cells apart, arrows and dashes")
     let flood = String(repeating: "&#65;", count: 50_000), t0 = Date()
     expect(plainFromHTML(flood + "&#66;x") == String(repeating: "A", count: 50_000) + "Bx" && Date().timeIntervalSince(t0) < 5, "email: a flood of numbered characters is read in one quick pass")
+    let keepDir = FileManager.default.temporaryDirectory.appendingPathComponent("dateline-keep-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: keepDir) }
+    let wrapped = Forward.Waiting(id: 7, from: "a@b.co", eml: "U3ViamVjdDog\nSGk=").save(in: keepDir)
+    let junk = Forward.Waiting(id: 8, from: "a@b.co", eml: "not base64 at all!").save(in: keepDir)
+    expect(wrapped && (try? Data(contentsOf: keepDir.appendingPathComponent("fwd-7.eml"))) == Data("Subject: Hi".utf8), "forwarded email: base64 with line breaks is saved")
+    expect(junk && !FileManager.default.fileExists(atPath: keepDir.appendingPathComponent("fwd-8.eml").path), "forwarded email: an unreadable one saves nothing and may go")
     expect(makeDraft(found: true, title: "A", start: "2026-11-09T10:00", end: "2026-11-09T09:00", place: "", notes: "", quotes: [], unsure: [], subject: "").end == at(2026, 11, 9, 11, 0), "email: an end before the start is ignored")
 
     MainActor.assumeIsolated {

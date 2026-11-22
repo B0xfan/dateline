@@ -42,7 +42,7 @@ struct SearchResults: View {
         .onChange(of: panels.searchSubmits) { _, _ in  // Return in the field shows the first match, again each time
             if let it = (found.coming + found.past).first { panels.searchPick = it.id; show(it) }
         }
-        .onReceive(store.$items.dropFirst()) { _ in reads += 1 }
+        .onReceive(store.$revision.dropFirst()) { _ in reads += 1 }  // a real calendar change, not a move of the view
         .task(id: reads) {
             let read = await store.betweenInBackground(addDays(app.now, -365), addDays(app.now, 366))
             if !Task.isCancelled { pool = read; refresh() }

@@ -975,8 +975,10 @@ extension Store {
             guard let ev = accData.google[c.id]?.first(where: { $0.item.id == it.id }) else { return Failure("That event is gone.") }
             if series, let m = ev.master {
                 // "This and every later": the series ends before this time; earlier ones stay. Only from its first time does the whole series go.
-                let cut = it.id.split(separator: "|").dropFirst().first.flatMap { Double($0) }.map(Date.init(timeIntervalSince1970:)) ?? ev.item.start
-                accData.google[c.id]?.removeAll { $0.master == m && $0.item.start >= cut }
+                // By each time's original start (in its id), as Google cuts it: one moved past the cut but first planned before it stays.
+                func planned(_ i: Item) -> Date? { i.id.lastIndex(of: "|").flatMap { Double(i.id[i.id.index(after: $0)...]) }.map(Date.init(timeIntervalSince1970:)) }
+                let cut = planned(it) ?? ev.item.start
+                accData.google[c.id]?.removeAll { $0.master == m && (planned($0.item) ?? $0.item.start) >= cut }
                 send(a, c) { s in
                     let t = try await s.googleToken(a)
                     let path = "/calendars/\(pathPart(c.remote))/events/" + pathPart(m)

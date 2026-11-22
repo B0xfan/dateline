@@ -18,7 +18,22 @@ import Security
         public var id: String { address }
         public init(address: String, confirmed: Bool, code: String? = nil) { self.address = address; self.confirmed = confirmed; self.code = code }
     }
-    public struct Waiting: Codable, Sendable { public var id: Int; public var from: String; public var eml: String }  // eml: the email (text only), base64
+    public struct Waiting: Codable, Sendable {
+        public var id: Int; public var from: String; public var eml: String  // eml: the email (text only), base64
+        public init(id: Int, from: String, eml: String) { self.id = id; self.from = from; self.eml = eml }
+        /// Saves the email as fwd-<id>.eml in `folder` (a hidden name first, so a folder scan never reads half of it), for the Mac
+        /// and the iPhone alike. True once it is safely there, or unreadable so there is nothing to keep: the server may then delete it.
+        public func save(in folder: URL) -> Bool {
+            let name = "fwd-\(id).eml", dest = folder.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: dest.path) { return true }  // picked up before, the server's delete didn't arrive
+            guard let data = Data(base64Encoded: eml, options: .ignoreUnknownCharacters) else { return true }  // a wrapped base64 still reads
+            let tmp = folder.appendingPathComponent("." + name + ".tmp")
+            do {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try data.write(to: tmp); try FileManager.default.moveItem(at: tmp, to: dest); return true
+            } catch { try? FileManager.default.removeItem(at: tmp); return false }
+        }
+    }
     struct Reply: Codable { var addresses: [Sender]; var mail: [Waiting] }
 
     @Published public var senders: [Sender] = []

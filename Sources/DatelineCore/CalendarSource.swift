@@ -71,10 +71,10 @@ public final class AppleCalendar: CalendarSource {
         ek.requestFullAccessToReminders { ok, _ in Task { @MainActor in done(ok) } }
     }
     public func onChange(_ act: @escaping @MainActor () -> Void) {
+        #if !os(watchOS)
+        _ = Self.contactWatch
+        #endif
         observer = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: ek, queue: .main) { _ in Task { @MainActor in
-            #if !os(watchOS)
-            Self.forgetPeople()  // a contact edit changes the Birthdays calendar too, so names and ages are read again
-            #endif
             act()
         } }
     }
@@ -146,6 +146,9 @@ public final class AppleCalendar: CalendarSource {
     private nonisolated(unsafe) static var born: [String: (name: String, date: DateComponents?)?] = [:]  // nil kept too: a contact not shared is not looked up again
     private nonisolated(unsafe) static let contacts = CNContactStore()  // used only under the people lock
     private nonisolated static func forgetPeople() { people.lock(); born = [:]; people.unlock() }
+    // Names and ages are read again only when a contact changes. Every calendar change (an iCloud sync sends many) used to
+    // empty them, and the next read looked up each birthday's contact again on the main thread.
+    private nonisolated(unsafe) static let contactWatch = NotificationCenter.default.addObserver(forName: .CNContactStoreDidChange, object: nil, queue: nil) { _ in forgetPeople() }
     private nonisolated static func person(_ id: String) -> (name: String, date: DateComponents?)? {
         let st = CNContactStore.authorizationStatus(for: .contacts)  // the iPhone's "some contacts" answer still reads those
         guard st != .notDetermined, st != .denied, st != .restricted else { return nil }

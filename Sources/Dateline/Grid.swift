@@ -84,7 +84,7 @@ struct TimeGrid: View {
                 // centring the current hour's row puts its half past mid-view, so the line is within half an hour of the middle.
                 .onAppear { DispatchQueue.main.async { sv.scrollTo(cal.component(.hour, from: app.now), anchor: .center) } }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                    if store.access != .sample { app.tick(Date()) }  // the 30 second clock may not have run yet after a sleep
+                    if store.access != .sample { app.tick(Date()); store.reloadA4() }  // the 30 second clock may not have run yet after a sleep; a task changed in Obsidian shows at once
                     withAnimation(.easeInOut(duration: 0.3)) { sv.scrollTo(cal.component(.hour, from: app.now), anchor: .center) }
                 }
             }

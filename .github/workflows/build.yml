@@ -81,6 +81,17 @@ jobs:
         run: swift build -c release -j 2
       - name: Self-test (pure logic only, no calendar access)
         run: .build/release/Dateline --selftest
+      # The real write paths: iCloud-style accounts against the pretend server, and A4 task notes edited in a copy of made-up notes.
+      - name: Accounts check (pretend iCloud server)
+        run: |
+          python3 scripts/caldav-standin.py > "$RUNNER_TEMP/standin.txt" &
+          for i in $(seq 20); do [ -s "$RUNNER_TEMP/standin.txt" ] && break; sleep 0.5; done
+          .build/release/Dateline --accounts-check "$(head -1 "$RUNNER_TEMP/standin.txt")"
+      - name: A4 notes check (a copy of made-up notes)
+        run: |
+          cp -R scripts/a4-fixture "$RUNNER_TEMP/a4"
+          .build/release/Dateline --a4-check "$RUNNER_TEMP/a4" | tee "$RUNNER_TEMP/a4.txt"
+          grep -q "shown as tasks: 4," "$RUNNER_TEMP/a4.txt" || { echo "expected the 4 made-up tasks to be read"; exit 1; }
       - name: Package the app
         run: |
           scripts/make-app.sh
