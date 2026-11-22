@@ -36,7 +36,7 @@ struct GoToDate: View {
                 Button("Go", action: go).keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).tint(Palette.accent)
             }
         }
-        .padding(18).frame(width: 340)
+        .padding(18).frame(width: 370)
         .onAppear { typing = true }
     }
 
@@ -70,7 +70,7 @@ private struct Chip: ButtonStyle {
         let configuration: ButtonStyleConfiguration
         @State private var hover = false
         var body: some View {
-            configuration.label.font(.callout.weight(.medium))
+            configuration.label.font(.callout.weight(.medium)).lineLimit(1).fixedSize()
                 .foregroundStyle(hover ? Palette.accent : Palette.text2)
                 .padding(.horizontal, 10).padding(.vertical, 4)
                 .background(hover ? Palette.accentSoft : Palette.side, in: Capsule())

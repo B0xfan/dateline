@@ -105,7 +105,7 @@ private final class ShotWindow: NSWindow {
         }
         if only.isEmpty || only.contains("gotodate") {  // a sheet, so drawn on its own like the bubble
             let app = AppState(store: Store(sample: true), today: today)
-            ok = save(GoToDate(app: app).background(Palette.win).frame(width: 380, height: 520).background(Palette.side), dark: dark, to: "\(dir)/gotodate-\(tag).png") && ok
+            ok = save(GoToDate(app: app).background(Palette.win).frame(width: 410, height: 520).background(Palette.side), dark: dark, to: "\(dir)/gotodate-\(tag).png") && ok
         }
         shot("week") { $0.mode = .week; $0.days = 7 }
         shot("week5") { $0.mode = .week; $0.days = 5 }
