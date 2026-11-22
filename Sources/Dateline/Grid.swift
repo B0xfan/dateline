@@ -55,6 +55,7 @@ struct TimeGrid: View {
                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                 .onTapGesture { app.selectedID = it.id; app.panels.panelOpen = true }
                                 .contextMenu { EventMenu(app: app, it: it) }
+                                .eventAccess { app.selectedID = it.id; app.panels.panelOpen = true }
                         }
                     }
                     .padding(.vertical, 2).frame(minWidth: 0, maxWidth: .infinity, minHeight: 36, alignment: .topLeading).clipped()
@@ -149,6 +150,7 @@ struct DayColumn: View {
                         .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true }
                         .onTapGesture { app.selectedID = it.id }
                         .contextMenu { EventMenu(app: app, it: it) }
+                        .eventAccess { app.selectedID = it.id; app.panels.panelOpen = true }
                         .gesture(dragGesture(it, colWidth: w, stretch: false))
                         .overlay(alignment: .bottom) {
                             Color.clear.frame(height: 8).contentShape(Rectangle())
@@ -308,10 +310,15 @@ struct EventBlock: View {
     return img
 }
 
+extension View {
+    /// VoiceOver: an event reads as one button that opens its details, like a click (the search list does the same).
+    func eventAccess(_ open: @escaping () -> Void) -> some View { accessibilityElement(children: .combine).accessibilityAddTraits(.isButton).accessibilityAction { open() } }
+}
+
 struct MonthView: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
-    @ObservedObject var panels: Panels
+    @ObservedObject var query: SearchQuery  // busy days list the matches first
     var body: some View {
         // Own grid, not visibleDays: on a switch to Day this view can redraw once more with a 1-day list and crash.
         let grid = monthGrid(app.anchor)
@@ -330,7 +337,7 @@ struct MonthView: View {
                         .frame(width: 36).frame(maxHeight: .infinity, alignment: .top).padding(.top, 8).background(Palette.lineSoft)
                     ForEach(0..<7, id: \.self) { i in
                         let d = grid[w * 7 + i]
-                        cell(d, matchesFirst(store.shown(on: d), panels.search.trimmingCharacters(in: .whitespaces)), other: cal.component(.month, from: d) != month)
+                        cell(d, matchesFirst(store.shown(on: d), query.text), other: cal.component(.month, from: d) != month)
                     }
                 }.frame(maxHeight: .infinity)
                 .overlay(alignment: .bottom) { Palette.lineSoft.frame(height: 1) }
@@ -363,6 +370,7 @@ struct MonthView: View {
                     .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true }
                     .onTapGesture { app.selectedID = it.id }
                     .contextMenu { EventMenu(app: app, it: it) }
+                    .eventAccess { app.selectedID = it.id; app.panels.panelOpen = true }
                 }
                 if list.count > shown.count {
                     MoreButton(app: app, store: store, day: d, list: list, hidden: list.count - shown.count, size: 11)
@@ -451,7 +459,7 @@ struct DetailPanel: View {
                 HStack {
                     Text("EVENT").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                     Spacer()
-                    Button { commit(); app.panels.panelOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
+                    Button { commit(); app.panels.panelOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").help("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
                 }.padding(.bottom, 8)
                 TextField("Title", text: $item.title, axis: .vertical).textFieldStyle(.plain).font(.ui(17, weight: .semibold))
                     .focused($field, equals: "title").onSubmit { commit() }
@@ -622,7 +630,7 @@ struct DetailPanel: View {
                     Menu { pick { v in var all = mins; all[i] = v; setAlerts(all) }; custom(i) } label: { Text(alertText(m, allDay: item.allDay)) }
                         .menuStyle(.borderlessButton).fixedSize().frame(maxWidth: .infinity, alignment: .leading)  // keeps every ✕ at the right edge
                     Button { var all = mins; all.remove(at: i); setAlerts(all) } label: { Image(systemName: "xmark").font(.ui(10, weight: .semibold)) }
-                        .buttonStyle(.plain).foregroundStyle(Palette.text3).accessibilityLabel("Remove alert")
+                        .buttonStyle(.plain).foregroundStyle(Palette.text3).accessibilityLabel("Remove alert").help("Remove alert")
                 }
             }
             if mins.isEmpty { row("Alert") { add } } else if mins.count < maxAlerts { add.padding(.leading, 72).padding(.top, 6) }
@@ -660,7 +668,7 @@ struct DetailPanel: View {
 struct QuarterView: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
-    @ObservedObject var panels: Panels
+    @ObservedObject var query: SearchQuery  // busy days list the matches first
     var body: some View {
         let q = quarterStart(app.anchor)
         HStack(spacing: 0) {
@@ -692,7 +700,7 @@ struct QuarterView: View {
                         .frame(width: 24).frame(maxHeight: .infinity, alignment: .top).padding(.top, 4).background(Palette.lineSoft)
                     ForEach(0..<7, id: \.self) { i in
                         let d = grid[w * 7 + i]
-                        if cal.component(.month, from: d) == m { cell(d, matchesFirst(store.shown(on: d), panels.search.trimmingCharacters(in: .whitespaces))) }
+                        if cal.component(.month, from: d) == m { cell(d, matchesFirst(store.shown(on: d), query.text)) }
                         else { Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) } }
                     }
                 }.frame(maxHeight: .infinity)
@@ -709,7 +717,7 @@ struct QuarterView: View {
                 VStack(spacing: 2) {
                     Text(dateText(d, "d")).font(.ui(10)).lineLimit(1).fixedSize()
                         .foregroundStyle(cal.isDate(d, inSameDayAs: app.now) ? Palette.now : Palette.text2)
-                    let q = panels.search.trimmingCharacters(in: .whitespaces)
+                    let q = query.text
                     HStack(spacing: 1) { ForEach((q.isEmpty ? list : list.filter { searchMatches($0, q) }).prefix(2)) { Circle().fill(store.color($0)).frame(width: 4, height: 4) } }
                 }.frame(maxWidth: .infinity).padding(.top, 4).contentShape(Rectangle()).onTapGesture { app.open(day: d) }
             } else {
@@ -731,6 +739,7 @@ struct QuarterView: View {
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true }
                         .onTapGesture { app.selectedID = it.id }
+                        .eventAccess { app.selectedID = it.id; app.panels.panelOpen = true }
                 }
                 if list.count > shown.count {
                     MoreButton(app: app, store: store, day: d, list: list, hidden: list.count - shown.count, size: 10)
@@ -753,10 +762,10 @@ struct QuarterView: View {
 struct YearView: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
-    @ObservedObject var panels: Panels
+    @ObservedObject var query: SearchQuery  // busy days list the matches first
     var body: some View {
         let year = cal.dateInterval(of: .year, for: app.anchor)!
-        let q = panels.search.trimmingCharacters(in: .whitespaces)  // while searching, dots for matches only
+        let q = query.text  // while searching, dots for matches only
         let dots = dayCalendars(q.isEmpty ? app.shownItems : app.shownItems.filter { searchMatches($0, q) }, in: year)
         GeometryReader { g in
             // Up to four across, as approved; a month under 150 points wide runs its two-digit days together.

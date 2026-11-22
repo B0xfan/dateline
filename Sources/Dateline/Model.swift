@@ -17,12 +17,13 @@ enum Mode: String, CaseIterable { case day = "Day", week = "Week", month = "Mont
 
 // What's open around the calendar. MainView, the menus and a task's highlight draw from it; the rest just open and close things.
 @MainActor final class Panels: ObservableObject {
+    let query = SearchQuery()  // the search text alone, so every event watches it without redrawing on the panels' other changes
     @Published var panelOpen = false { didSet { if panelOpen { openTaskID = nil } } }
     // Phase 4 tasks: the task list (R) and one task's details share the right side with the event details.
     @Published var tasksOpen = false { didSet { if tasksOpen { openTaskID = nil; panelOpen = false; search = "" } } }
     @Published var openTaskID: String? { didSet { if openTaskID != nil { panelOpen = false } } }
     @Published var showShortcuts = false
-    @Published var search = "" { didSet { if !search.isEmpty && tasksOpen { tasksOpen = false } } }  // the toolbar's event search; its results take the right side from the task list, below an open event or task
+    @Published var search = "" { didSet { if !search.isEmpty && tasksOpen { tasksOpen = false }; query.text = search.trimmingCharacters(in: .whitespaces) } }  // the toolbar's event search; its results take the right side from the task list, below an open event or task
     @Published var searchPick: String?  // the result shown in the calendar
     @Published var searching = false  // the search field has the cursor (Command F)
     @Published var searchSubmits = 0  // Return in the search field

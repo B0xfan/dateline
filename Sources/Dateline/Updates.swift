@@ -60,7 +60,7 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUStandard
     /// Sparkle's boxes ("You're up to date" and the rest) open as modal alerts. One opened on another desktop and its OK did nothing
     /// (John 2026-11-21). So Dateline comes to the front, and the box shows on the desktop in use, above a full-screen window.
     func standardUserDriverWillShowModalAlert() {
-        MainActor.assumeIsolated { NSApp.activate(ignoringOtherApps: true) }  // Sparkle calls this on the main thread
+        MainActor.assumeIsolated { NSApp.activate() }  // Sparkle calls this on the main thread
         DispatchQueue.main.async {  // runs inside the alert's modal loop, once its window exists
             MainActor.assumeIsolated {
                 guard let w = NSApp.modalWindow else { return }

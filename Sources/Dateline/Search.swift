@@ -26,7 +26,7 @@ struct SearchResults: View {
                 Text(count == 1 ? "1 result" : "\(count) results").font(.ui(15, weight: .semibold))
                 Spacer()
                 Button { panels.search = ""; panels.searching = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }
-                    .accessibilityLabel("Close search").buttonStyle(.plain).foregroundStyle(Palette.text3)
+                    .accessibilityLabel("Close search").help("Close search").buttonStyle(.plain).foregroundStyle(Palette.text3)
             }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
             List(selection: Binding(get: { panels.searchPick }, set: { id in panels.searchPick = id; if let it = id.flatMap(find) { show(it) } })) {
                 if !found.coming.isEmpty { Section("Coming up") { ForEach(found.coming.prefix(cap)) { row($0, past: false) } } }
@@ -76,11 +76,13 @@ struct SearchResults: View {
 
 // Search that filters (approved mockup, John 2026-11-22): while there is search text, the calendar dims every event
 // that doesn't match and marks the ones that do. A modifier on each event, so it follows the search without the views watching it.
+@MainActor final class SearchQuery: ObservableObject { @Published var text = "" }  // trimmed; set only by Panels.search
+
 struct SearchDim: ViewModifier {
-    @ObservedObject var panels: Panels
+    @ObservedObject var query: SearchQuery
     let item: Item, radius: CGFloat
     func body(content: Content) -> some View {
-        let q = panels.search.trimmingCharacters(in: .whitespaces)
+        let q = query.text
         let hit = searchMatches(item, q)
         content
             .background(hit ? Palette.hit : .clear, in: RoundedRectangle(cornerRadius: radius))
@@ -89,8 +91,14 @@ struct SearchDim: ViewModifier {
             .accessibilityValue(hit ? "Matches search" : "")
     }
 }
+/// Tasks aren't searched, so while searching they fade with the other non-matches.
+struct TaskSearchDim: ViewModifier {
+    @ObservedObject var query: SearchQuery
+    func body(content: Content) -> some View { content.opacity(query.text.isEmpty ? 1 : 0.22) }
+}
 extension View {
-    func searchDim(_ app: AppState, _ it: Item, radius: CGFloat = 4) -> some View { modifier(SearchDim(panels: app.panels, item: it, radius: radius)) }
+    func taskSearchDim(_ app: AppState) -> some View { modifier(TaskSearchDim(query: app.panels.query)) }
+    func searchDim(_ app: AppState, _ it: Item, radius: CGFloat = 4) -> some View { modifier(SearchDim(query: app.panels.query, item: it, radius: radius)) }
 }
 
 // The bar over the calendar while searching: what it shows and how many matches are in view; Show all ends the search.

@@ -966,6 +966,21 @@ extension Store {
         guard c.writable else { return Failure("\(c.title) is read-only.") }
         if a.kind == "google" {
             guard let ev = accData.google[c.id]?.first(where: { $0.item.id == it.id }) else { return Failure("That event is gone.") }
+            if series, let m = ev.master {
+                // "This and every later": the series ends before this time; earlier ones stay. Only from its first time does the whole series go.
+                let cut = it.id.split(separator: "|").dropFirst().first.flatMap { Double($0) }.map(Date.init(timeIntervalSince1970:)) ?? ev.item.start
+                accData.google[c.id]?.removeAll { $0.master == m && $0.item.start >= cut }
+                send(a, c) { s in
+                    let t = try await s.googleToken(a)
+                    let path = "/calendars/\(pathPart(c.remote))/events/" + pathPart(m)
+                    let j = try await googleJSON("GET", path, token: t)
+                    if let first = googleItem(c, j)?.item.start, cut > first {
+                        let lines = (j["recurrence"] as? [String] ?? []).map { $0.uppercased().hasPrefix("RRULE:") ? "RRULE:" + endRule(String($0.dropFirst(6)), before: cut, allDay: it.allDay) : $0 }
+                        _ = try await googleJSON("PATCH", path, token: t, body: ["recurrence": lines])
+                    } else { _ = try await googleJSON("DELETE", path, token: t) }
+                }
+                return nil
+            }
             let target = series ? ev.master ?? ev.iid : ev.iid
             accData.google[c.id]?.removeAll { $0.iid == target || $0.master == target }
             gSend(a, c, "DELETE", "/" + pathPart(target), nil)
@@ -975,8 +990,12 @@ extension Store {
                 let text = icsDropOccurrence(res.text, occ)
                 accData.dav[c.id]?[ref.href] = DavRes(etag: res.etag, text: text, events: parseICS(text))
                 davSend(a, c, href: ref.href)
+            } else if series, let occ = ref.occ, let first = res.events.first(where: { $0.recurrenceID == nil })?.start, occ > first {
+                // "This and every later" from a later time: the series ends before it; earlier ones stay.
+                let text = icsSetRule(res.text) { old in old.map { endRule($0, before: occ, allDay: it.allDay) } }
+                accData.dav[c.id]?[ref.href] = DavRes(etag: res.etag, text: text, events: parseICS(text))
+                davSend(a, c, href: ref.href)
             } else {
-                // shortcut: "this and later" (undo of adding a repeating event) deletes the whole series, which is right for the first occurrence only.
                 accData.dav[c.id]?[ref.href] = nil
                 davSendDelete(a, c, ref.href, res.etag)
             }

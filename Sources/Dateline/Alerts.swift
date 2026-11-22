@@ -29,7 +29,7 @@ extension AppState {
     // Open event: the window comes back on the event's day with its details open.
     func openEvent(_ it: Item) {
         openMain?()
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         if !visibleDays.contains(cal.startOfDay(for: it.start)) { anchor = cal.startOfDay(for: it.start) }
         selectedID = it.id
         panels.panelOpen = true

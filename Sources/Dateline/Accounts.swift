@@ -63,7 +63,7 @@ struct AttachmentsBox: View {
                     Spacer(minLength: 0)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain).contextMenu { actions(a, f, writable) }
-            Menu { actions(a, f, writable) } label: { Image(systemName: "ellipsis") }.accessibilityLabel("Account actions").menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(Palette.text3)
+            Menu { actions(a, f, writable) } label: { Image(systemName: "ellipsis") }.accessibilityLabel("Account actions").help("Account actions").menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(Palette.text3)
         }
     }
 
@@ -180,7 +180,7 @@ struct AccountSettings: View {
                     // Plain button back to the add choices; a Menu here was easy to miss.
                     Button { picked = nil; adding = nil; note = "" } label: { Image(systemName: "plus") }.accessibilityLabel("Add an account")
                         .buttonStyle(.borderless).frame(width: 28, height: 20).help("Add an account")
-                    Button { if let p = picked, p != "mac", p != "fwd" { store.removeAccount(p); picked = nil } } label: { Image(systemName: "minus") }.accessibilityLabel("Remove this account")
+                    Button { if let p = picked, p != "mac", p != "fwd" { store.removeAccount(p); picked = nil } } label: { Image(systemName: "minus") }.accessibilityLabel("Remove this account").help("Remove this account")
                         .buttonStyle(.borderless).frame(width: 28, height: 20).disabled(picked == nil || picked == "mac" || picked == "fwd")
                     Spacer()
                 }.padding(.top, 4)

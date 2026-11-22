@@ -54,7 +54,7 @@ final class EmailInbox: ObservableObject {
     static func keep(_ m: Forward.Waiting) -> Bool {
         let name = "fwd-\(m.id).eml", dest = folder.appendingPathComponent(name)
         if FileManager.default.fileExists(atPath: dest.path) { return true }  // picked up before, the server's delete didn't arrive
-        guard let data = Data(base64Encoded: m.eml) else { return true }  // unreadable: nothing to keep, let the server delete it
+        guard let data = Data(base64Encoded: m.eml, options: .ignoreUnknownCharacters) else { return true }  // unreadable: nothing to keep, let the server delete it
         let tmp = folder.appendingPathComponent("." + name + ".tmp")
         do { try data.write(to: tmp); try FileManager.default.moveItem(at: tmp, to: dest); return true }
         catch { try? FileManager.default.removeItem(at: tmp); return false }
@@ -64,7 +64,8 @@ final class EmailInbox: ObservableObject {
 
     func scan() {
         guard !sample else { return }
-        let files = (try? FileManager.default.contentsOfDirectory(at: Self.folder, includingPropertiesForKeys: nil)) ?? []
+        // Hidden names are half-written copies and emails set aside for Undo, never new mail.
+        let files = (try? FileManager.default.contentsOfDirectory(at: Self.folder, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? []
         let known = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         items = files.filter { ["eml", "ics"].contains($0.pathExtension.lowercased()) }.compactMap { url in
             if let p = known[url.lastPathComponent] { return p }  // already read; the folder only changed elsewhere

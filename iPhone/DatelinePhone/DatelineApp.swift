@@ -43,9 +43,11 @@ struct DatelineApp: App {
                 if phase == .active { app.store.refreshSubs(); app.planTravel() }  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
                 if !app.sample, phase == .active {  // forwarded emails are picked up on opening (John 2026-11-21)
                     Forward.shared.deliver = { [app] mails in
-                        Task { await app.readForwarded(mails.compactMap { Data(base64Encoded: $0.eml) }) }
-                        return mails.map(\.id)  // shortcut: deleted on the server once handed over, so one lost if Dateline is closed mid-read; it is still in the buyer's own mailbox
+                        let kept = mails.filter(PhoneState.keepForwarded)  // on disk before the server deletes its copy
+                        Task { await app.readKeptForwarded() }
+                        return kept.map(\.id)
                     }
+                    Task { await app.readKeptForwarded() }  // any left from a read cut short last time
                     Task { await Forward.shared.refresh() }
                 }
             }
@@ -261,11 +263,35 @@ final class PhoneState: ObservableObject {
         await readMailData(read.0, read.1)
     }
 
-    /// Forwarded emails picked up from add@dateline.app, read one after another exactly like an opened email file.
-    func readForwarded(_ mails: [Data]) async {
-        while readingEmail { try? await Task.sleep(for: .seconds(1)) }
-        readingEmail = true; defer { readingEmail = false }
-        for d in mails { await readMailData(d.count, d) }
+    /// Forwarded emails picked up from add@dateline.app wait here until read, so closing Dateline mid-read loses none (the Mac keeps them the same way).
+    nonisolated static let forwardFolder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Forwarded", isDirectory: true)
+
+    /// True once the email is safely saved (or unreadable, so there is nothing to keep and the server may delete it).
+    nonisolated static func keepForwarded(_ m: Forward.Waiting) -> Bool {
+        let dest = forwardFolder.appendingPathComponent("fwd-\(m.id).eml")
+        if FileManager.default.fileExists(atPath: dest.path) { return true }
+        guard let data = Data(base64Encoded: m.eml, options: .ignoreUnknownCharacters) else { return true }
+        do {
+            try FileManager.default.createDirectory(at: forwardFolder, withIntermediateDirectories: true)
+            try data.write(to: dest, options: .atomic); return true
+        } catch { return false }
+    }
+
+    private var readingForwarded = false
+    /// Reads the saved forwarded emails one after another exactly like an opened email file; each file goes once read.
+    func readKeptForwarded() async {
+        guard !readingForwarded else { return }
+        readingForwarded = true; defer { readingForwarded = false }
+        let files = ((try? FileManager.default.contentsOfDirectory(at: Self.forwardFolder, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? [])
+            .filter { $0.pathExtension == "eml" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        for f in files {
+            while readingEmail { try? await Task.sleep(for: .seconds(1)) }
+            readingEmail = true
+            let d = try? Data(contentsOf: f)
+            await readMailData(d?.count ?? 0, d)
+            readingEmail = false
+            try? FileManager.default.removeItem(at: f)
+        }
     }
 
     private func readMailData(_ size: Int, _ data: Data?) async {

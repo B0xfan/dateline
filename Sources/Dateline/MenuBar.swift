@@ -104,12 +104,12 @@ struct MenuDrop: View {
             }
             ForEach(tasks) { t in
                 row(Circle().strokeBorder(store.taskList(t.listID)?.color ?? Palette.accent, lineWidth: 1.5), t.title, "task") {
-                    close(); app.openMain?(); NSApp.activate(ignoringOtherApps: true); app.panels.openTaskID = t.id
+                    close(); app.openMain?(); NSApp.activate(); app.panels.openTaskID = t.id
                 }
             }
             Palette.line.frame(height: 1).padding(.horizontal, 4).padding(.vertical, 4)
             command("Quick add…", keySymbols(app.quick.name)) { close(); QuickPanel.toggle(app) }
-            command("Open Dateline", nil) { close(); app.openMain?(); NSApp.activate(ignoringOtherApps: true) }
+            command("Open Dateline", nil) { close(); app.openMain?(); NSApp.activate() }
         }
         .font(.ui(13)).foregroundStyle(Palette.text)
         .padding(8).frame(width: 300)

@@ -372,6 +372,7 @@ struct AgendaTask: View {
         .buttonStyle(.plain)
         .accessibilityLabel(t.done ? "\(t.title), done" : "Finish \(t.title)")
         .modifier(TaskDrag(t: t))
+        .opacity(app.filter.isEmpty ? 1 : 0.22)  // tasks aren't searched, so the filter fades them with the other non-matches
     }
 }
 
@@ -403,6 +404,7 @@ struct TaskChip: View {
         .buttonStyle(.plain)
         .accessibilityLabel(t.done ? "\(t.title), done" : "Finish \(t.title)")
         .modifier(TaskDrag(t: t))
+        .opacity(app.filter.isEmpty ? 1 : 0.22)  // tasks aren't searched, so the filter fades them with the other non-matches
     }
 }
 
@@ -805,6 +807,7 @@ struct TimedTask: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Finish \(t.title), \(timeText(t.due!, short: true))")
         .modifier(TaskDrag(t: t))
+        .opacity(app.filter.isEmpty ? 1 : 0.22)  // tasks aren't searched, so the filter fades them with the other non-matches
     }
 }
 

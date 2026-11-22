@@ -41,6 +41,9 @@ func selftest() -> Int32 {
     expect(sr.coming.map(\.id) == ["Cleaning", "Later"] && sr.past.map(\.id) == ["Dentist May", "Dentist Feb"], "search: title, place, notes in any case; coming soonest first, past newest first; hidden calendars left out")
     expect(searchEvents("  ", in: [hit("Dentist", at(11, 1, 9))], hidden: [], now: at(10, 26, 12)).coming.isEmpty, "search: blank text finds nothing")
     expect(searchMatches(hit("Team Dinner", at(11, 1, 9)), "dinner") && !searchMatches(hit("Lunch", at(11, 1, 9)), "dinner") && !searchMatches(hit("Lunch", at(11, 1, 9)), ""), "search dimming: a match in any case lights up, others and blank text do not")
+    expect(searchMatches(hit("Reunión con Ana", at(11, 1, 9)), "reunion"), "search: accents don't matter")
+    let mf = [hit("A", at(11, 1, 9)), hit("B", at(11, 1, 10)), hit("C", at(11, 1, 11))]
+    expect(matchesFirst(mf, "c").map(\.id) == ["C", "A", "B"] && matchesFirst(mf, "").map(\.id) == ["A", "B", "C"], "search: a day's matches come first, blank text keeps the order")
     expect(dayCalendars([ev("x", at(1, 1, 0).addingTimeInterval(-86400 * 900), at(1, 1, 0).addingTimeInterval(86400 * 900))], in: yr).count == 365, "year dots: a years-long event is clipped to the year")
 
     expect(jumpDay("march 19", now: now).map { cal.dateComponents([.month, .day], from: $0) == DateComponents(month: 3, day: 19) } == true, "go to date: march 19")

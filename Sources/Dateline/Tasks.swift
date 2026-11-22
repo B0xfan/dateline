@@ -41,6 +41,7 @@ struct TaskChip: View {
         .font(.ui(12))
         .padding(.horizontal, 4).padding(.vertical, 2)
         .background(Watching(object: app.panels) { p in RoundedRectangle(cornerRadius: 4).fill(p.openTaskID == task.id ? Palette.accentSoft : .clear) })
+        .taskSearchDim(app)
         .contentShape(Rectangle())
         .onTapGesture { app.panels.openTaskID = task.id }
         .contextMenu { TaskMenu(app: app, task: task) }
@@ -70,7 +71,7 @@ struct TaskCircle: View {
             Circle().strokeBorder(color, lineWidth: 1.5).background(Circle().fill(done ? color : .clear))
                 .overlay(Image(systemName: "checkmark").font(.system(size: size * 0.55, weight: .bold)).foregroundStyle(.white).opacity(done ? 1 : 0))
                 .frame(width: size, height: size).contentShape(Circle())
-        }.buttonStyle(.plain).help(done ? "Mark as not done" : "Mark as done")
+        }.buttonStyle(.plain).help(done ? "Mark as not done" : "Mark as done").accessibilityLabel(done ? "Mark as not done" : "Mark as done")
     }
 }
 
@@ -91,6 +92,7 @@ struct TaskBlock: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(Palette.win))
         .overlay(Watching(object: app.panels) { p in RoundedRectangle(cornerRadius: 8).strokeBorder(c, style: StrokeStyle(lineWidth: p.openTaskID == task.id ? 2 : 1.2, dash: [4, 3])) })
+        .taskSearchDim(app)
         .contentShape(Rectangle())
         .onTapGesture { app.panels.openTaskID = task.id }
         .contextMenu { TaskMenu(app: app, task: task) }
@@ -117,7 +119,7 @@ struct TaskList: View {
                     Button("All lists") { panel.filter = nil }
                     ForEach(store.lists) { l in Button(l.title) { panel.filter = l.id } }
                 } label: { Text(filter?.title ?? "All lists") }.menuStyle(.borderlessButton).fixedSize()
-                Button { app.panels.tasksOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
+                Button { app.panels.tasksOpen = false } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").help("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
             }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
             if store.taskAccess == .denied && !store.todos.contains(where: { $0.a4 != nil }) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -152,7 +154,7 @@ struct TaskList: View {
                                 }
                             }
                         }
-                        if list.isEmpty { Text("Nothing to do.").foregroundStyle(Palette.text3).padding(.top, 16) }
+                        if list.isEmpty { Text("Nothing to do. Type a task above.").foregroundStyle(Palette.text3).padding(.top, 16) }
                     }.padding(.horizontal, 16).padding(.bottom, 12)
                 }
                 HStack(spacing: 4) {
@@ -241,7 +243,7 @@ struct TaskDetail: View {
                 HStack {
                     Text("TASK").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                     Spacer()
-                    Button { commit(); app.panels.openTaskID = nil } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
+                    Button { commit(); app.panels.openTaskID = nil } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").help("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
                 }.padding(.bottom, 8)
                 HStack(alignment: .top, spacing: 8) {
                     TaskCircle(done: task.done, color: l?.color ?? .gray, size: 16) { task.done.toggle(); commit() }.padding(.top, 4)

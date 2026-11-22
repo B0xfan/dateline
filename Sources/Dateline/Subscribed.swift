@@ -231,7 +231,7 @@ struct SubscribedList: View {
 
     @ViewBuilder func status(_ s: Sub) -> some View {
         if let p = s.problem {
-            Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 10)).foregroundStyle(Palette.tags[1]).help(p + " The last events stay until it works again.")
+            Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 10)).foregroundStyle(Palette.tags[1]).help(p + " The last events stay until it works again.").accessibilityLabel("Problem: " + p)
         } else if let u = s.updated {
             let when = cal.isDateInToday(u) ? timeText(u) : dateText(u, "MMM d")
             // A long name keeps its room: the label drops the word "updated" before the name is cut.

@@ -119,7 +119,7 @@ struct TagsRow: View {
                     HStack(spacing: 4) {
                         Circle().fill(Palette.tag(t)).frame(width: 8, height: 8)
                         Text(t).font(.ui(12))
-                        Button { item.tags.removeAll { $0 == t }; commit() } label: { Image(systemName: "xmark").font(.ui(10, weight: .bold)) }.accessibilityLabel("Remove tag")
+                        Button { item.tags.removeAll { $0 == t }; commit() } label: { Image(systemName: "xmark").font(.ui(10, weight: .bold)) }.accessibilityLabel("Remove tag").help("Remove tag")
                             .buttonStyle(.plain).foregroundStyle(Palette.text3)
                     }.padding(.horizontal, 8).padding(.vertical, 2).background(Capsule().fill(Palette.lineSoft))
                 }

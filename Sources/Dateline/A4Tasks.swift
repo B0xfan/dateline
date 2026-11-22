@@ -243,7 +243,7 @@ struct A4TaskDetail: View {
                 HStack {
                     Text("A4 TASK").font(.ui(11, weight: .semibold)).foregroundStyle(Palette.text3)
                     Spacer()
-                    Button { app.panels.openTaskID = nil } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
+                    Button { app.panels.openTaskID = nil } label: { Image(systemName: "xmark").font(.ui(11, weight: .semibold)) }.accessibilityLabel("Close").help("Close").buttonStyle(.plain).foregroundStyle(Palette.text3)
                 }.padding(.bottom, 8)
                 HStack(alignment: .top, spacing: 8) {
                     TaskCircle(done: task.done, color: a4Color, size: 16) { let was = task.done; task.done.toggle(); task.a4?.status = task.done ? "done" : "open"; app.saveTask(task); if info.repeating { task.done = was; task.a4?.status = info.status } }.padding(.top, 4)

@@ -52,9 +52,9 @@ struct MainView: View {
                         case .unknown: Color.clear
                         default:
                             switch app.mode {
-                            case .month: MonthView(app: app, store: store, panels: panels)
-                            case .quarter: QuarterView(app: app, store: store, panels: panels)
-                            case .year: YearView(app: app, store: store, panels: panels)
+                            case .month: MonthView(app: app, store: store, query: panels.query)
+                            case .quarter: QuarterView(app: app, store: store, query: panels.query)
+                            case .year: YearView(app: app, store: store, query: panels.query)
                             default: TimeGrid(app: app, store: store)
                             }
                         }

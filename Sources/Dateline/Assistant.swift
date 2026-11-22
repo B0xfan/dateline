@@ -28,7 +28,7 @@ final class Assistant: ObservableObject {
         let a = NSAlert(); a.messageText = title; a.informativeText = detail
         a.addButton(withTitle: "Allow").keyEquivalent = ""  // only a click allows: a keypress meant for another app never does
         a.addButton(withTitle: "Don't allow").keyEquivalent = "\u{1b}"
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         return a.runModal() == .alertFirstButtonReturn
     }
     var app: AppState?

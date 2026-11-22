@@ -208,7 +208,8 @@ struct SearchSheet: View {
             .navigationTitle("Search").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         }
-        .onAppear { pool = store.between(addDays(app.today, -365), addDays(app.today, 366)); text = app.filter.isEmpty ? app.searchStart : app.filter }
+        .onAppear { text = app.filter.isEmpty ? app.searchStart : app.filter }
+        .task { pool = await store.betweenInBackground(addDays(app.today, -365), addDays(app.today, 366)) }  // two years, read off the main thread
     }
 }
 
