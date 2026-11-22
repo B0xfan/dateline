@@ -113,9 +113,12 @@ final class Assistant: ObservableObject {
     func admit(_ who: Caller) -> Bool {
         if let k = who.key, apps[k] != nil { return true }
         // An unsigned program picks its own name (any folder called Claude.app), so the prompt says so and shows where it lives.
-        let title = who.key == nil ? "An unsigned program called \(who.name) wants to use your calendar" : "\(who.name) wants to use your calendar"
+        // Names and paths come from the other program: one line each, cut short, so they can't fake the prompt's own wording.
+        func shown(_ s: String, _ n: Int) -> String { String(String(s.unicodeScalars.map { CharacterSet.controlCharacters.union(.newlines).contains($0) ? " " : Character($0) }).prefix(n)) }
+        let name = shown(who.name, 60), path = shown(who.path, 200)
+        let title = who.key == nil ? "An unsigned program called \(name) wants to use your calendar" : "\(name) wants to use your calendar"
         guard ask(title, "It can do only what Dateline's Assistant settings allow. " +
-                  (who.key == nil ? "Its name can't be checked, so allow it only if you started it yourself.\(who.path.isEmpty ? "" : "\n\(who.path)")\nDateline will ask each time this program connects." : "Dateline won't ask again for this app.")) else {
+                  (who.key == nil ? "Its name can't be checked, so allow it only if you started it yourself.\(path.isEmpty ? "" : "\n\(path)")\nDateline will ask each time this program connects." : "Dateline won't ask again for this app.")) else {
             note("Turned away \(who.name)"); return false
         }
         if let k = who.key { apps[k] = who.name }

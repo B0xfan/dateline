@@ -139,15 +139,16 @@ public func plainFromHTML(_ h: String) -> String {
     s = s.replacingOccurrences(of: "</t[dh]>", with: " ", options: [.regularExpression, .caseInsensitive])  // table cells stay apart
     s = s.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
     for (a, b) in [("&rarr;", "→"), ("&larr;", "←"), ("&ndash;", "–"), ("&mdash;", "—"), ("&hellip;", "…"), ("&middot;", "·"), ("&bull;", "•"), ("&euro;", "€"), ("&copy;", "©"), ("&reg;", "®"), ("&nbsp;", " "), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'"), ("&apos;", "'"), ("&amp;", "&")] { s = s.replacingOccurrences(of: a, with: b) }
-    // One pass from left to right: restarting at the top after each "&#...;" made a hostile email full of them freeze the app.
-    var out = "", rest = s[...]
-    while let r = rest.range(of: "&#[xX]?[0-9a-fA-F]+;", options: .regularExpression) {
-        let n = rest[r].dropFirst(2).dropLast(), hex = n.first == "x" || n.first == "X"
-        out += rest[..<r.lowerBound]
-        out += UInt32(hex ? String(n.dropFirst()) : String(n), radix: hex ? 16 : 10).flatMap(Unicode.Scalar.init).map { String($0) } ?? ""
-        rest = rest[r.upperBound...]
+    // One pass over every "&#...;": restarting at the top after each one made a hostile email full of them freeze the app.
+    let ns = s as NSString, re = try! NSRegularExpression(pattern: "&#([xX]?)([0-9a-fA-F]+);")
+    var out = "", at = 0
+    for m in re.matches(in: s, range: NSRange(location: 0, length: ns.length)) {
+        out += ns.substring(with: NSRange(location: at, length: m.range.location - at))
+        let hex = m.range(at: 1).length > 0, n = ns.substring(with: m.range(at: 2))
+        out += UInt32(n, radix: hex ? 16 : 10).flatMap(Unicode.Scalar.init).map { String($0) } ?? ""
+        at = m.range.location + m.range.length
     }
-    s = out + rest
+    s = out + ns.substring(from: at)
     return s.replacingOccurrences(of: "[ \t]+\n", with: "\n", options: .regularExpression)
 }
 

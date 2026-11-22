@@ -341,6 +341,13 @@ public func icsSetRule(_ text: String, _ f: (String?) -> String?) -> String {
     return icsJoin(lines)
 }
 
+/// "This and every later" from `occ`: the rule stops before it and later moved or changed times go too, so none come back.
+public func icsEndSeries(_ text: String, before occ: Date, allDay: Bool) -> String {
+    var lines = icsUnfold(icsSetRule(text) { old in old.map { endRule($0, before: occ, allDay: allDay) } })
+    for v in vevents(lines).reversed() where v.rid.map({ $0 >= occ }) == true { lines.removeSubrange(v.range) }
+    return icsJoin(lines)
+}
+
 // An RRULE that stops just before `occ`, for "this and later" (COUNT goes: the times before `occ` stay the same).
 public func endRule(_ rule: String, before occ: Date, allDay: Bool) -> String {
     let keep = rule.split(separator: ";").filter { p in !["COUNT", "UNTIL"].contains(p.split(separator: "=").first.map { $0.uppercased() } ?? "") }
@@ -992,7 +999,7 @@ extension Store {
                 davSend(a, c, href: ref.href)
             } else if series, let occ = ref.occ, let first = res.events.first(where: { $0.recurrenceID == nil })?.start, occ > first {
                 // "This and every later" from a later time: the series ends before it; earlier ones stay.
-                let text = icsSetRule(res.text) { old in old.map { endRule($0, before: occ, allDay: it.allDay) } }
+                let text = icsEndSeries(res.text, before: occ, allDay: it.allDay)
                 accData.dav[c.id]?[ref.href] = DavRes(etag: res.etag, text: text, events: parseICS(text))
                 davSend(a, c, href: ref.href)
             } else {
@@ -1281,6 +1288,9 @@ public func accountsSelftest(_ expect: (Bool, String) -> Void, at: (Int, Int, In
     let dropped = icsDropOccurrence(over, occ)
     let left = davItems(c, ["h": DavRes(etag: nil, text: dropped, events: parseICS(dropped))], from: base.start, to: addDays(base.start, 21))
     expect(left.count == 2 && !left.contains { $0.title == "Just this week" }, "accounts: deleting one occurrence of a weekly event")
+    let ended = icsEndSeries(over, before: occ, allDay: false)
+    let early = davItems(c, ["h": DavRes(etag: nil, text: ended, events: parseICS(ended))], from: base.start, to: addDays(base.start, 21))
+    expect(early.map(\.start) == [base.start], "accounts: deleting this and every later time keeps the earlier one, and a changed later time goes too")
     let long = icsNew(uid: "l", Item(id: "", calendarID: "", title: String(repeating: "é", count: 60), start: base.start, end: base.end, allDay: false, place: "", notes: "", showAs: .busy), link: "", alertMinutes: nil, rule: nil)
     expect(long.components(separatedBy: "\r\n").allSatisfy { $0.utf8.count <= 75 } && parseICS(long).first?.title == String(repeating: "é", count: 60), "accounts: long lines fold and read back")
 

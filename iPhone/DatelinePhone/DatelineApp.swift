@@ -277,31 +277,39 @@ final class PhoneState: ObservableObject {
         } catch { return false }
     }
 
-    private var readingForwarded = false
-    /// Reads the saved forwarded emails one after another exactly like an opened email file; each file goes once read.
+    private var readingForwarded = false, forwardedAgain = false
+    /// Reads the saved forwarded emails one after another exactly like an opened email file. A file goes once it is read, or when
+    /// it can never be (no email inside, no date); one cut short by a failed AI read waits for the next opening.
     func readKeptForwarded() async {
-        guard !readingForwarded else { return }
+        guard !readingForwarded else { forwardedAgain = true; return }  // the run in progress lists the folder again when it ends
         readingForwarded = true; defer { readingForwarded = false }
-        let files = ((try? FileManager.default.contentsOfDirectory(at: Self.forwardFolder, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? [])
-            .filter { $0.pathExtension == "eml" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
-        for f in files {
-            while readingEmail { try? await Task.sleep(for: .seconds(1)) }
-            readingEmail = true
-            let d = try? Data(contentsOf: f)
-            await readMailData(d?.count ?? 0, d)
-            readingEmail = false
-            try? FileManager.default.removeItem(at: f)
-        }
+        var tried = Set<URL>()
+        repeat {
+            forwardedAgain = false
+            let files = ((try? FileManager.default.contentsOfDirectory(at: Self.forwardFolder, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? [])
+                .filter { $0.pathExtension == "eml" && !tried.contains($0) }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+            for f in files {
+                tried.insert(f)
+                while readingEmail { try? await Task.sleep(for: .seconds(1)) }
+                readingEmail = true
+                let d = try? Data(contentsOf: f)
+                let done = await readMailData(d?.count ?? 0, d)
+                readingEmail = false
+                if done { try? FileManager.default.removeItem(at: f) }
+            }
+        } while forwardedAgain
     }
 
-    private func readMailData(_ size: Int, _ data: Data?) async {
+    /// False only when reading failed in a way that may work next time (the AI read), so a saved forwarded email is kept for then.
+    @discardableResult private func readMailData(_ size: Int, _ data: Data?) async -> Bool {
         let read = (size, data)
-        guard let m = await Task.detached(operation: { read.1.map(readMail) }).value else { problem = read.0 >= 30_000_000 ? "This email is too big to read (over 30 MB)." : "Dateline couldn't open that email file."; return }
+        guard let m = await Task.detached(operation: { read.1.map(readMail) }).value else { problem = read.0 >= 30_000_000 ? "This email is too big to read (over 30 MB)." : "Dateline couldn't open that email file."; return true }
         let d = await readEvent(m, now: today)
-        guard d.problem.isEmpty, let s = d.start else { problem = d.problem.isEmpty ? "Dateline couldn't find a date in that email." : d.problem; return }
+        guard d.problem.isEmpty, let s = d.start else { problem = d.problem.isEmpty ? "Dateline couldn't find a date in that email." : d.problem; return d.problem.isEmpty }
         let f = EmailFind(from: m.fromName.isEmpty ? m.subject : m.fromName, quote: d.quotes.first ?? m.subject,
                           parsed: Parsed(title: d.title, start: s, end: d.end ?? s.addingTimeInterval(3600), allDay: d.allDay, place: d.place, lengthGiven: true, dateGiven: true, notes: d.notes), unsure: d.unsure, whenNote: d.whenNote)
         show(f)
+        return true
     }
 
     /// An invite file (.ics) opened with Dateline: no AI, the invite already says what, when and where (the Mac reads it the same way).
