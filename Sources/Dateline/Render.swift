@@ -118,6 +118,7 @@ private final class ShotWindow: NSWindow {
         shot("set-family") { a in a.pickSet(3) }
         shot("search") { a in a.mode = .month; a.panels.search = "dinner" }
         shot("search-none") { a in a.mode = .month; a.panels.search = "zzqx" }
+        shot("search-week") { a in a.mode = .week; a.days = 7; a.panels.search = "dinner" }
         shot("tasks-week") { $0.mode = .week; $0.days = 5 }
         // Moved into the working day, to check the dashed block.
         shot("task-timed") { a in a.mode = .week; a.days = 5

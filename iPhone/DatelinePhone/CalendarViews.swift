@@ -10,6 +10,7 @@ struct CalendarTab: View {
         NavigationStack(path: $app.path) {
             VStack(spacing: 0) {
                 CalHeader()
+                FilterStrip()
                 Group {
                     switch app.mode {
                     case .list: AgendaView()
@@ -345,6 +346,7 @@ struct AgendaEvent: View {
             .opacity(past ? 0.45 : 1).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .filterDim(it, radius: 8)
     }
 }
 
@@ -416,6 +418,7 @@ struct AllDayChip: View {
                 .background(store.color(it).opacity(0.18), in: RoundedRectangle(cornerRadius: 5))
         }
         .buttonStyle(.plain)
+        .filterDim(it)
     }
 }
 
@@ -758,6 +761,7 @@ struct EventBlock: View {
         .overlay(alignment: .leading) { Rectangle().fill(c).frame(width: wide ? 4 : 3) }
         .overlay(alignment: .bottom) { if lifted { Capsule().fill(c).frame(width: 28, height: 4).padding(.bottom, 3) } }
         .clipShape(RoundedRectangle(cornerRadius: wide ? 8 : 6))
+        .filterDim(it, radius: wide ? 8 : 6)
         .shadow(color: .black.opacity(lifted ? 0.28 : 0), radius: 8, y: 3)
         .scaleEffect(lifted ? 1.03 : 1)
         .contentShape(Rectangle())

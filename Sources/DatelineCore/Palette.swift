@@ -25,6 +25,7 @@ public enum Palette {
     public static let text = c(0x1d1d22, 0xececf1), text2 = c(0x5e5e68, 0xa8a8b3), text3 = c(0x8d8d97, 0x75757f)
     public static let accent = c(0x2f6fde, 0x5b8ff0), accentSoft = c(0xe6eefc, 0x263552), now = c(0xe5484d, 0xe5484d)
     public static let field = c(0xffffff, 0x2c2c32), pop = c(0xffffff, 0x2a2a30)
+    public static let hit = c(0xfff1b8, 0x4d4016), hitLine = c(0xe9bd2f, 0xc9a22a)  // a search match in the calendar
     public static let work = c(0x2f6fde, 0x5b8ff0), personal = c(0x2e9d5b, 0x4cbb7a), family = c(0xd9822b, 0xeb9a4a)
     // Event colors and tag dots (Phase 3): red, amber, green, teal, blue, purple, pink, gray.
     public static let tags = [c(0xe5484d, 0xec5d61), c(0xd9822b, 0xeb9a4a), c(0x2e9d5b, 0x4cbb7a), c(0x1a9aa8, 0x3cb8c5),

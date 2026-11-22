@@ -63,6 +63,8 @@ enum Demo {
         case "year": app.mode = .year
         case "add": app.adding = "Dinner with Ana Friday 7pm at Lola's"
         case "search": app.searching = true; app.searchStart = "dentist"
+        case "filter-week": app.mode = .week; app.filter = "dentist"
+        case "filter-month": app.mode = .month; app.filter = "dentist"
         case "details", "details2":
             let title = s == "details" ? "Dentist" : "Marco at the condo"
             if let it = app.store.between(today, addDays(today, 7)).first(where: { $0.title == title }) { app.open(it) }

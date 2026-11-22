@@ -355,3 +355,6 @@ public func comingUp(_ items: [Item], now: Date) -> [Soon] {
     return Array((onNow + next).prefix(4))
 }
 
+
+/// Search text in an event's title, place or notes, any case: the Mac and iPhone search and the calendar's search dimming. `q` comes trimmed.
+public func searchMatches(_ it: Item, _ q: String) -> Bool { !q.isEmpty && [it.shownTitle, it.place, it.notes].contains { $0.localizedCaseInsensitiveContains(q) } }

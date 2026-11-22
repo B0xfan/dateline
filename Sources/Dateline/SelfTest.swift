@@ -40,6 +40,7 @@ func selftest() -> Int32 {
                                          hit("Hidden dentist", at(11, 20, 9), cal: "x"), hit("Lunch", at(11, 19, 12))], hidden: ["x"], now: at(10, 26, 12))
     expect(sr.coming.map(\.id) == ["Cleaning", "Later"] && sr.past.map(\.id) == ["Dentist May", "Dentist Feb"], "search: title, place, notes in any case; coming soonest first, past newest first; hidden calendars left out")
     expect(searchEvents("  ", in: [hit("Dentist", at(11, 1, 9))], hidden: [], now: at(10, 26, 12)).coming.isEmpty, "search: blank text finds nothing")
+    expect(searchMatches(hit("Team Dinner", at(11, 1, 9)), "dinner") && !searchMatches(hit("Lunch", at(11, 1, 9)), "dinner") && !searchMatches(hit("Lunch", at(11, 1, 9)), ""), "search dimming: a match in any case lights up, others and blank text do not")
     expect(dayCalendars([ev("x", at(1, 1, 0).addingTimeInterval(-86400 * 900), at(1, 1, 0).addingTimeInterval(86400 * 900))], in: yr).count == 365, "year dots: a years-long event is clipped to the year")
 
     expect(jumpDay("march 19", now: now).map { cal.dateComponents([.month, .day], from: $0) == DateComponents(month: 3, day: 19) } == true, "go to date: march 19")

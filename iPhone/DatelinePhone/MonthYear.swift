@@ -86,7 +86,7 @@ struct MonthView: View {
     private func cell(_ d: Date, inMonth: Bool, picked sel: Date) -> some View {
         let today = cal.isDate(d, inSameDayAs: app.today), on = cal.isDate(d, inSameDayAs: sel)
         var seen = Set<String>()
-        let dots = store.shown(on: d).filter { it in seen.insert(it.color.map { n in "c\(n)" } ?? it.calendarID).inserted }.prefix(3).map { store.color($0) }
+        let dots = store.shown(on: d).filter { it in (app.filter.isEmpty || searchMatches(it, app.filter)) && seen.insert(it.color.map { n in "c\(n)" } ?? it.calendarID).inserted }.prefix(3).map { store.color($0) }
         return Button { app.monthPick = d } label: {
             VStack(spacing: 2) {  // compact like Fantastical (John 2026-11-08): 34 pt weeks instead of 56
                 Text(dateText(d, "d")).font(.subheadline.weight(today ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.7)
@@ -175,7 +175,7 @@ struct QuarterView: View {
                     .background(today ? T.accent : .clear, in: Circle())
                     .frame(maxWidth: .infinity)
                 ForEach(shown) { it in  // as in the list: an all-day item is a filled tag, a timed one a dot and its name
-                    if it.allDay {
+                    Group { if it.allDay {
                         Text(it.title).font(.system(size: 9, weight: .semibold)).lineLimit(1).foregroundStyle(.white)
                             .padding(.horizontal, 3).frame(maxWidth: .infinity, alignment: .leading)
                             .background(store.color(it), in: RoundedRectangle(cornerRadius: 3))
@@ -185,7 +185,8 @@ struct QuarterView: View {
                             Text(it.title).font(.system(size: 9, weight: .medium)).lineLimit(1).foregroundStyle(T.text)
                         }
                         .padding(.horizontal, 2).frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    } }
+                    .filterDim(it, radius: 3)
                 }
                 if list.count > 2 { Text("\(list.count - 1) more").font(.system(size: 9)).foregroundStyle(T.text2).padding(.horizontal, 2) }
             }
@@ -204,7 +205,7 @@ struct YearView: View {
 
     var body: some View {
         let y = cal.dateInterval(of: .year, for: app.anchor)!
-        let busy = dayCalendars(store.items.filter { !store.hidden.contains($0.calendarID) }, in: y)
+        let busy = dayCalendars(store.items.filter { !store.hidden.contains($0.calendarID) && (app.filter.isEmpty || searchMatches($0, app.filter)) }, in: y)
         if app.wide { PadYear(start: y.start, busy: busy) } else {
         ScrollView {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: 3), alignment: .leading, spacing: 18) {

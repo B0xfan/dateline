@@ -144,6 +144,7 @@ final class PhoneState: ObservableObject {
     @Published var adding: String?  // the add sheet's starting text; nil = closed
     @Published var email: EmailFind?
     @Published var searching = false
+    @Published var filter = ""  // search text the calendar dims by ("Show in calendar"); "" = off
     var searchStart = ""  // pictures only: the search box's starting text
     @Published var showUnlock = false
     @Published var settingsPath: [String] = []  // the settings pages open, e.g. ["accounts", "iCloud"]

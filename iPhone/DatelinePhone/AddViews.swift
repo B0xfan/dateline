@@ -181,10 +181,14 @@ struct SearchSheet: View {
     var body: some View {
         let q = text.trimmingCharacters(in: .whitespaces)
         let found = q.isEmpty ? [] : pool.filter { it in
-            !store.hidden.contains(it.calendarID) && [it.shownTitle, it.place, it.notes].contains { $0.localizedCaseInsensitiveContains(q) }
+            !store.hidden.contains(it.calendarID) && searchMatches(it, q)
         }.sorted { ($0.end < app.today ? 1 : 0, $0.start) < ($1.end < app.today ? 1 : 0, $1.start) }.prefix(50)  // coming events first, then past ones
         NavigationStack {
             List {
+                if !found.isEmpty {
+                    Button { app.filter = q; dismiss(); app.tab = .calendar } label: { Label("Show in calendar", systemImage: "line.3.horizontal.decrease.circle") }
+                        .fontWeight(.semibold)
+                }
                 ForEach(Array(found)) { it in
                     Button { dismiss(); app.tab = .calendar; app.open(it) } label: {
                         HStack(spacing: 12) {
@@ -205,5 +209,36 @@ struct SearchSheet: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         }
         .onAppear { pool = store.between(addDays(app.today, -365), addDays(app.today, 366)); text = app.searchStart }
+    }
+}
+
+// Search that filters (approved mockup, John 2026-11-22): after "Show in calendar" the calendar dims every event that
+// doesn't match the search and rings the ones that do, under a bar with Show all.
+struct FilterDim: ViewModifier {
+    @EnvironmentObject var app: PhoneState
+    let it: Item, radius: CGFloat
+    func body(content: Content) -> some View {
+        let hit = searchMatches(it, app.filter)
+        content
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Palette.hitLine, lineWidth: hit ? 2 : 0))
+            .opacity(app.filter.isEmpty || hit ? 1 : 0.22)
+    }
+}
+extension View { func filterDim(_ it: Item, radius: CGFloat = 5) -> some View { modifier(FilterDim(it: it, radius: radius)) } }
+
+struct FilterStrip: View {
+    @EnvironmentObject var app: PhoneState
+    var body: some View {
+        if !app.filter.isEmpty {
+            HStack(spacing: 10) {
+                Image(systemName: "line.3.horizontal.decrease.circle").foregroundStyle(T.tint).accessibilityHidden(true)
+                Text("Only \(Text("\u{201C}\(app.filter)\u{201D}").fontWeight(.semibold))").foregroundStyle(T.text).lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Show all") { app.filter = "" }.fontWeight(.semibold).foregroundStyle(T.tint).frame(minHeight: 44)
+            }
+            .font(.subheadline).padding(.horizontal, 12)
+            .background(T.tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 12).padding(.bottom, 6)
+        }
     }
 }

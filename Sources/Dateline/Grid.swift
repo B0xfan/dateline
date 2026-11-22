@@ -51,6 +51,7 @@ struct TimeGrid: View {
                                 .padding(.horizontal, 8).padding(.vertical, 4).frame(maxWidth: .infinity, alignment: .leading)
                                 .background(RoundedRectangle(cornerRadius: 4).fill(c.opacity(0.16)))
                                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(c, lineWidth: app.selectedID == it.id ? 2 : 0))
+                                .searchDim(app, it)
                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                 .onTapGesture { app.selectedID = it.id; app.panels.panelOpen = true }
                                 .contextMenu { EventMenu(app: app, it: it) }
@@ -143,7 +144,7 @@ struct DayColumn: View {
                     let d = drag?.id == it.id ? drag : nil
                     let colW = (w - 4) / CGFloat(max(n, 1))
                     let stretchDY = d?.stretch == true ? d!.dy : 0
-                    OnClock(clock: app.clock) { EventBlock(item: it, color: store.color(it), selected: app.selectedID == it.id, height: f.h + stretchDY, now: $0) }
+                    OnClock(clock: app.clock) { EventBlock(item: it, color: store.color(it), selected: app.selectedID == it.id, height: f.h + stretchDY, now: $0) }.searchDim(app, it, radius: 8)
                         .frame(width: colW - 2, height: max(18, f.h + stretchDY - 2))
                         .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true }
                         .onTapGesture { app.selectedID = it.id }
@@ -356,6 +357,7 @@ struct MonthView: View {
                     }
                     .font(.ui(11)).lineLimit(1).padding(.vertical, 1).frame(height: 16)
                     .background(app.selectedID == it.id ? c.opacity(0.16) : .clear)
+                    .searchDim(app, it)
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true }
                     .onTapGesture { app.selectedID = it.id }
@@ -412,6 +414,7 @@ struct MoreList: View {
                         }
                         .font(.ui(12)).lineLimit(1).padding(.vertical, 3).padding(.horizontal, 6)
                         .background(app.selectedID == it.id ? c.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                        .searchDim(app, it)
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true; close() }
                         .onTapGesture { app.selectedID = it.id }
@@ -721,6 +724,7 @@ struct QuarterView: View {
                     HStack(spacing: 4) { Mark(showAs: it.showAs, color: c, size: 6); Text(it.shownTitle) }
                         .font(.ui(10)).lineLimit(1).frame(height: 16)
                         .background(app.selectedID == it.id ? c.opacity(0.16) : .clear)
+                        .searchDim(app, it)
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { app.selectedID = it.id; app.panels.panelOpen = true }
                         .onTapGesture { app.selectedID = it.id }
@@ -746,9 +750,11 @@ struct QuarterView: View {
 struct YearView: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
+    @ObservedObject var panels: Panels
     var body: some View {
         let year = cal.dateInterval(of: .year, for: app.anchor)!
-        let dots = dayCalendars(app.shownItems, in: year)
+        let q = panels.search.trimmingCharacters(in: .whitespaces)  // while searching, dots for matches only
+        let dots = dayCalendars(q.isEmpty ? app.shownItems : app.shownItems.filter { searchMatches($0, q) }, in: year)
         GeometryReader { g in
             // Up to four across, as approved; a month under 150 points wide runs its two-digit days together.
             let across = max(1, min(4, Int((g.size.width - 28) / 178)))

@@ -44,6 +44,7 @@ struct MainView: View {
                 if width < 700 { AddBox(app: app, box: app.addBox).frame(height: 32).padding(.horizontal, 8); Divider().overlay(Palette.line) }
                 TrialEndedStrip()
                 ForwardStrip(app: app, inbox: app.emails)
+                SearchStrip(app: app, panels: panels)
                 ZStack(alignment: .bottom) {
                     Group {
                         switch store.access {
@@ -53,7 +54,7 @@ struct MainView: View {
                             switch app.mode {
                             case .month: MonthView(app: app, store: store)
                             case .quarter: QuarterView(app: app, store: store)
-                            case .year: YearView(app: app, store: store)
+                            case .year: YearView(app: app, store: store, panels: panels)
                             default: TimeGrid(app: app, store: store)
                             }
                         }

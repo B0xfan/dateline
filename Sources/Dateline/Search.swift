@@ -6,7 +6,7 @@ import DatelineCore
 func searchEvents(_ text: String, in pool: [Item], hidden: Set<String>, now: Date) -> (coming: [Item], past: [Item]) {
     let q = text.trimmingCharacters(in: .whitespaces)
     guard !q.isEmpty else { return ([], []) }
-    let hits = pool.filter { it in !hidden.contains(it.calendarID) && [it.shownTitle, it.place, it.notes].contains { $0.localizedCaseInsensitiveContains(q) } }
+    let hits = pool.filter { !hidden.contains($0.calendarID) && searchMatches($0, q) }
     return (hits.filter { $0.end >= now }.sorted { $0.start < $1.start }, hits.filter { $0.end < now }.sorted { $0.start > $1.start })
 }
 
@@ -71,5 +71,43 @@ struct SearchResults: View {
         }
         .opacity(past ? 0.6 : 1)
         .tag(it.id)
+    }
+}
+
+// Search that filters (approved mockup, John 2026-11-22): while there is search text, the calendar dims every event
+// that doesn't match and marks the ones that do. A modifier on each event, so it follows the search without the views watching it.
+struct SearchDim: ViewModifier {
+    @ObservedObject var panels: Panels
+    let item: Item, radius: CGFloat
+    func body(content: Content) -> some View {
+        let q = panels.search.trimmingCharacters(in: .whitespaces)
+        let hit = searchMatches(item, q)
+        content
+            .background(hit ? Palette.hit : .clear, in: RoundedRectangle(cornerRadius: radius))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Palette.hitLine, lineWidth: hit ? 1 : 0))
+            .opacity(q.isEmpty || hit ? 1 : 0.22)
+    }
+}
+extension View {
+    func searchDim(_ app: AppState, _ it: Item, radius: CGFloat = 4) -> some View { modifier(SearchDim(panels: app.panels, item: it, radius: radius)) }
+}
+
+// The bar over the calendar while searching: what it shows and how many matches are in view; Show all ends the search.
+struct SearchStrip: View {
+    @ObservedObject var app: AppState
+    @ObservedObject var panels: Panels
+    var body: some View {
+        let q = panels.search.trimmingCharacters(in: .whitespaces)
+        if !q.isEmpty, let a = app.visibleDays.first, let b = app.visibleDays.last {
+            let n = app.shownItems.filter { $0.end > a && $0.start < addDays(b, 1) && searchMatches($0, q) }.count
+            HStack(spacing: 8) {
+                Image(systemName: "line.3.horizontal.decrease.circle").foregroundStyle(Palette.accent).accessibilityHidden(true)
+                Text("Showing only events that match \(Text("\u{201C}\(q)\u{201D}").fontWeight(.semibold)) · \(n) in view").lineLimit(1)
+                Spacer(minLength: 8)
+                Button("Show all") { panels.search = ""; panels.searching = false }.buttonStyle(.plain).foregroundStyle(Palette.accent).fontWeight(.semibold)
+            }
+            .font(.ui(13)).padding(.horizontal, 12).padding(.vertical, 8).background(Palette.accent.opacity(0.08))
+            .overlay(alignment: .bottom) { Divider().overlay(Palette.line) }
+        }
     }
 }
