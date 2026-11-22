@@ -190,7 +190,7 @@ struct SearchSheet: View {
                         .fontWeight(.semibold)
                 }
                 ForEach(Array(found)) { it in
-                    Button { dismiss(); app.tab = .calendar; app.open(it) } label: {
+                    Button { if !app.filter.isEmpty { app.filter = q }; dismiss(); app.tab = .calendar; app.open(it) } label: {
                         HStack(spacing: 12) {
                             Bar(color: store.color(it), height: 36)
                             VStack(alignment: .leading, spacing: 2) {
@@ -208,7 +208,7 @@ struct SearchSheet: View {
             .navigationTitle("Search").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         }
-        .onAppear { pool = store.between(addDays(app.today, -365), addDays(app.today, 366)); text = app.searchStart }
+        .onAppear { pool = store.between(addDays(app.today, -365), addDays(app.today, 366)); text = app.filter.isEmpty ? app.searchStart : app.filter }
     }
 }
 
@@ -222,6 +222,7 @@ struct FilterDim: ViewModifier {
         content
             .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Palette.hitLine, lineWidth: hit ? 2 : 0))
             .opacity(app.filter.isEmpty || hit ? 1 : 0.22)
+            .accessibilityValue(hit ? "Matches search" : "")
     }
 }
 extension View { func filterDim(_ it: Item, radius: CGFloat = 5) -> some View { modifier(FilterDim(it: it, radius: radius)) } }

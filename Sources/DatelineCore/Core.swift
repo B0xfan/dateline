@@ -358,3 +358,5 @@ public func comingUp(_ items: [Item], now: Date) -> [Soon] {
 
 /// Search text in an event's title, place or notes, any case: the Mac and iPhone search and the calendar's search dimming. `q` comes trimmed.
 public func searchMatches(_ it: Item, _ q: String) -> Bool { !q.isEmpty && [it.shownTitle, it.place, it.notes].contains { $0.localizedCaseInsensitiveContains(q) } }
+/// A day's events with the search matches first, so a busy day never hides a match under "+N more". Keeps time order within each group.
+public func matchesFirst(_ list: [Item], _ q: String) -> [Item] { q.isEmpty ? list : list.filter { searchMatches($0, q) } + list.filter { !searchMatches($0, q) } }

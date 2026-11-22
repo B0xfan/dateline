@@ -311,6 +311,7 @@ struct EventBlock: View {
 struct MonthView: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
+    @ObservedObject var panels: Panels
     var body: some View {
         // Own grid, not visibleDays: on a switch to Day this view can redraw once more with a 1-day list and crash.
         let grid = monthGrid(app.anchor)
@@ -329,7 +330,7 @@ struct MonthView: View {
                         .frame(width: 36).frame(maxHeight: .infinity, alignment: .top).padding(.top, 8).background(Palette.lineSoft)
                     ForEach(0..<7, id: \.self) { i in
                         let d = grid[w * 7 + i]
-                        cell(d, store.shown(on: d), other: cal.component(.month, from: d) != month)
+                        cell(d, matchesFirst(store.shown(on: d), panels.search.trimmingCharacters(in: .whitespaces)), other: cal.component(.month, from: d) != month)
                     }
                 }.frame(maxHeight: .infinity)
                 .overlay(alignment: .bottom) { Palette.lineSoft.frame(height: 1) }
@@ -659,6 +660,7 @@ struct DetailPanel: View {
 struct QuarterView: View {
     @ObservedObject var app: AppState
     @ObservedObject var store: Store
+    @ObservedObject var panels: Panels
     var body: some View {
         let q = quarterStart(app.anchor)
         HStack(spacing: 0) {
@@ -690,7 +692,7 @@ struct QuarterView: View {
                         .frame(width: 24).frame(maxHeight: .infinity, alignment: .top).padding(.top, 4).background(Palette.lineSoft)
                     ForEach(0..<7, id: \.self) { i in
                         let d = grid[w * 7 + i]
-                        if cal.component(.month, from: d) == m { cell(d, store.shown(on: d)) }
+                        if cal.component(.month, from: d) == m { cell(d, matchesFirst(store.shown(on: d), panels.search.trimmingCharacters(in: .whitespaces))) }
                         else { Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).overlay(alignment: .leading) { Palette.lineSoft.frame(width: 1) } }
                     }
                 }.frame(maxHeight: .infinity)
@@ -707,7 +709,8 @@ struct QuarterView: View {
                 VStack(spacing: 2) {
                     Text(dateText(d, "d")).font(.ui(10)).lineLimit(1).fixedSize()
                         .foregroundStyle(cal.isDate(d, inSameDayAs: app.now) ? Palette.now : Palette.text2)
-                    HStack(spacing: 1) { ForEach(list.prefix(2)) { Circle().fill(store.color($0)).frame(width: 4, height: 4) } }
+                    let q = panels.search.trimmingCharacters(in: .whitespaces)
+                    HStack(spacing: 1) { ForEach((q.isEmpty ? list : list.filter { searchMatches($0, q) }).prefix(2)) { Circle().fill(store.color($0)).frame(width: 4, height: 4) } }
                 }.frame(maxWidth: .infinity).padding(.top, 4).contentShape(Rectangle()).onTapGesture { app.open(day: d) }
             } else {
             VStack(alignment: .leading, spacing: 0) {

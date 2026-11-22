@@ -165,7 +165,7 @@ struct QuarterView: View {
     }
 
     private func cell(_ d: Date) -> some View {
-        let today = cal.isDate(d, inSameDayAs: app.today), list = store.shown(on: d)
+        let today = cal.isDate(d, inSameDayAs: app.today), list = matchesFirst(store.shown(on: d), app.filter)
         let shown = list.count > 2 ? Array(list.prefix(1)) : list  // a third line says how many more, as on the Mac
         return Button { app.anchor = d; app.mode = .day } label: {
             VStack(alignment: .leading, spacing: 2) {

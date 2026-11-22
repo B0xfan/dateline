@@ -86,6 +86,7 @@ struct SearchDim: ViewModifier {
             .background(hit ? Palette.hit : .clear, in: RoundedRectangle(cornerRadius: radius))
             .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Palette.hitLine, lineWidth: hit ? 1 : 0))
             .opacity(q.isEmpty || hit ? 1 : 0.22)
+            .accessibilityValue(hit ? "Matches search" : "")
     }
 }
 extension View {
@@ -99,7 +100,7 @@ struct SearchStrip: View {
     var body: some View {
         let q = panels.search.trimmingCharacters(in: .whitespaces)
         if !q.isEmpty, let a = app.visibleDays.first, let b = app.visibleDays.last {
-            let n = app.shownItems.filter { $0.end > a && $0.start < addDays(b, 1) && searchMatches($0, q) }.count
+            let n = app.shownItems.filter { $0.end >= a && $0.start < addDays(b, 1) && searchMatches($0, q) }.count
             HStack(spacing: 8) {
                 Image(systemName: "line.3.horizontal.decrease.circle").foregroundStyle(Palette.accent).accessibilityHidden(true)
                 Text("Showing only events that match \(Text("\u{201C}\(q)\u{201D}").fontWeight(.semibold)) · \(n) in view").lineLimit(1)
