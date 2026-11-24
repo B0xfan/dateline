@@ -81,7 +81,7 @@ enum Demo {
             case "undo-toast": app.mode = .week; app.demoHold = true; app.say("Moved Dentist")
             default: app.mode = .week; app.addStart = cal.date(byAdding: .minute, value: 14 * 60 + 30, to: addDays(cal.startOfDay(for: today), 1)); app.adding = ""
             }
-        case "folded": app.mode = .week; app.folded = Set(app.store.calendars.map(\.account)).subtracting([app.store.calendars.first?.account ?? ""]).union([CalColumn.listsGroup])  // the iPad column with all but the first account folded
+        case "folded": app.mode = .week; app.demoSideways = PhoneDelegate.pad; app.folded = Set(app.store.calendars.map(\.account)).subtracting([app.store.calendars.first?.account ?? ""]).union([CalColumn.listsGroup])  // the iPad column (drawn sideways, where it shows) with all but the first account folded
         case "tasks": app.tab = .tasks
         case "task-edit", "task-edit-place", "task-new", "task-lists": app.tab = .tasks; app.demoTask = String(s.dropFirst(5))
         case "places": app.tab = .places
