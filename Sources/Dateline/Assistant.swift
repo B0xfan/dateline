@@ -93,10 +93,11 @@ final class Assistant: ObservableObject {
     /// Plain read and write, never FileHandle: a chat that closed mid-answer must not take Dateline down with it.
     nonisolated static func serve(_ c: Int32, _ a: Assistant) {
         defer { close(c) }
+        // Before the ask: once the app hangs up (it gives up while John answers), macOS refuses this setting and a write would kill Dateline.
+        var one: Int32 = 1
+        guard setsockopt(c, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size)) == 0 else { return }
         let who = callerApp(c)
         guard DispatchQueue.main.sync(execute: { MainActor.assumeIsolated { a.admit(who) } }) else { return }
-        var one: Int32 = 1
-        setsockopt(c, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
         var buf = Data(), chunk = [UInt8](repeating: 0, count: 65536)
         while case let n = read(c, &chunk, chunk.count), n > 0 {
             buf += chunk[0..<n]
