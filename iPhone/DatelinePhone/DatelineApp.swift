@@ -187,8 +187,7 @@ final class PhoneState: ObservableObject {
     init(store: Store, today: Date, sample: Bool) {
         self.store = store; self.today = today; self.sample = sample
         anchor = cal.startOfDay(for: today)
-        if sample { weekDays = 7 }  // checks and pictures never follow a saved day count
-        if sample { folded = [] }  // nor saved folds
+        if sample { weekDays = 7; folded = [] }  // checks and pictures never follow a saved day count or folds
         if !sample {  // the pictures always start on the list
             mode = Mode(rawValue: Self.openOn) ?? Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .list
             turnRule()

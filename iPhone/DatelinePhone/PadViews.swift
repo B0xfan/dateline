@@ -238,7 +238,7 @@ struct CalColumn: View {
             .font(label ? .caption.weight(.semibold) : .footnote.weight(.semibold)).tracking(label ? 0.5 : 0).foregroundStyle(T.text2)
             .padding(.horizontal, label ? 0 : 10).frame(minHeight: 44).contentShape(Rectangle())
         }
-        .accessibilityLabel(name).accessibilityValue(open ? "Open" : "Folded").accessibilityHint(open ? "Folds this group shut" : "Shows this group")
+        .accessibilityLabel("\(name), \(count)").accessibilityValue(open ? "Open" : "Folded").accessibilityAddTraits(.isHeader).accessibilityHint(open ? "Folds this group shut" : "Shows this group")
     }
 
     private func setRow(_ name: String, colors: [Color], on: Bool, _ pick: @escaping () -> Void) -> some View {
