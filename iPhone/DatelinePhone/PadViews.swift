@@ -195,17 +195,23 @@ struct CalColumn: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("CALENDARS").modifier(ColumnLabel())
-                    ForEach(store.calendars.filter { !isBlocks($0.id) }) { c in
-                        tick(c.title, c.color, on: !store.hidden.contains(c.id)) { if store.hidden.contains(c.id) { store.hidden.remove(c.id) } else { store.hidden.insert(c.id) } }
+                    let groups = Dictionary(grouping: store.calendars.filter { !isBlocks($0.id) }, by: \.account)
+                    ForEach(groups.keys.sorted(), id: \.self) { acct in
+                        heading(acct, count: groups[acct]!.count)
+                        if !app.folded.contains(acct) {
+                            ForEach(groups[acct]!) { c in
+                                tick(c.title, c.color, on: !store.hidden.contains(c.id)) { if store.hidden.contains(c.id) { store.hidden.remove(c.id) } else { store.hidden.insert(c.id) } }
+                            }
+                        }
                     }
                 }
                 if !store.lists.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("REMINDERS LISTS").modifier(ColumnLabel())
-                        ForEach(store.lists) { l in
+                        heading(Self.listsGroup, count: store.lists.count, label: true)
+                        if !app.folded.contains(Self.listsGroup) { ForEach(store.lists) { l in
                             let open = store.todos.filter { $0.listID == l.id && !$0.done }.count
                             tick(l.title, l.color, on: !store.hiddenLists.contains(l.id), count: open) { if store.hiddenLists.contains(l.id) { store.hiddenLists.remove(l.id) } else { store.hiddenLists.insert(l.id) } }
-                        }
+                        } }
                     }
                 }
             }
@@ -213,6 +219,26 @@ struct CalColumn: View {
             .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 16)
         }
         .background(T.bg2)
+    }
+
+    static let listsGroup = "REMINDERS LISTS"
+
+    /// A group heading that folds its rows shut, as on the Mac: chevron, name, how many.
+    private func heading(_ name: String, count: Int, label: Bool = false) -> some View {
+        let open = !app.folded.contains(name)
+        return Button {
+            if open { app.folded.insert(name) } else { app.folded.remove(name) }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.right").font(.caption2.weight(.bold)).rotationEffect(.degrees(open ? 90 : 0)).frame(width: 14)
+                Text(name).lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(count)").monospacedDigit()
+            }
+            .font(label ? .caption.weight(.semibold) : .footnote.weight(.semibold)).tracking(label ? 0.5 : 0).foregroundStyle(T.text2)
+            .padding(.horizontal, label ? 0 : 10).frame(minHeight: 44).contentShape(Rectangle())
+        }
+        .accessibilityLabel("\(name), \(count)").accessibilityValue(open ? "Open" : "Folded").accessibilityAddTraits(.isHeader).accessibilityHint(open ? "Folds this group shut" : "Shows this group")
     }
 
     private func setRow(_ name: String, colors: [Color], on: Bool, _ pick: @escaping () -> Void) -> some View {

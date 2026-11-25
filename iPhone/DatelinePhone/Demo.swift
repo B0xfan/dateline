@@ -81,6 +81,7 @@ enum Demo {
             case "undo-toast": app.mode = .week; app.demoHold = true; app.say("Moved Dentist")
             default: app.mode = .week; app.addStart = cal.date(byAdding: .minute, value: 14 * 60 + 30, to: addDays(cal.startOfDay(for: today), 1)); app.adding = ""
             }
+        case "folded": app.mode = .week; app.demoSideways = PhoneDelegate.pad; app.folded = Set(app.store.calendars.map(\.account)).subtracting([app.store.calendars.first?.account ?? ""]).union([CalColumn.listsGroup])  // the iPad column (drawn sideways, where it shows) with all but the first account folded
         case "tasks": app.tab = .tasks
         case "task-edit", "task-edit-place", "task-new", "task-lists": app.tab = .tasks; app.demoTask = String(s.dropFirst(5))
         case "places": app.tab = .places
@@ -230,6 +231,10 @@ enum SelfTest {
         store.hiddenLists.insert("r-groc")
         check(!app.store.todos.filter { !store.hiddenLists.contains($0.listID) }.contains { $0.listID == "r-groc" }, "a hidden list's tasks leave the Tasks tab")
         store.hiddenLists = hid
+        let savedFolds = UserDefaults.standard.stringArray(forKey: "foldedGroups")
+        app.folded.insert(CalColumn.listsGroup)
+        check(app.folded.contains(CalColumn.listsGroup) && UserDefaults.standard.stringArray(forKey: "foldedGroups") == savedFolds, "folding a calendar group in a test run never saves")
+        app.folded = []
         let n = store.todos.count
         app.addTask("Buy coffee tomorrow 9am")
         check(store.todos.count == n + 1 && store.todos.last.map { $0.title == "Buy coffee" && $0.timed && $0.due == cal.date(byAdding: .hour, value: 9, to: addDays(mon, 1)) } == true, "a typed task gets its day and time")

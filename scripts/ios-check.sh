@@ -98,13 +98,13 @@ if [ -n "$PAD" ]; then
   xcrun simctl install "$PAD" "$APP" || rc=1
   for mode in light dark; do
     xcrun simctl ui "$PAD" appearance $mode
-    for s in week day month year tasks settings settings-week settings-weather add details week-sideways; do  # sideways last: the phone turns itself, the iPad draws it turned
+    for s in week folded day month year tasks settings settings-week settings-weather add details week-sideways; do  # sideways last: the phone turns itself, the iPad draws it turned
       [ $mode = dark ] && case $s in week|year|week-sideways) ;; *) continue;; esac
       xcrun simctl terminate "$PAD" $BID >/dev/null 2>&1 || true
       xcrun simctl launch "$PAD" $BID --sample -demo $s >/dev/null || rc=1
       sleep 6
       xcrun simctl io "$PAD" screenshot "$OUT/ipad/$s-$mode.png" >/dev/null 2>&1 || rc=1
-      [ $s = week-sideways ] && { sips -r 270 "$OUT/ipad/$s-$mode.png" >/dev/null || rc=1; }  # drawn turned: turn it back
+      case $s in week-sideways|folded) sips -r 270 "$OUT/ipad/$s-$mode.png" >/dev/null || rc=1;; esac  # drawn turned: turn it back
     done
   done
   w=$(sips -g pixelWidth "$OUT/ipad/week-light.png" 2>/dev/null | awk '/pixelWidth/{print $2}')

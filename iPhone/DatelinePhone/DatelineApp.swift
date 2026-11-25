@@ -137,6 +137,8 @@ final class PhoneState: ObservableObject {
         }
     }
     private var autoMode = false, listBeforeWide = false
+    /// Calendar groups folded shut in the iPad's calendar column, as in the Mac sidebar (James 2026-11-05); kept on this device.
+    @Published var folded = Set(UserDefaults.standard.stringArray(forKey: "foldedGroups") ?? []) { didSet { if !sample { UserDefaults.standard.set(folded.sorted(), forKey: "foldedGroups") } } }
     @Published var weekDays: Int = { let d = UserDefaults.standard.integer(forKey: "weekDays"); return [3, 5, 7].contains(d) ? d : 7 }() {
         didSet { if !sample { UserDefaults.standard.set(weekDays, forKey: "weekDays") }; reload() }
     }
@@ -185,7 +187,7 @@ final class PhoneState: ObservableObject {
     init(store: Store, today: Date, sample: Bool) {
         self.store = store; self.today = today; self.sample = sample
         anchor = cal.startOfDay(for: today)
-        if sample { weekDays = 7 }  // checks and pictures never follow a saved day count
+        if sample { weekDays = 7; folded = [] }  // checks and pictures never follow a saved day count or folds
         if !sample {  // the pictures always start on the list
             mode = Mode(rawValue: Self.openOn) ?? Mode(rawValue: UserDefaults.standard.string(forKey: "mode") ?? "") ?? .list
             turnRule()
