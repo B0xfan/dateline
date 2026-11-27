@@ -34,8 +34,6 @@ public struct WSnap: Codable, Equatable {
     public var tasks: [Job] = []
     public var sets: [Group] = []
     public var weather: [String: String] = [:]  // "2026-11-27": "31° · clear"
-    public var weekStart = "Match Mac"
-    public var apple: [String] = []  // Apple calendars, which the iPhone widgets read live (WidgetShare.live)
     public init() {}
 
     /// What a widget showing `set` holds; nil or a set since deleted shows everything.
@@ -61,7 +59,7 @@ public struct WSnap: Codable, Equatable {
     /// Tasks due today or earlier, late ones first; a ticked one stays (struck through) until the app has saved it.
     public func due(now: Date) -> [Job] {
         let end = addDays(cal.startOfDay(for: now), 1)
-        return tasks.filter { $0.due.map { $0 < end } == true }.sorted { ($0.done ? 1 : 0, $0.due!) < ($1.done ? 1 : 0, $1.due!) }
+        return tasks.filter { $0.due.map { $0 < end } == true }.sorted { ($0.done ? 1 : 0, $0.due ?? .distantFuture) < ($1.done ? 1 : 0, $1.due ?? .distantFuture) }
     }
 }
 
@@ -79,13 +77,21 @@ public enum WidgetShare {
     /// True when the saved copy changed, so the app asks the widgets to redraw only then.
     @discardableResult public static func write(_ s: WSnap) -> Bool { store(s, "widgets.json") }
 
-    /// Tasks ticked in a widget, with when, waiting for the app.
-    public static func ticks() -> [String: Date] { load("ticks.json") ?? [:] }
-    public static func setTicks(_ t: [String: Date]) { store(t, "ticks.json") }
+    /// Tasks ticked in a widget, with when, waiting for the app. One file per tick, so a tick made while the app is
+    /// clearing others is never written over.
+    public static func ticks() -> [String: Date] {
+        guard let f = folder, let names = try? FileManager.default.contentsOfDirectory(atPath: f.path) else { return [:] }
+        return names.filter { $0.hasPrefix("tick-") }.reduce(into: [:]) { all, n in
+            let one: [String: Date]? = load(n)
+            one?.forEach { all[$0.key] = $0.value }
+        }
+    }
+    public static func clearTick(_ id: String) { folder.map { try? FileManager.default.removeItem(at: $0.appendingPathComponent(tickFile(id))) } }
+    private static func tickFile(_ id: String) -> String { "tick-" + id.utf8.map { String(format: "%02x", $0) }.joined() + ".json" }
 
     /// The Tasks widget's tick: shows at once, and tells the app, which saves it (or picks it up when it next starts).
     public static func tick(_ id: String, now: Date = Date()) {
-        var t = ticks(); t[id] = now; setTicks(t)
+        store([id: now], tickFile(id))
         if var s = read(), let i = s.tasks.firstIndex(where: { $0.id == id }) { s.tasks[i].done = true; write(s) }
         CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFNotificationName(tickNote as CFString), nil, nil, true)
     }
@@ -102,7 +108,25 @@ public enum WidgetShare {
         return (tick, keep)
     }
 
-    /// The Up next widget's Add button: opens the app, which then puts the cursor in its add box.
+    /// The day a widget link names: dateline://day/2026-11-27 or dateline://event/<id>?day=2026-11-27.
+    public static func day(of link: URL) -> Date? {
+        let s = link.host == "day" ? link.lastPathComponent : URLComponents(url: link, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "day" }?.value
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = cal; f.timeZone = cal.timeZone
+        return s.flatMap(f.date(from:)).map { cal.startOfDay(for: $0) }
+    }
+
+    /// The app's side of the ticks, run after every change to the tasks: saves one tick per pass, since a save still under way
+    /// turns the next one away; the change it makes runs the next pass. Ticks for tasks already done, or never found, go.
+    public static func takeTick(todos: [ToDo], loaded: Bool, now: Date = Date(), save: (ToDo) -> Void) {
+        let waiting = ticks()
+        guard !waiting.isEmpty else { return }
+        let (tick, keep) = settle(waiting, todos: todos, loaded: loaded, now: now)
+        waiting.keys.filter { id in keep[id] == nil && !tick.contains { $0.id == id } }.forEach(clearTick)
+        if let t = tick.first { clearTick(t.id); save(t) }
+    }
+
+    /// iPhone only: the Up next widget's Add button runs in the widget, so it leaves this for the app it opens.
+    /// (On the Mac the button is a plain dateline://add link.) Opens the app, which then puts the cursor in its add box.
     public static func ask(_ what: String, now: Date = Date()) {
         store([what: now], "ask.json")
         CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFNotificationName(tickNote as CFString), nil, nil, true)
@@ -165,8 +189,6 @@ extension Store {
             .map { WSnap.Job(id: $0.id, title: $0.title, list: $0.listID, due: $0.due, timed: $0.timed, a4: $0.a4 != nil) }
         s.sets = sets.map { WSnap.Group(id: $0.id, name: $0.name, calendars: $0.calendars, lists: $0.lists) }
         for i in 0..<7 { let d = addDays(today, i); if let w = weather(d) { s.weather[wxDayKey(d)] = "\(degrees(w.hi)) · \(wxLook(w.code).words.lowercased())" } }
-        s.weekStart = WorkWeek.start
-        s.apple = source.calendars().map(\.id)
         return s
     }
 }

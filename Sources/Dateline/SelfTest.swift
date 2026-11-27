@@ -396,6 +396,21 @@ func selftest() -> Int32 {
     expect(fm.subject == "Fwd: Dinner at Lola's" && fm.fromName == "John Hesch" && fm.body.contains("7:00 PM, Playa") && !fm.body.contains("<p>"), "forward: a picked-up email reads as an email file (\(fm.subject) / \(fm.body.prefix(60)))")
     emailSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
     accountsSelftest(expect) { y, m, d, h, mi in cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: mi))! }
+    // Widget ticks (WidgetLogic.swift): one file per tick, one save per pass, done or unknown tasks dropped; a scratch folder, never the real group.
+    do {
+        let keep = WidgetShare.folder
+        WidgetShare.folder = FileManager.default.temporaryDirectory.appendingPathComponent("dateline-widget-test-\(UUID().uuidString)")
+        defer { if let f = WidgetShare.folder { try? FileManager.default.removeItem(at: f) }; WidgetShare.folder = keep }
+        let a = ToDo(id: "a/1", listID: "l", title: "a"), b = ToDo(id: "b", listID: "l", title: "b"), d = ToDo(id: "d", listID: "l", title: "d", done: true)
+        ["a/1", "b", "d", "gone"].forEach { WidgetShare.tick($0) }
+        expect(WidgetShare.ticks().count == 4, "widget: each tick kept in its own file")
+        var saved: [String] = []
+        WidgetShare.takeTick(todos: [a, b, d], loaded: true, now: Date().addingTimeInterval(90000)) { saved.append($0.id) }
+        expect(saved.count == 1 && WidgetShare.ticks().count == 1, "widget: one save per pass, done and unknown ticks dropped")
+        WidgetShare.takeTick(todos: [a, b, d], loaded: true) { saved.append($0.id) }
+        expect(Set(saved) == ["a/1", "b"] && WidgetShare.ticks().isEmpty, "widget: the next pass saves the rest")
+        expect(WidgetShare.day(of: URL(string: "dateline://event/x?day=2026-11-27")!) == cal.date(from: DateComponents(year: 2026, month: 11, day: 27)), "widget: link day")
+    }
     print(fails == 0 ? "selftest: all passed" : "selftest: \(fails) failed")
     return fails == 0 ? 0 : 1
 }

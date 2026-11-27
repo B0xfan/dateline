@@ -83,7 +83,6 @@ struct DatelineApp: App {
                         app.openMain?()
                         if ids.count == 1 { app.panels.reviewing = ids[0] }
                     }
-                    Delegate.openLinks = { app.open(link: $0) }
                     DispatchQueue.main.async { if let w = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) { FullScreen.shared.adopt(w) } }  // the window is attached a moment after it appears
                 }
         }

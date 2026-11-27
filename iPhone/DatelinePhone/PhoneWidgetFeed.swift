@@ -33,12 +33,7 @@ final class PhoneWidgetFeed {
     func takeTicks() {
         guard let app else { return }
         if WidgetShare.takeAsk() == "add", let link = URL(string: "dateline://add") { app.open(link: link) }  // the Up next widget's Add button
-        let waiting = WidgetShare.ticks()
-        guard !waiting.isEmpty else { return }
-        let (tick, keep) = WidgetShare.settle(waiting, todos: app.store.todos, loaded: app.store.taskAccess != .unknown, now: Date())
-        WidgetShare.setTicks(keep)
-        tick.forEach(app.toggle)
-        write()
+        WidgetShare.takeTick(todos: app.store.todos, loaded: app.store.taskAccess != .unknown, save: app.toggle)
     }
 }
 
@@ -48,8 +43,7 @@ extension PhoneState {
     func open(link: URL) {
         tab = .calendar
         if link.host == "add" { adding = ""; return }
-        let day = (link.host == "day" ? link.lastPathComponent : URLComponents(url: link, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "day" }?.value)
-            .flatMap { s -> Date? in let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = cal; f.timeZone = cal.timeZone; return f.date(from: s) }
-        if let day { anchor = cal.startOfDay(for: day) }
+        let day = WidgetShare.day(of: link)
+        if let day { anchor = day }
     }
 }

@@ -45,12 +45,14 @@ struct TickTask: AppIntent {
     func perform() async throws -> some IntentResult { WidgetShare.tick(id); return .result() }
 }
 
+#if os(iOS)  // the Mac's Add is a plain link
 struct AddEvent: AppIntent {
     static var title: LocalizedStringResource = "Add to Dateline"
     static var isDiscoverable = false
     static var openAppWhenRun = true
     func perform() async throws -> some IntentResult { WidgetShare.ask("add"); return .result() }
 }
+#endif
 
 // MARK: - Timeline
 
@@ -185,8 +187,12 @@ struct NextView: View {
                 Text("Nothing coming up").font(.callout).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
+            #if os(macOS)
+            Tap(URL(string: "dateline://add")!) { Text("+ Add").font(.caption.weight(.semibold)).foregroundStyle(accent).frame(maxWidth: .infinity, minHeight: 24).background(accent.opacity(0.12), in: Capsule()) }
+            #else  // an iPhone small widget opens only its one link, so Add is a button that tells the app (WidgetShare.ask)
             Button(intent: AddEvent()) { Text("+ Add").font(.caption.weight(.semibold)).frame(maxWidth: .infinity) }
                 .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(accent)
+            #endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .widgetURL(n.map(link) ?? link(e.date))

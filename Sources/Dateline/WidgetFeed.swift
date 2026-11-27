@@ -13,6 +13,7 @@ final class WidgetFeed {
 
     func attach(_ app: AppState) {
         self.app = app
+        Delegate.openLinks = { [weak app] in app?.open(link: $0) }  // set here, not when the window opens: Dateline runs with it closed
         let s = app.store
         // A sync sends bursts of changes: one write two seconds after the last.
         watch = Publishers.MergeMany(s.$soon.map { _ in () }.eraseToAnyPublisher(), s.$todos.map { _ in () }.eraseToAnyPublisher(),
@@ -35,30 +36,22 @@ final class WidgetFeed {
         if WidgetShare.write(snap) { WidgetCenter.shared.reloadAllTimelines() }
     }
 
-    // Ticks wait in the app group until the tasks are read; each is saved as a click on its circle would. A save that fails
-    // shows its error in the window, and the task comes back in the widget with the next write.
+    // A save that fails shows its error in the window, and the task comes back in the widget with the next write.
     func takeTicks() {
         guard let app else { return }
-        if WidgetShare.takeAsk() == "add", let link = URL(string: "dateline://add") { app.open(link: link) }
-        let waiting = WidgetShare.ticks()
-        guard !waiting.isEmpty else { return }
-        let (tick, keep) = WidgetShare.settle(waiting, todos: app.store.todos, loaded: app.store.taskAccess != .unknown, now: Date())
-        WidgetShare.setTicks(keep)
-        tick.forEach(app.toggle)
-        write()
+        WidgetShare.takeTick(todos: app.store.todos, loaded: app.store.taskAccess != .unknown, save: app.toggle)
     }
 }
 
 extension AppState {
     /// A widget's link: dateline://day/2026-11-27, dateline://event/<id>?day=2026-11-27, dateline://add.
     func open(link: URL) {
-        let day = (link.host == "day" ? link.lastPathComponent : URLComponents(url: link, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "day" }?.value)
-            .flatMap { s -> Date? in let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = cal; f.timeZone = cal.timeZone; return f.date(from: s) }
+        let day = WidgetShare.day(of: link)
         openMain?()
         switch link.host {
-        case "add": addBox.focusAsks += 1
-        case "event": if let d = day { anchor = cal.startOfDay(for: d) }; selectedID = URLComponents(url: link, resolvingAgainstBaseURL: false).flatMap { String($0.percentEncodedPath.dropFirst()).removingPercentEncoding }
-        default: if let d = day { anchor = cal.startOfDay(for: d) }
+        case "add": DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.addBox.focusAsks += 1 }  // as New Event (Menus.swift): a reopened window needs a moment
+        case "event": if let day { anchor = day }; selectedID = URLComponents(url: link, resolvingAgainstBaseURL: false).flatMap { String($0.percentEncodedPath.dropFirst()).removingPercentEncoding }
+        default: if let day { anchor = day }
         }
     }
 }
