@@ -17,7 +17,12 @@ done
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 print -r -- "$PWD/Widgets/DatelineWidgets.swift" > "$T/src"
 find "$BIN/../.." -path '*Release*DatelineWidgets*' -name '*.swiftconstvalues' 2>/dev/null | sed "s|^\([^/]\)|$PWD/\1|" > "$T/cv"
-[ -s "$T/cv" ] || { echo "no constant values for DatelineWidgets: build with swift build -c release first"; exit 1; }
+# shortcut: GitHub's older SwiftPM writes no constant values; its build is only a compile check, so it skips the metadata there.
+# Releases are built on John's Mac, where a missing file stops the script. Upgrade if releases ever move to GitHub.
+if [ ! -s "$T/cv" ]; then
+  [ -n "${CI:-}" ] && { echo "CI: no App Intents metadata (older SwiftPM)"; codesign --force "$@" --entitlements App/Widgets.entitlements --sign "$ID" "$EX"; exit 0; }
+  echo "no constant values for DatelineWidgets: build with swift build -c release first"; exit 1
+fi
 xcrun appintentsmetadataprocessor --output "$EX/Contents/Resources" --toolchain-dir "$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain" \
   --module-name DatelineWidgets --sdk-root "$(xcrun --sdk macosx --show-sdk-path)" --xcode-version "$(xcodebuild -version | awk '/Build version/{print $3}')" \
   --platform-family macOS --deployment-target 14.0 --target-triple "$(uname -m)-apple-macos14.0" \

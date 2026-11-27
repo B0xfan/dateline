@@ -159,7 +159,11 @@ public func hexOf(_ c: Color) -> String {
     return out
     #else
     var r: CGFloat = 0.5, g: CGFloat = 0.5, b: CGFloat = 0.5, a: CGFloat = 1
+    #if os(iOS)
     UIColor(c).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)).getRed(&r, green: &g, blue: &b, alpha: &a)
+    #else  // the watch has one look
+    UIColor(c).getRed(&r, green: &g, blue: &b, alpha: &a)
+    #endif
     return String(format: "#%02x%02x%02x", Int(max(0, min(1, r)) * 255), Int(max(0, min(1, g)) * 255), Int(max(0, min(1, b)) * 255))
     #endif
 }
