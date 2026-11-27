@@ -29,6 +29,7 @@ REVIEWED = {
     ("APPLE-3.1.1-EXTERNAL-PAYMENT", "DatelinePhone/SettingsView.swift"): "the Working hours setting; Pro is a StoreKit purchase",
     ("APPLE-5.1.1-MISSING-PRIVACY-POLICY", None): "the privacy policy is linked on the App Store page and dateline.app",
     ("BOTH-PLACEHOLDER", "DatelinePhone/Demo.swift"): "sample data for the store pictures and self-tests, never shown to people",
+    ("BOTH-UNSAFE-DEEPLINK", "DatelinePhone/Info.plist"): "dateline:// only carries widget taps (a day or the add box); it opens a view, holds no secret, changes no data",
 }
 PAD_SHOTS = ["week", "week-sideways", "day", "month", "tasks", "add", "details", "settings"]  # light pictures, store order
 
