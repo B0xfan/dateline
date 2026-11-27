@@ -8,6 +8,8 @@ BIN="$(swift build -c release --show-bin-path)"
 EX="$APP/Contents/PlugIns/DatelineWidgets.appex"
 rm -rf "$EX"; mkdir -p "$EX/Contents/MacOS" "$EX/Contents/Resources"
 cp "$BIN/DatelineWidgets" "$EX/Contents/MacOS/DatelineWidgets"
+# Without this entry point (Package.swift linker flags) macOS traps the extension at launch and no widget is listed.
+nm -u "$EX/Contents/MacOS/DatelineWidgets" | grep -qx _NSExtensionMain || { echo "widgets not linked as an extension (_NSExtensionMain missing)"; exit 1; }
 cp App/WidgetsInfo.plist "$EX/Contents/Info.plist"
 for k in CFBundleShortVersionString CFBundleVersion; do
   /usr/libexec/PlistBuddy -c "Set :$k $(/usr/libexec/PlistBuddy -c "Print :$k" "$APP/Contents/Info.plist")" "$EX/Contents/Info.plist"
