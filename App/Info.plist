@@ -32,6 +32,8 @@
     <key>SUAutomaticallyUpdate</key><false/>
     <key>SUAllowsAutomaticUpdates</key><true/>
     <key>SUVerifyUpdateBeforeExtraction</key><true/>
+    <!-- a click on a desktop widget opens dateline://day/..., dateline://event/... or dateline://add -->
+    <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>com.johnhesch.dateline</string><key>CFBundleURLSchemes</key><array><string>dateline</string></array></dict></array>
     <key>NSHumanReadableCopyright</key><string>John Hesch</string>
 </dict>
 </plist>

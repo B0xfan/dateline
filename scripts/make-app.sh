@@ -28,6 +28,7 @@ python3 -I scripts/patch-sparkle-strings.py "$SPK"
 ID=AB33048703517BE9CB52B2E3781C8B1B00C8A64D
 # On any other Mac (no such identity) sign ad hoc: it works, but macOS asks for permissions again after each update there.
 security find-identity -v -p codesigning | grep -q "$ID" || ID=-
+scripts/pack-widgets.sh "$APP" "$ID"
 # Inside out: Sparkle's installer, its progress app, the framework, then the app. No --deep.
 for part in "$SPK/Versions/B/Autoupdate" "$SPK/Versions/B/Updater.app" "$SPK" "$APP"; do codesign --force --sign "$ID" "$part"; done
 echo "$APP"

@@ -60,8 +60,13 @@ final class Delegate: NSObject, NSApplicationDelegate {
     @MainActor static var waiting: [URL] = []
     func application(_ application: NSApplication, open urls: [URL]) {
         let ics = urls.filter { $0.isFileURL && $0.pathExtension.lowercased() == "ics" }
-        MainActor.assumeIsolated { if let f = Self.openFiles { f(ics) } else { Self.waiting += ics } }
+        if !ics.isEmpty { MainActor.assumeIsolated { if let f = Self.openFiles { f(ics) } else { Self.waiting += ics } } }
+        // A click on a desktop widget (WidgetFeed.swift); held like the files when it started the app.
+        let links = urls.filter { $0.scheme == "dateline" }
+        MainActor.assumeIsolated { if let f = Self.openLinks { links.forEach(f) } else { Self.waitingLinks += links } }
     }
+    @MainActor static var openLinks: ((URL) -> Void)? { didSet { if let f = openLinks { waitingLinks.forEach(f); waitingLinks = [] } } }
+    @MainActor static var waitingLinks: [URL] = []
 }
 
 struct DatelineApp: App {
@@ -78,6 +83,7 @@ struct DatelineApp: App {
                         app.openMain?()
                         if ids.count == 1 { app.panels.reviewing = ids[0] }
                     }
+                    Delegate.openLinks = { app.open(link: $0) }
                     DispatchQueue.main.async { if let w = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) { FullScreen.shared.adopt(w) } }  // the window is attached a moment after it appears
                 }
         }

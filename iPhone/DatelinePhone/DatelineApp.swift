@@ -27,6 +27,7 @@ struct DatelineApp: App {
             #endif
             let real = PhoneState(store: Store(sample: false), today: Date(), sample: false)
             WatchLink.shared.start(real)  // saves the watch's ticks and spoken events
+            PhoneWidgetFeed.shared.attach(real)  // the Home Screen widgets' copy, and their ticks
             return real
         }
         _app = StateObject(wrappedValue: made)
@@ -40,7 +41,8 @@ struct DatelineApp: App {
                 // the pictures and checks never touch the real icon or ask; on leaving too, in case midnight passed with Dateline open
                 if !app.sample, phase == .active { Task { await DateBadge.update(ask: true) } }
                 if !app.sample, phase == .background { Task { await DateBadge.setToday() } }  // only the number: no re-plan while iOS may suspend us mid-way
-                if phase == .active { app.store.refreshSubs(); app.planTravel() }  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
+                if phase == .active { app.store.refreshSubs(); app.planTravel() }
+                if !app.sample, phase == .active { PhoneWidgetFeed.shared.takeTicks() }  // ticks made in a widget while Dateline was closed  // subscribed calendars whose update time has come (the Mac checks every 5 minutes)
                 if !app.sample, phase == .active {  // forwarded emails are picked up on opening (John 2026-11-21)
                     Forward.shared.deliver = { [app] mails in
                         let kept = mails.filter(PhoneState.keepForwarded)  // on disk before the server deletes its copy

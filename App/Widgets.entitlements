@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- macOS loads a widget only when it runs in the sandbox; it reads Dateline's copy in the shared group -->
+    <key>com.apple.security.app-sandbox</key><true/>
+    <key>com.apple.security.application-groups</key><array><string>LJZ32VB25F.com.johnhesch.dateline</string></array>
+</dict>
+</plist>

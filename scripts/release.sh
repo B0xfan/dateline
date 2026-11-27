@@ -50,6 +50,7 @@ ID=AB33048703517BE9CB52B2E3781C8B1B00C8A64D
 grep -q "$ID" <<<"$(security find-identity -v -p codesigning)" || { echo "Apple Development identity missing: Xcode > Settings > Accounts"; exit 1; }
 SPK="$APP/Contents/Frameworks/Sparkle.framework"
 for part in "$SPK/Versions/B/Autoupdate" "$SPK/Versions/B/Updater.app" "$SPK"; do codesign --force --options runtime --timestamp=none --sign "$ID" "$part"; done
+scripts/pack-widgets.sh "$APP" "$ID" --options runtime --timestamp=none
 codesign --force --options runtime --timestamp=none --entitlements App/Dateline.entitlements --sign "$ID" "$APP"
 AR="$OUT/Dateline.xcarchive"; mkdir -p "$AR/Products/Applications"; mv "$APP" "$AR/Products/Applications/"
 python3 -I - "$AR/Info.plist" "$VER" "$N" <<'PY2'

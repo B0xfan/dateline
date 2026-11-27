@@ -43,7 +43,8 @@ struct RootView: View {
         .fileImporter(isPresented: $app.pickingEmail, allowedContentTypes: [.emailMessage]) { r in
             if case .success(let url) = r { Task { await app.readEmail(url) } }
         }
-        .onOpenURL { url in  // an .eml or an invite (.ics) shared or opened in Dateline
+        .onOpenURL { url in  // an .eml or an invite (.ics) shared or opened in Dateline, or a tap on a widget
+            if url.scheme == "dateline" { return app.open(link: url) }
             guard url.isFileURL else { return }
             app.tab = .calendar
             Task { if url.pathExtension.lowercased() == "ics" { await app.readInviteFile(url) } else { await app.readEmail(url) } }

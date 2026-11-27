@@ -40,5 +40,7 @@
 	<string>Dateline shows your reminders as tasks on the calendar.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
+	<!-- a tap on a Home Screen widget opens dateline://day/..., dateline://event/... or dateline://add -->
+	<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>com.johnhesch.dateline</string><key>CFBundleURLSchemes</key><array><string>dateline</string></array></dict></array>
 </dict>
 </plist>

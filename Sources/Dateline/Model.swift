@@ -111,7 +111,7 @@ final class AppState: ObservableObject {
         lookSync = NotificationCenter.default.addObserver(forName: Look.synced, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.look += 1 } }
         now = today
         reload()
-        if store.access != .sample { Assistant.shared.attach(self) }  // here, not when the window opens: Dateline also runs with its window closed
+        if store.access != .sample { Assistant.shared.attach(self); WidgetFeed.shared.attach(self) }  // here, not when the window opens: Dateline also runs with its window closed
     }
 
     // The days the day or week view shows. Week views start on the day you are on, today unless you moved (John 2026-10-30). A 5 day week then skips days off.

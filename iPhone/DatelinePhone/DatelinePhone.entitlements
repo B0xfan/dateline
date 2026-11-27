@@ -4,5 +4,7 @@
 <dict>
     <!-- iPhone step 2: the same iCloud key-value store as the Mac app (App/Dateline.entitlements), named in full so it stays shared if the phone ever gets its own app ID -->
     <key>com.apple.developer.ubiquity-kvstore-identifier</key><string>$(TeamIdentifierPrefix)com.johnhesch.dateline</string>
+    <!-- the Home Screen widgets read what to show here and leave their ticks (WidgetLogic.swift); the watch app shares the same group -->
+    <key>com.apple.security.application-groups</key><array><string>group.com.johnhesch.dateline</string></array>
 </dict>
 </plist>

@@ -9,6 +9,8 @@ let package = Package(
     targets: [
         // the logic shared with the iPhone and watch apps: sentences, repeats, calendar files, the store, accounts, weather, drive times, alerts, license. No screens, no Mac-only code.
         .target(name: "DatelineCore", path: "Sources/DatelineCore"),
+        // the desktop widgets (Widgets/), packed into Dateline.app/Contents/PlugIns by make-app.sh and release.sh; the iPhone builds the same file in Xcode
+        .executableTarget(name: "DatelineWidgets", dependencies: ["DatelineCore"], path: "Widgets"),
         .executableTarget(name: "Dateline", dependencies: ["DatelineCore", .product(name: "Sparkle", package: "Sparkle")], path: "Sources/Dateline",
                                 // the app bundle keeps Sparkle.framework in Contents/Frameworks; the bare built program (--selftest, --render) finds it beside itself
                                 linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks", "-Xlinker", "-rpath", "-Xlinker", "@executable_path"])])
