@@ -32,6 +32,9 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUStandard
 
     func check() { controller?.checkForUpdates(nil) }
 
+    /// Test versions (release.sh --beta) reach only copies with BetaUpdates set (John's Mac); everyone else's copy skips them until --promote.
+    func allowedChannels(for updater: SPUUpdater) -> Set<String> { UserDefaults.standard.bool(forKey: "BetaUpdates") ? ["beta"] : [] }
+
     /// "Check for updates every day".
     var daily: Bool {
         get { controller?.updater.automaticallyChecksForUpdates ?? true }

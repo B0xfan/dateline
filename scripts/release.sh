@@ -2,15 +2,31 @@
 # Makes the next Dateline version that installed copies offer through Dateline > Check for Updates.
 #   scripts/release.sh "Line one of what is new
 #   Line two"            builds and checks everything, publishes NOTHING (dry run, files in build/release/)
-#   scripts/release.sh "..." --publish    the same, then publishes the GitHub release (zip + appcast.xml)
+#   scripts/release.sh "..." --publish    the same, then publishes the GitHub release (zip + appcast.xml) to EVERYONE
+#   scripts/release.sh "..." --beta       publishes a test version only copies with BetaUpdates on get (John's Mac): new features go here first
+#   scripts/release.sh --promote v0.1.N   gives that test version to everyone, once it has been checked on John's Mac
 # Runs on John's Mac: the signing identity lives only here. Builds locally, niced (scripts/local-build.sh).
 # Needs: gh logged in, the update key file (Application Support/Dateline/update-signing.key, backup in Bitwarden: "Dateline update signing key").
 # Other people's copies reach the update list only while the repo is public.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-NOTES="${1:?Say what is new, in plain words, one line per change}"
-PUBLISH=""; [ "${2:-}" = "--publish" ] && PUBLISH=1
 REPO="B0xfan/dateline"
+if [ "${1:-}" = "--promote" ]; then
+  TAG="${2:?Which test version, e.g. v0.1.60}"
+  [ "$(gh release view "$TAG" --repo "$REPO" --json isPrerelease -q .isPrerelease)" = "true" ] || { echo "$TAG is not a test version"; exit 1; }
+  N=${TAG##*.}; CUR=$(gh release view --repo "$REPO" --json tagName -q .tagName)
+  [ "$N" -gt "${CUR##*.}" ] || { echo "$TAG is not newer than the release everyone has ($CUR)"; exit 1; }
+  gh release edit "$TAG" --repo "$REPO" --prerelease=false --latest   # its own appcast has the plain item, so every copy now sees it
+  for i in 1 2 3 4 5 6; do
+    A=$(curl -fsSL "https://github.com/$REPO/releases/latest/download/appcast.xml") || A=""
+    grep -q "<sparkle:version>$N<" <<<"$A" && ! grep -q '<sparkle:channel>' <<<"$A" && { echo "Promoted $TAG: every copy's update list now offers it."; exit 0; }
+    sleep 5
+  done
+  echo "Promoted, but the update list URL does not show it yet: check it"; exit 1
+fi
+NOTES="${1:?Say what is new, in plain words, one line per change}"
+[[ "$NOTES" != --* ]] || { echo "Say what is new first, then the mode: release.sh \"...\" --beta"; exit 1; }
+PUBLISH=""; BETA=""; [ "${2:-}" = "--publish" ] && PUBLISH=1; [ "${2:-}" = "--beta" ] && PUBLISH=1 BETA=1
 SUPPORT="$HOME/Library/Application Support/Dateline"
 KEY="$SUPPORT/update-signing.key"
 [ -f "$KEY" ] || { echo "Update key file missing: $KEY (backup: Bitwarden, 'Dateline update signing key')"; exit 1; }
@@ -143,10 +159,34 @@ DRAFTED=""; trap 'rm -rf "$V"; [ -z "$DRAFTED" ] || gh release delete "$TAG" --r
 DRAFTED=1
 cp "$ZIP" "$OUT/Dateline.zip"   # same file under a name that never changes: releases/latest/download/Dateline.zip is the link the website gives buyers; Payhip links Dateline.dmg
 gh release create "$TAG" "$ZIP" "$OUT/Dateline.zip" "$DMG" "$OUT/appcast.xml" --repo "$REPO" --draft --title "Dateline $VER" --notes "$NOTES"
-gh release edit "$TAG" --repo "$REPO" --draft=false --latest
+if [ -n "$BETA" ]; then
+  # Test version: a prerelease (buyers' download links and releases/latest stay on the stable one), and its item joins the stable
+  # appcast marked channel beta, which only copies with BetaUpdates on accept. Older copies (before 0.1.59) ignore channel items too.
+  STABLE=$(gh release view --repo "$REPO" --json tagName -q .tagName)
+  gh release download "$STABLE" --repo "$REPO" --pattern appcast.xml --dir "$V/stable" --clobber
+  mkdir -p "$V/orig"; cp "$V/stable/appcast.xml" "$V/orig/appcast.xml"
+  python3 -I - "$V/stable/appcast.xml" "$OUT/appcast.xml" <<'PY'
+import sys, re
+stable, new = sys.argv[1:3]
+s = re.sub(r"\s*<item>(?:(?!</item>).)*<sparkle:channel>beta</sparkle:channel>.*?</item>", "", open(stable).read(), flags=re.S)  # only the newest test version
+item = re.search(r"\s*<item>.*?</item>", open(new).read(), re.S).group(0).replace("<title>", "<sparkle:channel>beta</sparkle:channel>\n      <title>", 1)
+assert s.count("</channel>") == 1 and "<sparkle:channel>" not in s
+out = s.replace("\n  </channel>", item + "\n  </channel>", 1)
+assert "beta</sparkle:channel>" in out, "test item not added"
+open(stable, "w").write(out)
+PY
+  gh release edit "$TAG" --repo "$REPO" --draft=false --prerelease --latest=false
+  DRAFTED=""
+  # shortcut: a stable --publish made while a test version is waiting drops it from the update list; re-run --beta after it if needed.
+  # --clobber deletes the live list before uploading: on a failure put the original back, or every copy's update check breaks.
+  gh release upload "$STABLE" "$V/stable/appcast.xml" --repo "$REPO" --clobber || { gh release upload "$STABLE" "$V/orig/appcast.xml" --repo "$REPO" --clobber; echo "Test list upload failed; original restored"; exit 1; }
+else
+  gh release edit "$TAG" --repo "$REPO" --draft=false --latest
+fi
 DRAFTED=""   # published: a failed check below must not delete a live release
 for i in 1 2 3 4 5 6; do
-  curl -fsSL "https://github.com/$REPO/releases/latest/download/appcast.xml" | grep -q "<sparkle:version>$N<" && { echo "Published $TAG: the update list now offers it."; exit 0; }
+  A=$(curl -fsSL "https://github.com/$REPO/releases/latest/download/appcast.xml") || A=""
+  grep -q "<sparkle:version>$N<" <<<"$A" && { [ -n "$BETA" ] && echo "Published test version $TAG: only John's Mac is offered it. Check it there, then: scripts/release.sh --promote $TAG" || echo "Published $TAG: the update list now offers it."; exit 0; }
   sleep 5
 done
 echo "Published, but the update list URL does not show it yet: check it"; exit 1
