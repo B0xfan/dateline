@@ -65,7 +65,11 @@ struct Entry: TimelineEntry {
 
 struct Provider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> Entry { Entry(date: Date(), snap: .sample(Date()), family: context.family) }
-    func snapshot(for p: PickSet, in context: Context) async -> Entry { context.isPreview ? placeholder(in: context) : entries(p, context.family).first! }
+    // The gallery preview shows the person's real calendar too; the sample only before the app has written anything (John 2026-11-28).
+    func snapshot(for p: PickSet, in context: Context) async -> Entry {
+        let e = entries(p, context.family).first!
+        return context.isPreview && e.empty ? placeholder(in: context) : e
+    }
     func timeline(for p: PickSet, in context: Context) async -> Timeline<Entry> { Timeline(entries: entries(p, context.family), policy: .atEnd) }
 
     // A new entry when an event starts or ends (Up next moves on) and at midnight, for the next 12 hours.
